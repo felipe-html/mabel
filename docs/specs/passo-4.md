@@ -262,6 +262,9 @@ para `executing` com os problemas no prompt.
 - [ ] G3 reprova por comando com erro e por critério sem teste encontrado.
 - [ ] Sequência falha, falha, sucesso com escalonamento na 3ª: modelos e sessões corretos.
 - [ ] Três falhas levam a `needs_human` com resumo.
+- [ ] `responder` em `attempts_exhausted` abre novo ciclo com o modelo escalonado e sessão
+      nova; com `--replanejar`, volta ao planejamento.
+- [ ] `responder` em cada `pending_kind` leva ao estado e à sessão da tabela.
 - [ ] Cada gate gera linha em `gate_results`.
 
 ## Incremento 4.4 — `mabel run` e decisões
@@ -306,12 +309,29 @@ o `exec`), indentadas. No fim, resumo: itens por estado final, custo total e tem
 ```
 mabel item <n>                    detalhe: estado, plano, critérios, pergunta pendente, custo, runs
 mabel aprovar <n>                 aprova os critérios de um item crítico → executing
-mabel responder <n> "<resposta>"  responde às perguntas e retoma a sessão da etapa que perguntou
-                                  (planejamento → planning; execução → executing)
+mabel responder <n> "<resposta>" [--replanejar]
+                                  orienta o item; o efeito depende do motivo da parada (abaixo)
 mabel cancelar <n>                → cancelled
 ```
 
 Toda decisão grava `item_transitions` com `reason` iniciando por `humano:`.
+
+### Motivos de `needs_human` e efeito do `responder`
+
+O item guarda o motivo da parada em `items.pending_kind`. O `responder` age conforme o motivo:
+
+| Motivo (`pending_kind`) | Origem | `responder` | `--replanejar` |
+|---|---|---|---|
+| `question_plan` | Perguntas ou suposição crítica no planejamento | → `planning`, retoma a sessão do planejamento com a resposta | Igual |
+| `plan_incomplete` | Plano incompleto duas vezes | → `planning`, retoma a sessão do planejamento com a resposta | Igual |
+| `critical_approval` | Item crítico aguardando aprovação | A resposta é um ajuste dos critérios: → `planning`, retoma a sessão do planejamento. Para aprovar sem ajuste, use `aprovar` | Igual |
+| `question_execute` | Perguntas ou suposição crítica na execução | → `executing`, retoma a sessão daquela execução com a resposta. Contador de tentativas inalterado | → `planning`, sessão nova com o plano anterior, a resposta e o resumo das tentativas |
+| `attempts_exhausted` | Três tentativas reprovadas | → `executing`, **novo ciclo** de até 3 tentativas: contador do ciclo zerado, sessão nova com a resposta e o resumo das tentativas anteriores, todas as tentativas do ciclo com o modelo escalonado. Nova reprovação no ciclo → `needs_human` (`attempts_exhausted`) de novo | → `planning`, sessão nova com o plano anterior, a resposta e o resumo das tentativas; ao voltar à execução, novo ciclo com as regras normais |
+
+- `items.attempts` passa a contar as tentativas **do ciclo atual**; o total do item é
+  derivado das runs de execução.
+- `mabel item <n>` mostra o motivo, a pergunta ou o resumo das tentativas e sugere o
+  comando adequado (`responder`, `responder --replanejar`, `aprovar`, `cancelar`).
 
 ### Critérios de aceite
 
