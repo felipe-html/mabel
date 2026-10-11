@@ -1,0 +1,22 @@
+{
+  "name": "mabel",
+  "version": "0.1.0",
+  "description": "Harness para gerenciar, auditar e coordenar agentes Claude Code",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "mabel": "src/cli.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "node --test test/*.test.ts",
+    "check": "npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "5.9"
+  }
+}
