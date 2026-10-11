@@ -121,6 +121,27 @@ const migrations: string[] = [
   ALTER TABLE runs ADD COLUMN structured_output TEXT;
   CREATE INDEX runs_item ON runs(item_id, started_at);
   `,
+  `
+  ALTER TABLE items ADD COLUMN pending_kind TEXT;
+  ALTER TABLE items ADD COLUMN pending TEXT;
+  ALTER TABLE items ADD COLUMN approved_at TEXT;
+  ALTER TABLE items ADD COLUMN escalated_cycle INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE items ADD COLUMN attempt_no INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE items ADD COLUMN plan_retries INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE items ADD COLUMN next_input TEXT;
+
+  CREATE TABLE gate_results (
+    id        INTEGER PRIMARY KEY,
+    item_id   TEXT NOT NULL REFERENCES items(id),
+    attempt   INTEGER NOT NULL,
+    gate      TEXT NOT NULL,
+    passed    INTEGER NOT NULL,
+    detail    TEXT,
+    log_path  TEXT,
+    at        TEXT NOT NULL
+  );
+  CREATE INDEX gate_results_item ON gate_results(item_id, id);
+  `,
 ];
 
 function migrate(db: DatabaseSync): void {

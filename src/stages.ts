@@ -188,12 +188,17 @@ export interface PlanPromptInput {
   attemptsSummary?: string;
   /** A sessão está sendo retomada: só o que é novo vai no prompt. */
   resuming?: boolean;
+  /** A run anterior desta etapa foi interrompida. */
+  interrupted?: boolean;
 }
+
+const INTERRUPTED = 'A run anterior foi interrompida antes de terminar. Continue de onde parou.';
 
 export function planPrompt(ctx: StageContext, input: PlanPromptInput = {}): string {
   const { item, project } = ctx;
   if (input.resuming) {
     return [
+      ...(input.interrupted ? [INTERRUPTED, ''] : []),
       ...section('Plano incompleto', input.retryReason ?? ''),
       ...section('Resposta do humano', input.answer ?? ''),
       'Refaça o plano completo levando isso em conta e termine com a saída estruturada.',
@@ -229,6 +234,7 @@ export interface ExecutePromptInput {
   answer?: string;
   attemptsSummary?: string;
   resuming?: boolean;
+  interrupted?: boolean;
 }
 
 export function executePrompt(ctx: StageContext, input: ExecutePromptInput): string {
@@ -236,6 +242,7 @@ export function executePrompt(ctx: StageContext, input: ExecutePromptInput): str
     return [
       `# Tentativa ${input.attempt}`,
       '',
+      ...(input.interrupted ? [INTERRUPTED, ''] : []),
       ...section('Falha da tentativa anterior', input.failure ?? ''),
       ...section('Resposta do humano', input.answer ?? ''),
       'Corrija o que for preciso dentro do plano, rode a verificação e termine com a saída estruturada.',
@@ -259,9 +266,11 @@ export function executePrompt(ctx: StageContext, input: ExecutePromptInput): str
 export interface ReviewPromptInput {
   plan: PlanOutput;
   execution: ExecuteOutput;
+  resuming?: boolean;
 }
 
 export function reviewPrompt(ctx: StageContext, input: ReviewPromptInput): string {
+  if (input.resuming) return `${INTERRUPTED} Termine a revisão com a saída estruturada.`;
   const base = ctx.project.config.baseBranch;
   const tests = input.execution.criterios.map(
     (criterion) => `${criterion.id}: ${criterion.testes.map((t) => `\`${t.arquivo}\` › ${t.nome}`).join(', ') || '(nenhum)'}`,

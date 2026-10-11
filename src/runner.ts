@@ -45,6 +45,8 @@ export interface RunOutcome {
   error: string | null;
   model: string | null;
   sessionId: string | null;
+  /** Último `status` de `rate_limit_event` visto na run (`allowed` quando há saldo). */
+  rateLimitStatus: string | null;
   totals: ResultTotals | null;
   /** Duração da run: a do `result` ou, sem ele, o tempo de relógio. */
   durationMs: number;
@@ -168,6 +170,7 @@ export function startRun(
   let model: string | null = null;
   let sessionId: string | null = null;
   let totals: ResultTotals | null = null;
+  let rateLimitStatus: string | null = null;
   let interrupted = false;
   let auditError: Error | null = null;
   let stderrTail = '';
@@ -203,6 +206,7 @@ export function startRun(
         }
         break;
       case 'rate_limits':
+        rateLimitStatus = event.status ?? rateLimitStatus;
         for (const reading of event.readings) {
           insertRateLimit.run(
             runId,
@@ -353,7 +357,7 @@ export function startRun(
         error = `falha ao gravar a auditoria: ${(dbError as Error).message}`;
       }
 
-      resolve({ runId, status, exitCode, error, model, sessionId, totals, durationMs, transcriptPath });
+      resolve({ runId, status, exitCode, error, model, sessionId, rateLimitStatus, totals, durationMs, transcriptPath });
     };
 
     child.on('error', (spawnError) => {
@@ -364,4 +368,18 @@ export function startRun(
   });
 
   return { runId, interrupt, done };
+}
+
+const USAGE_LIMIT_TEXT = /usage limit|rate limit|limit reached|limite de uso|out of (?:usage|credits)/i;
+
+/**
+ * A run parou por falta de saldo? Heurística: `rate_limit_event` com status fora da família
+ * `allowed` (`allowed_warning` ainda é saldo), ou erro do `result` falando de limite de uso.
+ * Ainda não confirmada com uma run real que esgote o saldo.
+ */
+export function isUsageLimit(outcome: RunOutcome): boolean {
+  if (outcome.status !== 'failed') return false;
+  if (outcome.rateLimitStatus && !outcome.rateLimitStatus.startsWith('allowed')) return true;
+  const texts = [outcome.error, outcome.totals?.text, ...(outcome.totals?.errors ?? [])];
+  return texts.some((text) => typeof text === 'string' && USAGE_LIMIT_TEXT.test(text));
 }

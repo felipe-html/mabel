@@ -52,6 +52,46 @@ export interface Item extends Required<Omit<ItemFields, 'number'>> {
   attempts: number;
   branch: string | null;
   worktree: string | null;
+  pendingKind: PendingKind | null;
+  pending: Pending | null;
+  approvedAt: string | null;
+  /** Ciclo aberto pelo `responder` em `attempts_exhausted`: todas as tentativas escalonadas. */
+  escalatedCycle: boolean;
+  /** Número global da tentativa em andamento (artefatos, commits, gates). */
+  attemptNo: number;
+  planRetries: number;
+  /** Instruções para a próxima run da etapa atual (sessão a retomar, resposta, falha). */
+  nextInput: NextInput | null;
+}
+
+export type PendingKind =
+  | 'question_plan'
+  | 'plan_incomplete'
+  | 'critical_approval'
+  | 'question_execute'
+  | 'attempts_exhausted';
+
+/** Detalhes da parada em `needs_human`, mostrados pelo `mabel item`. */
+export interface Pending {
+  sessionId?: string | null;
+  questions?: string[];
+  criticalAssumptions?: string[];
+  reason?: string;
+  summary?: string;
+}
+
+export interface NextInput {
+  resumeSessionId?: string;
+  answer?: string;
+  failure?: string;
+  retryReason?: string;
+  attemptsSummary?: string;
+  /** Replanejamento em sessão nova a partir do plano anterior. */
+  previousPlan?: boolean;
+  /** A run anterior foi interrompida: retomar a sessão e continuar. */
+  interrupted?: boolean;
+  /** Continua a mesma tentativa (resposta a uma pergunta da execução). */
+  sameAttempt?: boolean;
 }
 
 interface ItemRow {
@@ -70,6 +110,13 @@ interface ItemRow {
   attempts: number;
   branch: string | null;
   worktree: string | null;
+  pending_kind: PendingKind | null;
+  pending: string | null;
+  approved_at: string | null;
+  escalated_cycle: number;
+  attempt_no: number;
+  plan_retries: number;
+  next_input: string | null;
 }
 
 function fromRow(row: ItemRow): Item {
@@ -89,7 +136,50 @@ function fromRow(row: ItemRow): Item {
     attempts: row.attempts,
     branch: row.branch,
     worktree: row.worktree,
+    pendingKind: row.pending_kind,
+    pending: row.pending ? (JSON.parse(row.pending) as Pending) : null,
+    approvedAt: row.approved_at,
+    escalatedCycle: row.escalated_cycle === 1,
+    attemptNo: row.attempt_no,
+    planRetries: row.plan_retries,
+    nextInput: row.next_input ? (JSON.parse(row.next_input) as NextInput) : null,
   };
+}
+
+export interface ItemUpdate {
+  attempts?: number;
+  attemptNo?: number;
+  planRetries?: number;
+  escalatedCycle?: boolean;
+  approvedAt?: string | null;
+  pendingKind?: PendingKind | null;
+  pending?: Pending | null;
+  nextInput?: NextInput | null;
+}
+
+const UPDATE_COLUMNS: Record<keyof ItemUpdate, string> = {
+  attempts: 'attempts',
+  attemptNo: 'attempt_no',
+  planRetries: 'plan_retries',
+  escalatedCycle: 'escalated_cycle',
+  approvedAt: 'approved_at',
+  pendingKind: 'pending_kind',
+  pending: 'pending',
+  nextInput: 'next_input',
+};
+
+/** Atualiza campos de controle do item (não o estado, que só muda por `transition`). */
+export function updateItem(db: DatabaseSync, itemId: string, update: ItemUpdate): void {
+  const entries = Object.entries(update) as [keyof ItemUpdate, unknown][];
+  if (entries.length === 0) return;
+  const values = entries.map(([key, value]) => {
+    if (key === 'escalatedCycle') return value ? 1 : 0;
+    if ((key === 'pending' || key === 'nextInput') && value !== null) return JSON.stringify(value);
+    return value as string | number | null;
+  });
+  db.prepare(
+    `UPDATE items SET ${entries.map(([key]) => `${UPDATE_COLUMNS[key]} = ?`).join(', ')}, updated_at = ? WHERE id = ?`,
+  ).run(...values, new Date().toISOString(), itemId);
 }
 
 export function listItems(db: DatabaseSync, projectId: string): Item[] {
@@ -143,7 +233,8 @@ export function transition(
   reason: string | null,
   options: TransitionOptions = {},
 ): void {
-  db.exec('BEGIN IMMEDIATE');
+  // SAVEPOINT em vez de BEGIN: funciona também dentro de uma transação do chamador.
+  db.exec('SAVEPOINT item_transition');
   try {
     const row = db.prepare('SELECT status, number FROM items WHERE id = ?').get(itemId) as
       | { status: ItemStatus; number: number }
@@ -162,9 +253,10 @@ export function transition(
     db.prepare(
       'INSERT INTO item_transitions (item_id, from_state, to_state, reason, run_id, at) VALUES (?, ?, ?, ?, ?, ?)',
     ).run(itemId, row.status, to, reason, options.runId ?? null, now);
-    db.exec('COMMIT');
+    db.exec('RELEASE item_transition');
   } catch (error) {
-    db.exec('ROLLBACK');
+    db.exec('ROLLBACK TO item_transition');
+    db.exec('RELEASE item_transition');
     throw error;
   }
   if (options.board !== false) refreshBoard(db, project);

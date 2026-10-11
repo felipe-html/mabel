@@ -255,17 +255,17 @@ para `executing` com os problemas no prompt.
 
 ### Critérios de aceite
 
-- [ ] Cada condição do G2 coberta por teste, incluindo casamento de glob com caminho crítico.
-- [ ] Plano incompleto: refeito uma vez pela mesma sessão; segunda falha → `needs_human`.
-- [ ] Execução com pergunta ou suposição crítica → `needs_human` sem commit; `responder`
+- [x] Cada condição do G2 coberta por teste, incluindo casamento de glob com caminho crítico.
+- [x] Plano incompleto: refeito uma vez pela mesma sessão; segunda falha → `needs_human`.
+- [x] Execução com pergunta ou suposição crítica → `needs_human` sem commit; `responder`
       retoma a sessão da execução.
-- [ ] G3 reprova por comando com erro e por critério sem teste encontrado.
-- [ ] Sequência falha, falha, sucesso com escalonamento na 3ª: modelos e sessões corretos.
-- [ ] Três falhas levam a `needs_human` com resumo.
-- [ ] `responder` em `attempts_exhausted` abre novo ciclo com o modelo escalonado e sessão
+- [x] G3 reprova por comando com erro e por critério sem teste encontrado.
+- [x] Sequência falha, falha, sucesso com escalonamento na 3ª: modelos e sessões corretos.
+- [x] Três falhas levam a `needs_human` com resumo.
+- [x] `responder` em `attempts_exhausted` abre novo ciclo com o modelo escalonado e sessão
       nova; com `--replanejar`, volta ao planejamento.
-- [ ] `responder` em cada `pending_kind` leva ao estado e à sessão da tabela.
-- [ ] Cada gate gera linha em `gate_results`.
+- [x] `responder` em cada `pending_kind` leva ao estado e à sessão da tabela.
+- [x] Cada gate gera linha em `gate_results`.
 
 ## Incremento 4.4 — `mabel run` e decisões
 
