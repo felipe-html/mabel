@@ -36,7 +36,7 @@ test('completion zsh gera script com compdef e todos os comandos', () => {
   const result = mabel('completion', 'zsh');
   assert.equal(result.status, 0);
   assert.match(result.stdout, /compdef _mabel mabel/);
-  for (const name of ['init', 'add', 'run', 'status', 'inbox', 'completion']) {
+  for (const name of ['init', 'add', 'exec', 'run', 'status', 'inbox', 'completion']) {
     assert.match(result.stdout, new RegExp(`'${name}:`));
   }
 });

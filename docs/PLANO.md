@@ -20,7 +20,7 @@ primeiro item não marcado.
 
 Especificação: `docs/specs/passo-2.md`.
 
-- [ ] 2.1 Banco SQLite, runner e `mabel exec` (G1).
+- [x] 2.1 Banco SQLite, runner e `mabel exec` (G1).
 - [ ] 2.2 Leitura de saldo, `checkBalance`, probe e `mabel status`.
 - [ ] 2.3 `mabel runs` com lista e detalhe da run.
 - [ ] 2.4 Menu como painel: cabeçalho de saldo e volta ao menu após cada comando.
@@ -61,3 +61,4 @@ Especificação: `docs/specs/passo-2.md`.
 | 2026-10-11 | Script de setup do ambiente (`scripts/setup.sh`). |
 | 2026-10-11 | Menu interativo na tela inicial. |
 | 2026-10-11 | Especificação do passo 2 (`docs/specs/passo-2.md`). |
+| 2026-10-11 | Incremento 2.1: banco SQLite, runner e `mabel exec`, validado com run real em haiku. |

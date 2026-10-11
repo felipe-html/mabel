@@ -71,7 +71,8 @@ CREATE TABLE runs (
   cache_read_tokens     INTEGER,
   cache_creation_tokens INTEGER,
   result_text           TEXT,
-  transcript_path       TEXT
+  transcript_path       TEXT,
+  pid                   INTEGER                -- processo do Mabel dono da run (item 8 do 2.1)
 );
 
 CREATE TABLE events (
@@ -115,8 +116,10 @@ CREATE INDEX rate_limits_window ON rate_limits(window, observed_at);
 1. Abre o banco e insere a run com `status='running'` **antes** de iniciar o processo. Se
    o banco ou o diretório da run não puderem ser gravados, encerra com erro e não inicia
    o `claude` (G1).
-2. Inicia o `claude` com `-p <prompt> --output-format stream-json --verbose` e as opções
-   repassadas. O executável vem de `$MABEL_CLAUDE_BIN` ou `claude` no PATH.
+2. Inicia o `claude` com `-p --output-format stream-json --verbose`, as opções repassadas
+   e o prompt por último, depois de `--` (assim um prompt que começa com hífen ou vem após
+   `--allowedTools`, que é variádica, nunca é lido como opção). O executável vem de
+   `$MABEL_CLAUDE_BIN` ou `claude` no PATH.
 3. Lê o stdout linha a linha até o EOF. Cada linha é anexada a `stream.jsonl` antes de
    qualquer interpretação e gravada em `events`.
 4. Interpretação por evento:
@@ -166,18 +169,18 @@ usam `$MABEL_HOME` e `$MABEL_CLAUDE_BIN` temporários.
 
 ### Critérios de aceite
 
-- [ ] Uma run de fixture gera: 1 linha em `runs` com totais iguais aos do `result`; uma
+- [x] Uma run de fixture gera: 1 linha em `runs` com totais iguais aos do `result`; uma
       linha em `events` por linha do stream; 1 linha em `tool_calls` com `is_error=0`;
       2 linhas em `rate_limits`.
-- [ ] `stream.jsonl` é idêntico ao stdout do `claude` falso.
-- [ ] Banco não gravável: o `claude` falso não é iniciado e o código de saída é diferente de 0.
-- [ ] Linha inválida no meio do stream não interrompe a leitura.
-- [ ] Eventos depois do `result` são gravados.
-- [ ] `claude` saindo com código diferente de 0 resulta em `failed` com `error` preenchido.
-- [ ] `SIGINT` resulta em `interrupted` e o processo filho encerrado.
-- [ ] Transcript copiado quando existe; evento `transcript_missing` quando não.
-- [ ] Run `running` órfã vira `failed`/`abandoned` ao reabrir o banco.
-- [ ] Teste manual com o `claude` real e `--model haiku` registra custo e saldo.
+- [x] `stream.jsonl` é idêntico ao stdout do `claude` falso.
+- [x] Banco não gravável: o `claude` falso não é iniciado e o código de saída é diferente de 0.
+- [x] Linha inválida no meio do stream não interrompe a leitura.
+- [x] Eventos depois do `result` são gravados.
+- [x] `claude` saindo com código diferente de 0 resulta em `failed` com `error` preenchido.
+- [x] `SIGINT` resulta em `interrupted` e o processo filho encerrado.
+- [x] Transcript copiado quando existe; evento `transcript_missing` quando não.
+- [x] Run `running` órfã vira `failed`/`abandoned` ao reabrir o banco.
+- [x] Teste manual com o `claude` real e `--model haiku` registra custo e saldo.
 
 ## Incremento 2.2 — Saldo
 

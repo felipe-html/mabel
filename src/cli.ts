@@ -2,17 +2,11 @@
 import { readFileSync } from 'node:fs';
 import { banner } from './banner.ts';
 import { type Command, commands, findCommand } from './commands.ts';
-import { type MenuOption, type Style, select } from './menu.ts';
+import { type MenuOption, select } from './menu.ts';
+import { style } from './style.ts';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
   version: string;
-};
-
-const color = process.stdout.isTTY && !process.env.NO_COLOR;
-const style: Style = {
-  dim: (text) => (color ? `\x1b[2m${text}\x1b[0m` : text),
-  bold: (text) => (color ? `\x1b[1m${text}\x1b[0m` : text),
-  accent: (text) => (color ? `\x1b[36m${text}\x1b[0m` : text),
 };
 
 const interactive = process.stdin.isTTY && process.stdout.isTTY;

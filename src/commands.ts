@@ -1,4 +1,5 @@
 import { zshCompletion } from './completion.ts';
+import { askPrompt, exec, execUsage } from './exec.ts';
 
 export interface Command {
   name: string;
@@ -29,6 +30,13 @@ export const commands: Command[] = [
     description: 'Consome a fila do backlog, item a item',
     usage: 'mabel run',
     plannedStep: 4,
+  },
+  {
+    name: 'exec',
+    description: 'Executa um prompt avulso no Claude Code, com auditoria',
+    usage: execUsage,
+    menuArgs: askPrompt,
+    run: exec,
   },
   {
     name: 'status',
