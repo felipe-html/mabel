@@ -6,7 +6,9 @@ export interface Command {
   usage: string;
   /** Passo do plano em que o comando será implementado; ausente quando já está disponível. */
   plannedStep?: number;
-  run?: (args: string[]) => number;
+  run?: (args: string[]) => number | Promise<number>;
+  /** Argumentos usados quando o comando é escolhido no menu interativo. */
+  menuArgs?: () => string[] | Promise<string[]>;
 }
 
 export const commands: Command[] = [
@@ -44,6 +46,7 @@ export const commands: Command[] = [
     name: 'completion',
     description: 'Gera o script de autocompletar do shell',
     usage: 'mabel completion zsh',
+    menuArgs: () => ['zsh'],
     run: (args) => {
       if (args[0] !== 'zsh') {
         process.stderr.write('Shell não suportado. Uso: mabel completion zsh\n');

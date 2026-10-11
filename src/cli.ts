@@ -1,37 +1,68 @@
 #!/usr/bin/env -S node --disable-warning=ExperimentalWarning
 import { readFileSync } from 'node:fs';
 import { banner } from './banner.ts';
-import { commands, findCommand } from './commands.ts';
+import { type Command, commands, findCommand } from './commands.ts';
+import { type MenuOption, type Style, select } from './menu.ts';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
   version: string;
 };
 
 const color = process.stdout.isTTY && !process.env.NO_COLOR;
-const dim = (text: string) => (color ? `\x1b[2m${text}\x1b[0m` : text);
-const bold = (text: string) => (color ? `\x1b[1m${text}\x1b[0m` : text);
+const style: Style = {
+  dim: (text) => (color ? `\x1b[2m${text}\x1b[0m` : text),
+  bold: (text) => (color ? `\x1b[1m${text}\x1b[0m` : text),
+  accent: (text) => (color ? `\x1b[36m${text}\x1b[0m` : text),
+};
+
+const interactive = process.stdin.isTTY && process.stdout.isTTY;
+
+function plannedNote(command: Command): string {
+  return `ainda não implementado (passo ${command.plannedStep} do plano)`;
+}
 
 function menu(): string {
   const width = Math.max(...commands.map((command) => command.name.length));
   const lines = commands.map((command) => {
     const line = `  ${command.name.padEnd(width)}  ${command.description}`;
-    return command.plannedStep ? dim(`${line}  (passo ${command.plannedStep})`) : line;
+    return command.plannedStep ? style.dim(`${line}  (passo ${command.plannedStep})`) : line;
   });
-  return [bold('Comandos'), ...lines, '', dim('Use `mabel <comando> --help` para ver o uso.')].join(
-    '\n',
-  );
+  return [
+    style.bold('Comandos'),
+    ...lines,
+    '',
+    style.dim('Use `mabel <comando> --help` para ver o uso.'),
+  ].join('\n');
 }
 
-function home(): number {
+async function home(): Promise<number> {
   if (process.env.MABEL_BANNER !== '0') {
     process.stdout.write(`\n${banner(process.stdout.columns ?? 80)}\n\n`);
   }
-  process.stdout.write(`${dim(`v${pkg.version} · harness para frotas de agentes`)}\n\n`);
-  process.stdout.write(`${menu()}\n`);
-  return 0;
+  process.stdout.write(`${style.dim(`v${pkg.version} · harness para frotas de agentes`)}\n\n`);
+
+  if (!interactive) {
+    process.stdout.write(`${menu()}\n`);
+    return 0;
+  }
+
+  const options: MenuOption[] = [
+    ...commands.map((command) => ({
+      label: command.name,
+      hint: command.description,
+      disabledReason: command.plannedStep ? `\`${command.name}\` ${plannedNote(command)}` : undefined,
+    })),
+    { label: 'sair', hint: 'Fecha o Mabel' },
+  ];
+  const chosen = await select(options, style);
+  const command = chosen === null ? undefined : commands[chosen];
+  if (!command?.run) return 0;
+
+  process.stdout.write('\n');
+  return command.run((await command.menuArgs?.()) ?? []);
 }
 
-function main(argv: string[]): number {
+async function main(argv: string[]): Promise<number> {
   const [name, ...args] = argv;
 
   if (name === undefined) return home();
@@ -54,12 +85,10 @@ function main(argv: string[]): number {
     return 0;
   }
   if (!command.run) {
-    process.stderr.write(
-      `\`mabel ${command.name}\` ainda não foi implementado (passo ${command.plannedStep} do plano).\n`,
-    );
+    process.stderr.write(`\`mabel ${command.name}\` ${plannedNote(command)}.\n`);
     return 1;
   }
   return command.run(args);
 }
 
-process.exitCode = main(process.argv.slice(2));
+process.exitCode = await main(process.argv.slice(2));

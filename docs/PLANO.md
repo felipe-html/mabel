@@ -14,6 +14,7 @@ primeiro item não marcado.
 - [x] Autocompletar zsh (`mabel completion zsh`).
 - [x] Testes com `node:test`.
 - [x] `scripts/setup.sh`: preflight, instalação e verificação do ambiente.
+- [x] Menu interativo ao rodar `mabel` sem argumentos (setas, números, enter, q).
 
 ## Passo 2 — Runner e auditoria
 
@@ -60,3 +61,4 @@ primeiro item não marcado.
 | 2026-10-11 | Contrato v0 fechado (`docs/CONTRATO.md`). |
 | 2026-10-11 | Passo 1 concluído. |
 | 2026-10-11 | Script de setup do ambiente (`scripts/setup.sh`). |
+| 2026-10-11 | Menu interativo na tela inicial. |
