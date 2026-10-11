@@ -335,17 +335,19 @@ O item guarda o motivo da parada em `items.pending_kind`. O `responder` age conf
 
 ### Critérios de aceite
 
-- [ ] Fila de três itens com `claude` falso: dois chegam a `awaiting_merge`, um para em
+- [x] Fila de três itens com `claude` falso: dois chegam a `awaiting_merge`, um para em
       `needs_human`; `responder` e novo `run` o levam a `awaiting_merge`.
-- [ ] Merge manual da branch na base leva o item a `done` no próximo `run`.
-- [ ] `ctrl+c` no meio de uma etapa e novo `run` retomam pela mesma sessão.
-- [ ] Saldo de 5h abaixo de 30% fora do TTY espera o reset (testado com relógio injetado).
-- [ ] Item com dependência só inicia depois que a dependência fica `done`.
-- [ ] `run`, `item`, `aprovar`, `responder` e `cancelar` disponíveis no menu e no autocompletar.
-- [ ] Teste manual: um item simples num projeto descartável, com o `claude` real, chega a
+- [x] Merge manual da branch na base leva o item a `done` no próximo `run`.
+- [x] `ctrl+c` no meio de uma etapa e novo `run` retomam pela mesma sessão.
+- [x] Saldo de 5h abaixo de 30% fora do TTY espera o reset (testado com relógio injetado).
+- [x] Item com dependência só inicia depois que a dependência fica `done`.
+- [x] `run`, `item`, `aprovar`, `responder` e `cancelar` disponíveis no menu e no autocompletar.
+- [x] Teste manual: um item simples num projeto descartável, com o `claude` real, chega a
       `awaiting_merge` com custo registrado. Autorizado pelo usuário com modelos baratos:
       no `config.json` do projeto descartável, `models` = `haiku`/`sonnet`/`sonnet` e
       `maxBudgetUsd` = 1 em cada etapa. Reportar o custo total ao usuário.
+      Feito em 2026-10-11: item "Função soma" em `awaiting_merge` numa tentativa, 49 s,
+      US$ 0,35 no total (probe, planejar, executar e revisar).
 
 ## Fora deste passo
 

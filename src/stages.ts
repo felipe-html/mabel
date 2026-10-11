@@ -283,7 +283,8 @@ export function reviewPrompt(ctx: StageContext, input: ReviewPromptInput): strin
     ...section('Testes declarados por critério', bullet(tests, 'Nenhum.')),
     '## Tarefa',
     '',
-    `Revise as alterações com \`git diff ${base}...HEAD\` e \`git log ${base}..HEAD\`. Não edite nada.`,
+    `Revise as alterações rodando, cada um num comando separado (sem \`;\` nem \`&&\`),`,
+    `\`git diff ${base}...HEAD\` e \`git log ${base}..HEAD\`. Não edite nada.`,
   ].join('\n');
 }
 

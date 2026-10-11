@@ -7,20 +7,18 @@ import { summaryLine } from './exec.ts';
 import { formatCost, truncate } from './format.ts';
 import { boardItems, syncBacklog } from './items.ts';
 import { ProjectError, resolveProject } from './project.ts';
-import { type RunOutcome, startRun } from './runner.ts';
+import { type RunOutcome, type RunRequest, startRun } from './runner.ts';
 import { paint, style } from './style.ts';
 
 export const PROBE_PROMPT = 'Responda apenas: ok';
 
+export function probeRequest(home: string): RunRequest {
+  return { kind: 'probe', prompt: PROBE_PROMPT, cwd: home, model: 'haiku', maxTurns: 1 };
+}
+
 /** Run mínima para obter uma leitura de saldo nova. Auditada como qualquer run. */
 export async function runProbe(db: DatabaseSync, home: string): Promise<RunOutcome> {
-  const handle = startRun(db, home, {
-    kind: 'probe',
-    prompt: PROBE_PROMPT,
-    cwd: home,
-    model: 'haiku',
-    maxTurns: 1,
-  });
+  const handle = startRun(db, home, probeRequest(home));
   process.on('SIGINT', handle.interrupt);
   try {
     return await handle.done;

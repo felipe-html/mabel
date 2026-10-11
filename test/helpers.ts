@@ -37,15 +37,20 @@ export function makeRepo(files: Record<string, string> = {}, { commit = true } =
 export function setupProject(backlog?: string) {
   const root = makeRepo({ 'src/index.js': '', 'package.json': JSON.stringify({ scripts: { test: 'node --test' } }) });
   const home = mkdtempSync(join(tmpdir(), 'mabel-home-'));
-  const env = { ...process.env, MABEL_HOME: home, NO_COLOR: '1' };
+  // O ambiente é lido a cada chamada: cenários do `claude` falso valem também para o CLI.
+  const env = () => ({ ...process.env, MABEL_HOME: home, NO_COLOR: '1' });
   const cli = (...args: string[]) =>
-    spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, ...args], { cwd: root, encoding: 'utf8', env });
+    spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, ...args], {
+      cwd: root,
+      encoding: 'utf8',
+      env: env(),
+    });
   assert.equal(cli('init').status, 0);
   const path = join(root, '.mabel', 'backlog.md');
   if (backlog !== undefined) writeFileSync(path, BACKLOG_TEMPLATE + backlog);
   const db = openDb(home);
   const project = resolveProject(db, root);
-  return { root, home, cli, path, db, project };
+  return { root, home, env, cli, path, db, project };
 }
 
 /** Aponta o `claude` falso (no processo atual) para um cenário com as respostas dadas. */

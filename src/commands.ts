@@ -1,7 +1,21 @@
 import { add, addUsage } from './add.ts';
 import { zshCompletion } from './completion.ts';
 import { askPrompt, exec, execUsage } from './exec.ts';
+import {
+  approveCommand,
+  approveUsage,
+  askCancel,
+  askItemNumber,
+  askRespond,
+  cancelCommand,
+  cancelUsage,
+  itemCommand,
+  itemUsage,
+  respondCommand,
+  respondUsage,
+} from './decide.ts';
 import { init } from './init.ts';
+import { run, runUsage } from './run.ts';
 import { status } from './status.ts';
 
 export interface Command {
@@ -31,8 +45,36 @@ export const commands: Command[] = [
   {
     name: 'run',
     description: 'Consome a fila do backlog, item a item',
-    usage: 'mabel run',
-    plannedStep: 4,
+    usage: runUsage,
+    run,
+  },
+  {
+    name: 'item',
+    description: 'Mostra o detalhe de um item: estado, pendência, plano, custo e runs',
+    usage: itemUsage,
+    menuArgs: askItemNumber,
+    run: itemCommand,
+  },
+  {
+    name: 'aprovar',
+    description: 'Aprova os critérios de um item crítico',
+    usage: approveUsage,
+    menuArgs: askItemNumber,
+    run: approveCommand,
+  },
+  {
+    name: 'responder',
+    description: 'Responde a um item parado em needs_human',
+    usage: respondUsage,
+    menuArgs: askRespond,
+    run: respondCommand,
+  },
+  {
+    name: 'cancelar',
+    description: 'Cancela um item',
+    usage: cancelUsage,
+    menuArgs: askCancel,
+    run: cancelCommand,
   },
   {
     name: 'exec',

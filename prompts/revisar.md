@@ -10,7 +10,8 @@ conseguir comprovar.
 ## O que fazer
 
 - Leia o diff da branch do item contra a branch base (`git diff <base>...HEAD`) e os
-  testes declarados pela execução.
+  testes declarados pela execução. Rode cada comando git sozinho: comandos encadeados com
+  `;` ou `&&` são negados.
 - Para cada critério do plano, decida se está atendido e aponte a evidência: o trecho do
   diff ou o teste que o comprova.
 - Registre os problemas encontrados. `bloqueante`: o critério não é atendido, há bug,

@@ -31,14 +31,14 @@ Especificação: `docs/specs/passo-3.md`.
 - [x] 3.2 Backlog: formato, parser, sincronização e `mabel add`.
 - [x] 3.3 Máquina de estados, auditoria de transições e `quadro.md`.
 
-## Passo 4 — Etapas, gates e `mabel run`
+## Passo 4 — Etapas, gates e `mabel run` ✅
 
 Especificação: `docs/specs/passo-4.md`.
 
 - [x] 4.1 Runner para etapas e worktree por item.
 - [x] 4.2 Etapas com agente (planejar, executar, revisar) e saída estruturada.
 - [x] 4.3 Gates G2 e G3, retentativas e escalonamento.
-- [ ] 4.4 `mabel run`, política de saldo e comandos de decisão.
+- [x] 4.4 `mabel run`, política de saldo e comandos de decisão.
 
 ## 🧪 Marco — Teste com aplicação real
 
@@ -71,3 +71,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-11 | Incremento 4.1: flags de etapa no runner, `structured_output`, worktree e branch por item, commits do Mabel e trava por projeto (testada entre processos; o teste pelo `mabel run` entra no 4.4). |
 | 2026-10-11 | Incremento 4.2: prompts de sistema, esquemas e validador próprio, montagem das etapas, artefatos e `claude` falso por cenário. O esquema do plano foi validado com o `claude` real. |
 | 2026-10-11 | Incremento 4.3: pipeline do item com G2, G7 na execução, G3, revisão, retentativas com escalonamento e as decisões `responder`/`aprovar`/`cancelar` como funções (os comandos entram no 4.4). |
+| 2026-10-11 | Incremento 4.4: `mabel run` com política de saldo, retomada após ctrl+c, `item`/`aprovar`/`responder`/`cancelar`. Teste real: item simples em `awaiting_merge` por US$ 0,35. Passo 4 concluído; próximo marco é o teste com aplicação real. |

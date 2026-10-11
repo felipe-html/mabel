@@ -8,3 +8,5 @@
 - **Integração com herdr.** Usar a API de socket do herdr para abrir um pane por agente ativo e acompanhar a frota ao vivo. Só depois que a CLI básica estiver estável.
 - **Contexto hermético: medir o efeito.** Comparar runs com e sem `--setting-sources project` para confirmar que nada da configuração pessoal vaza para os agentes da frota.
 - **`mabel add` assistido.** Descrever uma funcionalidade em texto livre e deixar um agente (Haiku/Sonnet) propor a quebra em itens do backlog, com critérios, para você revisar antes de gravar.
+- **Restringir as ferramentas de cada etapa com `--tools`.** No teste real do 4.4, o planejador (só `Read`, `Glob`, `Grep` em `--allowedTools`) rodou Bash de leitura (`pwd`, `cat`, `git status`): o `dontAsk` libera comandos que o Claude Code considera só de leitura. `--tools` limita as ferramentas disponíveis de fato. Vale decidir junto com o contexto hermético do passo 5.
+- **Confirmar a detecção de saldo esgotado.** `isUsageLimit` usa uma heurística (`rate_limit_event` com status fora de `allowed*` ou texto de limite no `result`). Falta capturar uma run real que esgote o saldo e gravá-la em fixture, como pede a spec do passo 4.

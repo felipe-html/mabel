@@ -8,8 +8,9 @@
 //   FAKE_CLAUDE_HANG=1      depois de reproduzir o stream, espera um SIGINT (sai com 130)
 //   FAKE_CLAUDE_TRANSCRIPT=0  não grava o transcript
 //
-// Cenário: FAKE_CLAUDE_SCENARIO aponta um JSON { "responses": [...] }; cada chamada consome
-// a próxima resposta (o índice fica em <cenário>.state). Campos de uma resposta:
+// Cenário: FAKE_CLAUDE_SCENARIO aponta um JSON { "responses": [...] }; cada chamada de etapa
+// (com --json-schema) consome a próxima resposta (o índice fica em <cenário>.state). Chamadas
+// sem esquema (probe, exec) recebem uma resposta de sucesso padrão. Campos de uma resposta:
 //   structured_output   objeto devolvido em result.structured_output
 //   files               { "caminho": "conteúdo" | null } gravados (ou apagados) no cwd
 //   is_error, subtype, result, errors   campos do result (padrão: sucesso)
@@ -51,9 +52,10 @@ function log(entry) {
 if (env.FAKE_CLAUDE_SCENARIO) {
   const scenario = JSON.parse(readFileSync(env.FAKE_CLAUDE_SCENARIO, 'utf8'));
   const statePath = `${env.FAKE_CLAUDE_SCENARIO}.state`;
-  const index = existsSync(statePath) ? Number(readFileSync(statePath, 'utf8')) : 0;
-  writeFileSync(statePath, String(index + 1));
-  const response = scenario.responses[index];
+  const stage = argv.includes('--json-schema');
+  const index = !stage ? -1 : existsSync(statePath) ? Number(readFileSync(statePath, 'utf8')) : 0;
+  if (stage) writeFileSync(statePath, String(index + 1));
+  const response = stage ? scenario.responses[index] : (scenario.probe ?? {});
   if (!response) {
     process.stderr.write(`cenário sem resposta para a chamada ${index + 1}\n`);
     process.exit(3);

@@ -90,20 +90,27 @@ export function summaryLine(outcome: RunOutcome): string {
  * Linhas de chamada de ferramenta. No TTY a linha aparece na chamada e recebe ✓/✗ no
  * resultado; fora dele é impressa só quando fecha, para a saída ser estável.
  */
-class ToolLog {
+export class ToolLog {
   private readonly tty = Boolean(process.stdout.isTTY);
   private readonly open = new Map<string, { text: string; line: number }>();
-  private readonly cwd: string;
+  private cwd: string;
+  private readonly indent: string;
   private written = 0;
 
-  constructor(cwd: string) {
+  constructor(cwd: string, indent = '  ') {
     this.cwd = cwd;
+    this.indent = indent;
   }
 
   private format(name: string, input: unknown): string {
     const columns = process.stdout.columns ?? 100;
-    const width = Math.max(20, Math.min(40, columns - 20));
-    return `  → ${name.padEnd(6)} ${displayTarget(input, this.cwd, width).padEnd(width)}`;
+    const width = Math.max(20, Math.min(40, columns - 20 - this.indent.length));
+    return `${this.indent}→ ${name.padEnd(6)} ${displayTarget(input, this.cwd, width).padEnd(width)}`;
+  }
+
+  /** Diretório usado para mostrar caminhos relativos (o worktree da etapa atual). */
+  setCwd(cwd: string): void {
+    this.cwd = cwd;
   }
 
   write(text: string): void {
