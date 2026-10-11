@@ -1,7 +1,7 @@
 import { statSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
-import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
+import { ask } from './ask.ts';
 import { dataDir, openDb } from './db.ts';
 import { formatCost, formatDuration, formatTokens, truncate } from './format.ts';
 import { type RunOutcome, type RunRequest, startRun } from './runner.ts';
@@ -190,11 +190,6 @@ export async function exec(args: string[]): Promise<number> {
 
 /** Pede o prompt numa linha de entrada, para o `exec` escolhido no menu. */
 export async function askPrompt(): Promise<string[]> {
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  try {
-    const prompt = (await rl.question(style.bold('Prompt: '))).trim();
-    return prompt ? [prompt] : [];
-  } finally {
-    rl.close();
-  }
+  const prompt = await ask(style.bold('Prompt: '));
+  return prompt ? [prompt] : [];
 }

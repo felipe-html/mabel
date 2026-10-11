@@ -1,5 +1,6 @@
 import { zshCompletion } from './completion.ts';
 import { askPrompt, exec, execUsage } from './exec.ts';
+import { init } from './init.ts';
 import { status } from './status.ts';
 
 export interface Command {
@@ -18,7 +19,7 @@ export const commands: Command[] = [
     name: 'init',
     description: 'Prepara o projeto atual para o Mabel',
     usage: 'mabel init',
-    plannedStep: 3,
+    run: init,
   },
   {
     name: 'add',

@@ -27,7 +27,7 @@ Especificação: `docs/specs/passo-2.md`.
 
 Especificação: `docs/specs/passo-3.md`.
 
-- [ ] 3.1 Projeto e `mabel init` (detecção de comandos, projeto sem testes).
+- [x] 3.1 Projeto e `mabel init` (detecção de comandos, projeto sem testes).
 - [ ] 3.2 Backlog: formato, parser, sincronização e `mabel add`.
 - [ ] 3.3 Máquina de estados, auditoria de transições e `quadro.md`.
 
@@ -65,3 +65,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-11 | Especificações dos passos 3 e 4; ordem revista para antecipar o teste com aplicação real. |
 | 2026-10-11 | Incremento 2.1: banco SQLite, runner e `mabel exec`, validado com run real em haiku. |
 | 2026-10-11 | Incremento 2.2: saldo, `checkBalance`, probe e `mabel status`; probe validado com o `claude` real. |
+| 2026-10-11 | Incremento 3.1: projeto, `mabel init` com detecção de comandos e item de base de testes. |

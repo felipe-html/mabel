@@ -76,6 +76,14 @@ const migrations: string[] = [
   );
   CREATE INDEX rate_limits_window ON rate_limits(window, observed_at);
   `,
+  `
+  CREATE TABLE projects (
+    id         TEXT PRIMARY KEY,
+    root       TEXT NOT NULL UNIQUE,
+    name       TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  `,
 ];
 
 function migrate(db: DatabaseSync): void {

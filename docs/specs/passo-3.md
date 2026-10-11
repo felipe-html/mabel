@@ -122,11 +122,11 @@ Sem itens nas duas seções, nada é crítico.
 
 ### Critérios de aceite
 
-- [ ] `init` fora de repositório git falha com dica; em repositório sem commits, oferece o commit inicial.
-- [ ] `init` repetido não altera arquivos.
-- [ ] Detecção coberta por teste para `package.json` (com e sem lockfile), `pyproject.toml`, `Cargo.toml`, `go.mod`, `Makefile` e projeto vazio.
-- [ ] Projeto sem testes recebe o item "Estabelecer base de testes" em primeiro.
-- [ ] `quadro.md` fica ignorado pelo git (`git check-ignore`).
+- [x] `init` fora de repositório git falha com dica; em repositório sem commits, oferece o commit inicial.
+- [x] `init` repetido não altera arquivos.
+- [x] Detecção coberta por teste para `package.json` (com e sem lockfile), `pyproject.toml`, `Cargo.toml`, `go.mod`, `Makefile` e projeto vazio.
+- [x] Projeto sem testes recebe o item "Estabelecer base de testes" em primeiro.
+- [x] `quadro.md` fica ignorado pelo git (`git check-ignore`).
 
 ## Incremento 3.2 — Backlog
 
