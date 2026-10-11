@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { ask, confirm, interactive } from './ask.ts';
 import { BACKLOG_TEMPLATE, type ItemFields, appendBlocks, renderItemBlock } from './backlog.ts';
-import { refreshBoard } from './items.ts';
+import { syncBacklog } from './items.ts';
 import { dataDir, openDb } from './db.ts';
 import { git } from './git.ts';
 import {
@@ -144,7 +144,7 @@ export async function init(args: string[]): Promise<number> {
     writeFileSync(mabelPath(root, 'config.json'), `${JSON.stringify(config, null, 2)}\n`);
 
     registerProject(db, root, config.projectId);
-    refreshBoard(db, { id: config.projectId, root, name: basename(root), config });
+    syncBacklog(db, { id: config.projectId, root, name: basename(root), config });
 
     const notes = [`${style.bold('.mabel/ criado')} em ${root} · branch base ${config.baseBranch}`];
     if (verify.length === 0) notes.push('Aviso: nenhum comando em `verify`; o G3 fica sem gate mecânico.');

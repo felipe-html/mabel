@@ -1,3 +1,4 @@
+import { add, addUsage } from './add.ts';
 import { zshCompletion } from './completion.ts';
 import { askPrompt, exec, execUsage } from './exec.ts';
 import { init } from './init.ts';
@@ -24,8 +25,8 @@ export const commands: Command[] = [
   {
     name: 'add',
     description: 'Adiciona um item ao backlog do projeto',
-    usage: 'mabel add "<título do item>"',
-    plannedStep: 3,
+    usage: addUsage,
+    run: add,
   },
   {
     name: 'run',

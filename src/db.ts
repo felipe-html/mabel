@@ -84,6 +84,39 @@ const migrations: string[] = [
     created_at TEXT NOT NULL
   );
   `,
+  `
+  CREATE TABLE items (
+    id             TEXT PRIMARY KEY,
+    project_id     TEXT NOT NULL REFERENCES projects(id),
+    number         INTEGER NOT NULL,
+    position       INTEGER NOT NULL,
+    title          TEXT NOT NULL,
+    intent         TEXT NOT NULL,
+    criteria       TEXT NOT NULL,
+    depends_on     TEXT NOT NULL,
+    restrictions   TEXT,
+    content_hash   TEXT NOT NULL,
+    status         TEXT NOT NULL,
+    status_reason  TEXT,
+    attempts       INTEGER NOT NULL DEFAULT 0,
+    branch         TEXT,
+    worktree       TEXT,
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL,
+    UNIQUE (project_id, number)
+  );
+
+  CREATE TABLE item_transitions (
+    id         INTEGER PRIMARY KEY,
+    item_id    TEXT NOT NULL REFERENCES items(id),
+    from_state TEXT NOT NULL,
+    to_state   TEXT NOT NULL,
+    reason     TEXT,
+    run_id     TEXT REFERENCES runs(id),
+    at         TEXT NOT NULL
+  );
+  CREATE INDEX item_transitions_item ON item_transitions(item_id, id);
+  `,
 ];
 
 function migrate(db: DatabaseSync): void {

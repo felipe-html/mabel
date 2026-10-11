@@ -220,11 +220,11 @@ CREATE TABLE items (
 
 ### Critérios de aceite
 
-- [ ] Parser coberto por teste: item mínimo, recomendado, completo; comentários; ordem; cada erro de formato.
-- [ ] Atribuição de `id` não altera nenhum outro byte do arquivo.
-- [ ] `add` não interativo gera um bloco que o parser lê de volta com os mesmos campos.
-- [ ] Mudança de conteúdo antes e depois do início tem o efeito descrito.
-- [ ] Remoção de item não iniciado leva a `cancelled`.
+- [x] Parser coberto por teste: item mínimo, recomendado, completo; comentários; ordem; cada erro de formato.
+- [x] Atribuição de `id` não altera nenhum outro byte do arquivo.
+- [x] `add` não interativo gera um bloco que o parser lê de volta com os mesmos campos.
+- [x] Mudança de conteúdo antes e depois do início tem o efeito descrito.
+- [x] Remoção de item não iniciado leva a `cancelled`.
 
 ## Incremento 3.3 — Máquina de estados e quadro
 
