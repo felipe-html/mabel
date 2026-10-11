@@ -23,7 +23,7 @@ Especificação: `docs/specs/passo-2.md`.
 - [x] 2.1 Banco SQLite, runner e `mabel exec` (G1).
 - [x] 2.2 Leitura de saldo, `checkBalance`, probe e `mabel status`.
 
-## Passo 3 — Projeto, backlog, fila e quadro
+## Passo 3 — Projeto, backlog, fila e quadro ✅
 
 Especificação: `docs/specs/passo-3.md`.
 
@@ -35,7 +35,7 @@ Especificação: `docs/specs/passo-3.md`.
 
 Especificação: `docs/specs/passo-4.md`.
 
-- [ ] 4.1 Runner para etapas e worktree por item.
+- [x] 4.1 Runner para etapas e worktree por item.
 - [ ] 4.2 Etapas com agente (planejar, executar, revisar) e saída estruturada.
 - [ ] 4.3 Gates G2 e G3, retentativas e escalonamento.
 - [ ] 4.4 `mabel run`, política de saldo e comandos de decisão.
@@ -68,3 +68,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-11 | Incremento 3.1: projeto, `mabel init` com detecção de comandos e item de base de testes. |
 | 2026-10-11 | Incremento 3.2: parser e sincronização do backlog, `mabel add`. A função `transition()` e a tabela `item_transitions` entraram aqui, porque a sincronização já muda estados. |
 | 2026-10-11 | Incremento 3.3: tabela de transições testada, quadro completo e `mabel status` com resumo do projeto. Passo 3 concluído. |
+| 2026-10-11 | Incremento 4.1: flags de etapa no runner, `structured_output`, worktree e branch por item, commits do Mabel e trava por projeto (testada entre processos; o teste pelo `mabel run` entra no 4.4). |

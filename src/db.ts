@@ -117,6 +117,10 @@ const migrations: string[] = [
   );
   CREATE INDEX item_transitions_item ON item_transitions(item_id, id);
   `,
+  `
+  ALTER TABLE runs ADD COLUMN structured_output TEXT;
+  CREATE INDEX runs_item ON runs(item_id, started_at);
+  `,
 ];
 
 function migrate(db: DatabaseSync): void {
@@ -134,7 +138,7 @@ function migrate(db: DatabaseSync): void {
   }
 }
 
-function processAlive(pid: number): boolean {
+export function processAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;

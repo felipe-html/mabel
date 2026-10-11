@@ -77,11 +77,11 @@ processo morto é descartado.
 
 ### Critérios de aceite
 
-- [ ] Flags novas montadas por `claudeArgs`, cobertas por teste.
-- [ ] `structured_output` gravado na run.
-- [ ] Worktree e branch criados a partir da branch base, reutilizados na retomada e
+- [x] Flags novas montadas por `claudeArgs`, cobertas por teste.
+- [x] `structured_output` gravado na run.
+- [x] Worktree e branch criados a partir da branch base, reutilizados na retomada e
       removidos em `done`; testado em repositório git temporário.
-- [ ] Segundo `mabel run` no mesmo projeto falha com mensagem clara enquanto o primeiro roda.
+- [x] Segundo `mabel run` no mesmo projeto falha com mensagem clara enquanto o primeiro roda.
 
 ## Incremento 4.2 — Etapas com agente
 

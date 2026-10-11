@@ -31,6 +31,10 @@ export interface ResultTotals {
   cacheReadTokens?: number;
   cacheCreationTokens?: number;
   text?: string;
+  /** Objeto validado pelo `--json-schema`, de `result.structured_output`. */
+  structuredOutput?: unknown;
+  /** Mensagens de erro do `result` (por exemplo, limite de uso). */
+  errors?: string[];
 }
 
 export type StreamEvent =
@@ -116,6 +120,8 @@ function interpret(type: string, subtype: string | null, obj: Json): StreamEvent
         cacheReadTokens: num(usage.cache_read_input_tokens),
         cacheCreationTokens: num(usage.cache_creation_input_tokens),
         text: str(obj.result),
+        structuredOutput: obj.structured_output ?? undefined,
+        errors: Array.isArray(obj.errors) ? obj.errors.filter((e): e is string => typeof e === 'string') : undefined,
       },
     };
   }

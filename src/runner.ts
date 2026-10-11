@@ -8,7 +8,8 @@ import { StringDecoder } from 'node:string_decoder';
 import { runDir } from './db.ts';
 import { type ResultTotals, type ToolResult, type ToolUse, parseLine } from './stream.ts';
 
-export type RunKind = 'exec' | 'probe';
+export type RunKind = 'exec' | 'probe' | 'stage';
+export type RunStage = 'plan' | 'execute' | 'review';
 export type RunStatus = 'running' | 'succeeded' | 'failed' | 'interrupted';
 
 export interface RunRequest {
@@ -20,6 +21,14 @@ export interface RunRequest {
   maxTurns?: number;
   maxBudgetUsd?: number;
   allowedTools?: string[];
+  itemId?: string;
+  stage?: RunStage;
+  permissionMode?: string;
+  disallowedTools?: string[];
+  appendSystemPrompt?: string;
+  /** Esquema da saída estruturada; serializado em `--json-schema`. */
+  jsonSchema?: object;
+  resumeSessionId?: string;
 }
 
 /** Notificações ao vivo, para quem exibe a run. Disparadas depois da gravação no banco. */
@@ -35,6 +44,7 @@ export interface RunOutcome {
   exitCode: number | null;
   error: string | null;
   model: string | null;
+  sessionId: string | null;
   totals: ResultTotals | null;
   /** Duração da run: a do `result` ou, sem ele, o tempo de relógio. */
   durationMs: number;
@@ -57,7 +67,12 @@ export function claudeArgs(request: RunRequest): string[] {
   if (request.model) args.push('--model', request.model);
   if (request.maxTurns !== undefined) args.push('--max-turns', String(request.maxTurns));
   if (request.maxBudgetUsd !== undefined) args.push('--max-budget-usd', String(request.maxBudgetUsd));
+  if (request.permissionMode) args.push('--permission-mode', request.permissionMode);
   if (request.allowedTools?.length) args.push('--allowedTools', request.allowedTools.join(','));
+  if (request.disallowedTools?.length) args.push('--disallowedTools', request.disallowedTools.join(','));
+  if (request.appendSystemPrompt) args.push('--append-system-prompt', request.appendSystemPrompt);
+  if (request.jsonSchema) args.push('--json-schema', JSON.stringify(request.jsonSchema));
+  if (request.resumeSessionId) args.push('--resume', request.resumeSessionId);
   // `--` encerra as opções: o prompt nunca é lido como flag nem consumido por opção variádica.
   args.push('--', request.prompt);
   return args;
@@ -105,9 +120,19 @@ export function startRun(
   const now = () => new Date().toISOString();
 
   db.prepare(
-    `INSERT INTO runs (id, kind, prompt, cwd, model_requested, status, started_at, pid)
-     VALUES (?, ?, ?, ?, ?, 'running', ?, ?)`,
-  ).run(runId, request.kind, request.prompt, request.cwd, request.model ?? null, startedAt.toISOString(), process.pid);
+    `INSERT INTO runs (id, kind, item_id, stage, prompt, cwd, model_requested, status, started_at, pid)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)`,
+  ).run(
+    runId,
+    request.kind,
+    request.itemId ?? null,
+    request.stage ?? null,
+    request.prompt,
+    request.cwd,
+    request.model ?? null,
+    startedAt.toISOString(),
+    process.pid,
+  );
 
   const dir = runDir(home, runId);
   let streamFd: number;
@@ -193,7 +218,8 @@ export function startRun(
         totals = event.totals;
         db.prepare(
           `UPDATE runs SET num_turns = ?, cost_usd = ?, input_tokens = ?, output_tokens = ?,
-             cache_read_tokens = ?, cache_creation_tokens = ?, result_text = ?, duration_ms = ?
+             cache_read_tokens = ?, cache_creation_tokens = ?, result_text = ?, duration_ms = ?,
+             structured_output = ?
            WHERE id = ?`,
         ).run(
           totals.numTurns ?? null,
@@ -204,6 +230,7 @@ export function startRun(
           totals.cacheCreationTokens ?? null,
           totals.text ?? null,
           totals.durationMs ?? null,
+          totals.structuredOutput === undefined ? null : JSON.stringify(totals.structuredOutput),
           runId,
         );
         break;
@@ -326,7 +353,7 @@ export function startRun(
         error = `falha ao gravar a auditoria: ${(dbError as Error).message}`;
       }
 
-      resolve({ runId, status, exitCode, error, model, totals, durationMs, transcriptPath });
+      resolve({ runId, status, exitCode, error, model, sessionId, totals, durationMs, transcriptPath });
     };
 
     child.on('error', (spawnError) => {
