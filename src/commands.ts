@@ -1,5 +1,6 @@
 import { zshCompletion } from './completion.ts';
 import { askPrompt, exec, execUsage } from './exec.ts';
+import { status } from './status.ts';
 
 export interface Command {
   name: string;
@@ -41,8 +42,8 @@ export const commands: Command[] = [
   {
     name: 'status',
     description: 'Mostra a fila, as etapas em andamento e o saldo',
-    usage: 'mabel status',
-    plannedStep: 2,
+    usage: 'mabel status [--atualizar]',
+    run: status,
   },
   {
     name: 'inbox',

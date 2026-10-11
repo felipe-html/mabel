@@ -21,7 +21,7 @@ primeiro item não marcado.
 Especificação: `docs/specs/passo-2.md`.
 
 - [x] 2.1 Banco SQLite, runner e `mabel exec` (G1).
-- [ ] 2.2 Leitura de saldo, `checkBalance`, probe e `mabel status`.
+- [x] 2.2 Leitura de saldo, `checkBalance`, probe e `mabel status`.
 
 ## Passo 3 — Projeto, backlog, fila e quadro
 
@@ -64,3 +64,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-11 | Incremento 2.1 concluído. |
 | 2026-10-11 | Especificações dos passos 3 e 4; ordem revista para antecipar o teste com aplicação real. |
 | 2026-10-11 | Incremento 2.1: banco SQLite, runner e `mabel exec`, validado com run real em haiku. |
+| 2026-10-11 | Incremento 2.2: saldo, `checkBalance`, probe e `mabel status`; probe validado com o `claude` real. |

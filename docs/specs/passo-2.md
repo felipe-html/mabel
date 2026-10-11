@@ -220,12 +220,12 @@ Cabeçalho exibido acima do menu interativo e no `mabel status`:
 
 ### Critérios de aceite
 
-- [ ] `checkBalance` coberta para: ambas acima, 5h abaixo, 7d abaixo, ambas abaixo,
+- [x] `checkBalance` coberta para: ambas acima, 5h abaixo, 7d abaixo, ambas abaixo,
       leitura ausente, leitura vencida.
-- [ ] Cabeçalho renderizado por função pura, testado sem cores.
-- [ ] O probe aparece em `runs` com `kind='probe'` e gera leituras novas. Autorizado
+- [x] Cabeçalho renderizado por função pura, testado sem cores.
+- [x] O probe aparece em `runs` com `kind='probe'` e gera leituras novas. Autorizado
       rodar com o `claude` real (Haiku).
-- [ ] `status` funciona fora de TTY (sem cores e sem menu).
+- [x] `status` funciona fora de TTY (sem cores e sem menu).
 
 ## Incremento 2.3 — `mabel runs`
 
