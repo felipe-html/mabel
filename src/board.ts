@@ -81,6 +81,22 @@ export function renderBoard(projectName: string, items: BoardItem[], readings: B
   return `${lines.join('\n')}\n`;
 }
 
+/** Resumo do quadro para o `mabel status`: contagem por seção e os itens que pedem atenção. */
+export function renderBoardSummary(projectName: string, items: BoardItem[]): string[] {
+  const counts: string[] = [];
+  const detail: string[] = [];
+  for (const section of BOARD_SECTIONS) {
+    const states: readonly string[] = section.states;
+    const inSection = items.filter((item) => states.includes(item.status));
+    if (inSection.length === 0) continue;
+    counts.push(`${section.title.toLowerCase()} ${inSection.length}`);
+    if (section.title === 'Aguardando você' || section.title === 'Em andamento') {
+      detail.push('', section.title, ...inSection.map(itemLine));
+    }
+  }
+  return [`Projeto ${projectName} · ${counts.length > 0 ? counts.join(' · ') : 'backlog vazio'}`, ...detail];
+}
+
 export function writeBoardFile(root: string, content: string): void {
   writeFileSync(mabelPath(root, 'quadro.md'), content);
 }

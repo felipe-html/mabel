@@ -1,9 +1,12 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
 import { latestReadings, renderBalanceHeader } from './balance.ts';
+import { renderBoardSummary } from './board.ts';
 import { dataDir, openDb } from './db.ts';
 import { summaryLine } from './exec.ts';
 import { formatCost, truncate } from './format.ts';
+import { boardItems, syncBacklog } from './items.ts';
+import { ProjectError, resolveProject } from './project.ts';
 import { type RunOutcome, startRun } from './runner.ts';
 import { paint, style } from './style.ts';
 
@@ -70,6 +73,22 @@ export function renderRecentRuns(runs: RecentRun[]): string[] {
   });
 }
 
+/** Resumo do quadro do projeto atual; vazio fora de um projeto Mabel. */
+function projectSummary(db: DatabaseSync): string[] {
+  let project;
+  try {
+    project = resolveProject(db);
+  } catch (error) {
+    if (error instanceof ProjectError) return [];
+    throw error;
+  }
+  const { warnings } = syncBacklog(db, project);
+  return [
+    ...renderBoardSummary(project.name, boardItems(db, project.id)),
+    ...warnings.map((warning) => style.dim(warning)),
+  ];
+}
+
 export async function status(args: string[]): Promise<number> {
   let refresh: boolean;
   try {
@@ -96,12 +115,13 @@ export async function status(args: string[]): Promise<number> {
       process.stdout.write(`${style.dim(summaryLine(outcome))}\n\n`);
       if (outcome.status !== 'succeeded') code = 1;
     }
-    const lines = [
-      ...renderBalanceHeader(latestReadings(db), new Date(), paint),
-      '',
+    const lines = [...renderBalanceHeader(latestReadings(db), new Date(), paint), ''];
+    const summary = projectSummary(db);
+    if (summary.length > 0) lines.push(...summary, '');
+    lines.push(
       style.bold('Runs recentes'),
       ...renderRecentRuns(recentRuns(db, 5)),
-    ];
+    );
     process.stdout.write(`${lines.join('\n')}\n`);
   } finally {
     db.close();

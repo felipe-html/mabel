@@ -1,17 +1,10 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { fileURLToPath } from 'node:url';
 import { BACKLOG_TEMPLATE, insertIds, parseBacklog, renderItemBlock, validateBacklog } from '../src/backlog.ts';
-import { openDb } from '../src/db.ts';
 import { getItem, listItems, syncBacklog, transition } from '../src/items.ts';
-import { resolveProject } from '../src/project.ts';
-import { makeRepo } from './helpers.ts';
-
-const CLI = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
+import { setupProject } from './helpers.ts';
 
 function fields(text: string) {
   return parseBacklog(text).map(({ headingEnd: _, ...item }) => item);
@@ -122,20 +115,6 @@ test('renderItemBlock gera um bloco que o parser lê de volta', () => {
   const [parsed] = fields(renderItemBlock(item));
   assert.deepEqual(parsed, { ...item, position: 0, errors: [] });
 });
-
-function setupProject(backlog?: string) {
-  const root = makeRepo({ 'src/index.js': '', 'package.json': JSON.stringify({ scripts: { test: 'node --test' } }) });
-  const home = mkdtempSync(join(tmpdir(), 'mabel-home-'));
-  const env = { ...process.env, MABEL_HOME: home, NO_COLOR: '1' };
-  const cli = (...args: string[]) =>
-    spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, ...args], { cwd: root, encoding: 'utf8', env });
-  assert.equal(cli('init').status, 0);
-  const path = join(root, '.mabel', 'backlog.md');
-  if (backlog !== undefined) writeFileSync(path, BACKLOG_TEMPLATE + backlog);
-  const db = openDb(home);
-  const project = resolveProject(db, root);
-  return { root, home, cli, path, db, project };
-}
 
 test('add não interativo gera um bloco que o parser lê de volta com os mesmos campos', () => {
   const { cli, path, db, project } = setupProject();

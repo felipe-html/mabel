@@ -29,7 +29,7 @@ Especificação: `docs/specs/passo-3.md`.
 
 - [x] 3.1 Projeto e `mabel init` (detecção de comandos, projeto sem testes).
 - [x] 3.2 Backlog: formato, parser, sincronização e `mabel add`.
-- [ ] 3.3 Máquina de estados, auditoria de transições e `quadro.md`.
+- [x] 3.3 Máquina de estados, auditoria de transições e `quadro.md`.
 
 ## Passo 4 — Etapas, gates e `mabel run`
 
@@ -67,3 +67,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-11 | Incremento 2.2: saldo, `checkBalance`, probe e `mabel status`; probe validado com o `claude` real. |
 | 2026-10-11 | Incremento 3.1: projeto, `mabel init` com detecção de comandos e item de base de testes. |
 | 2026-10-11 | Incremento 3.2: parser e sincronização do backlog, `mabel add`. A função `transition()` e a tabela `item_transitions` entraram aqui, porque a sincronização já muda estados. |
+| 2026-10-11 | Incremento 3.3: tabela de transições testada, quadro completo e `mabel status` com resumo do projeto. Passo 3 concluído. |

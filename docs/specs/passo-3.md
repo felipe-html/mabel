@@ -298,7 +298,7 @@ Mabel, mostra só saldo e runs.
 
 ### Critérios de aceite
 
-- [ ] Toda transição da tabela é aceita; uma transição fora dela lança e não grava nada.
-- [ ] Cada transição gera uma linha em `item_transitions` e regenera o quadro.
-- [ ] Quadro gerado por função pura, coberto por teste de snapshot em texto.
-- [ ] `init`, `add` e `status` disponíveis no menu interativo e no autocompletar.
+- [x] Toda transição da tabela é aceita; uma transição fora dela lança e não grava nada.
+- [x] Cada transição gera uma linha em `item_transitions` e regenera o quadro.
+- [x] Quadro gerado por função pura, coberto por teste de snapshot em texto.
+- [x] `init`, `add` e `status` disponíveis no menu interativo e no autocompletar.

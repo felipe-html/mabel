@@ -40,3 +40,11 @@ test('completion zsh gera script com compdef e todos os comandos', () => {
     assert.match(result.stdout, new RegExp(`'${name}:`));
   }
 });
+
+test('comandos implementados aparecem sem aviso de passo no autocompletar', () => {
+  const { stdout } = mabel('completion', 'zsh');
+  for (const name of ['init', 'add', 'exec', 'status']) {
+    assert.match(stdout, new RegExp(`'${name}:[^']*'`));
+    assert.doesNotMatch(stdout, new RegExp(`'${name}:[^']*\\(passo`));
+  }
+});
