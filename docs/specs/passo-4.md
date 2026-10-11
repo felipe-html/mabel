@@ -188,12 +188,28 @@ Passa quando, nesta ordem:
 2. `perguntas` está vazio. Senão → `needs_human` com as perguntas.
 3. `criterios` não está vazio e todo critério tem `verificacao`.
 4. `escopo` não está vazio.
+
+Falha nas condições 1, 3 ou 4 é **plano incompleto**: o planejamento é refeito uma vez,
+retomando a mesma sessão com o motivo da falha (o item continua em `planning`; a falha
+fica em `gate_results`). Segunda falha → `needs_human` com o motivo. Plano incompleto não
+conta como tentativa de execução.
 5. **Regra crítica**: o item é crítico se algum glob do `escopo` casar com um caminho de
    `regras-criticas.md` (checagem mecânica), se `conceitosCriticos` não estiver vazio ou se
    alguma suposição tiver `regraCritica: true`. Item crítico → `needs_human` pedindo
    aprovação dos critérios, exceto se já aprovados (`mabel aprovar`).
 
 Item não crítico segue com os critérios do plano sem aprovação humana.
+
+### Perguntas e suposições na execução (G7)
+
+Depois de cada execução, antes do commit e da verificação:
+
+- `perguntas` não vazio, ou alguma suposição com `regraCritica: true` → `needs_human` com
+  as perguntas e as suposições críticas. As alterações ficam no worktree, sem commit.
+  Não conta como tentativa. Após `mabel responder`, o item volta a `executing` retomando
+  a sessão daquela execução com a resposta.
+- Suposições não críticas não param o item: ficam no artefato da execução e são listadas
+  para você no `awaiting_merge`.
 
 ### Gate de verificação (G3): `verifying → reviewing`
 
@@ -240,6 +256,9 @@ para `executing` com os problemas no prompt.
 ### Critérios de aceite
 
 - [ ] Cada condição do G2 coberta por teste, incluindo casamento de glob com caminho crítico.
+- [ ] Plano incompleto: refeito uma vez pela mesma sessão; segunda falha → `needs_human`.
+- [ ] Execução com pergunta ou suposição crítica → `needs_human` sem commit; `responder`
+      retoma a sessão da execução.
 - [ ] G3 reprova por comando com erro e por critério sem teste encontrado.
 - [ ] Sequência falha, falha, sucesso com escalonamento na 3ª: modelos e sessões corretos.
 - [ ] Três falhas levam a `needs_human` com resumo.
@@ -287,7 +306,8 @@ o `exec`), indentadas. No fim, resumo: itens por estado final, custo total e tem
 ```
 mabel item <n>                    detalhe: estado, plano, critérios, pergunta pendente, custo, runs
 mabel aprovar <n>                 aprova os critérios de um item crítico → executing
-mabel responder <n> "<resposta>"  responde às perguntas → planning, retomando a sessão do planejamento
+mabel responder <n> "<resposta>"  responde às perguntas e retoma a sessão da etapa que perguntou
+                                  (planejamento → planning; execução → executing)
 mabel cancelar <n>                → cancelled
 ```
 
@@ -303,7 +323,9 @@ Toda decisão grava `item_transitions` com `reason` iniciando por `humano:`.
 - [ ] Item com dependência só inicia depois que a dependência fica `done`.
 - [ ] `run`, `item`, `aprovar`, `responder` e `cancelar` disponíveis no menu e no autocompletar.
 - [ ] Teste manual: um item simples num projeto descartável, com o `claude` real, chega a
-      `awaiting_merge` com custo registrado.
+      `awaiting_merge` com custo registrado. Autorizado pelo usuário com modelos baratos:
+      no `config.json` do projeto descartável, `models` = `haiku`/`sonnet`/`sonnet` e
+      `maxBudgetUsd` = 1 em cada etapa. Reportar o custo total ao usuário.
 
 ## Fora deste passo
 

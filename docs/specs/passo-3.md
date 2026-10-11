@@ -16,9 +16,9 @@ atualizado e commit:
 
 ## Decisão de formato
 
-O contrato cita `regras-criticas.yaml`. Para manter zero dependências de runtime, o arquivo
-passa a ser **Markdown** (`regras-criticas.md`), com o mesmo conteúdo (caminhos e
-conceitos). A configuração do projeto é JSON.
+O arquivo de regras críticas é **Markdown** (`regras-criticas.md`), para manter zero
+dependências de runtime. O contrato foi atualizado com autorização do usuário em
+2026-10-11. A configuração do projeto é JSON.
 
 ## Incremento 3.1 — Projeto e `mabel init`
 

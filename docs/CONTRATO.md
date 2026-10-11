@@ -86,7 +86,7 @@ estado. O quadro é uma visão, regenerada a cada transição; editá-lo não te
 
 ## Regras críticas do projeto-alvo
 
-O projeto-alvo declara em `.mabel/regras-criticas.yaml` o que exige decisão humana:
+O projeto-alvo declara em `.mabel/regras-criticas.md` o que exige decisão humana:
 
 - **Caminhos**: arquivos cuja alteração sempre exige critérios aprovados pelo humano.
   Imposto por hook.
