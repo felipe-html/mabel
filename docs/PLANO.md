@@ -36,7 +36,7 @@ Especificação: `docs/specs/passo-3.md`.
 Especificação: `docs/specs/passo-4.md`.
 
 - [x] 4.1 Runner para etapas e worktree por item.
-- [ ] 4.2 Etapas com agente (planejar, executar, revisar) e saída estruturada.
+- [x] 4.2 Etapas com agente (planejar, executar, revisar) e saída estruturada.
 - [ ] 4.3 Gates G2 e G3, retentativas e escalonamento.
 - [ ] 4.4 `mabel run`, política de saldo e comandos de decisão.
 
@@ -69,3 +69,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-11 | Incremento 3.2: parser e sincronização do backlog, `mabel add`. A função `transition()` e a tabela `item_transitions` entraram aqui, porque a sincronização já muda estados. |
 | 2026-10-11 | Incremento 3.3: tabela de transições testada, quadro completo e `mabel status` com resumo do projeto. Passo 3 concluído. |
 | 2026-10-11 | Incremento 4.1: flags de etapa no runner, `structured_output`, worktree e branch por item, commits do Mabel e trava por projeto (testada entre processos; o teste pelo `mabel run` entra no 4.4). |
+| 2026-10-11 | Incremento 4.2: prompts de sistema, esquemas e validador próprio, montagem das etapas, artefatos e `claude` falso por cenário. O esquema do plano foi validado com o `claude` real. |

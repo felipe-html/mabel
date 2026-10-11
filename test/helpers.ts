@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -47,3 +47,53 @@ export function setupProject(backlog?: string) {
   const project = resolveProject(db, root);
   return { root, home, cli, path, db, project };
 }
+
+/** Aponta o `claude` falso (no processo atual) para um cenário com as respostas dadas. */
+export function useScenario(dir: string, responses: unknown[]): { log: () => { argv: string[]; session_id: string; cwd: string }[] } {
+  const scenario = join(dir, `cenario-${Math.random().toString(36).slice(2)}.json`);
+  const log = `${scenario}.log`;
+  writeFileSync(scenario, JSON.stringify({ responses }));
+  Object.assign(process.env, {
+    MABEL_CLAUDE_BIN: FAKE_CLAUDE,
+    FAKE_CLAUDE_SCENARIO: scenario,
+    FAKE_CLAUDE_LOG: log,
+    CLAUDE_CONFIG_DIR: join(dir, 'claude-config'),
+  });
+  return {
+    log: () => {
+      try {
+        return readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map((line) => JSON.parse(line));
+      } catch {
+        return [];
+      }
+    },
+  };
+}
+
+export const PLAN = {
+  resumo: 'Criar a função soma.',
+  criterios: [{ id: 'C1', texto: 'soma(2, 3) devolve 5', verificacao: 'teste' }],
+  escopo: ['src/**', 'test/**'],
+  passos: ['Criar src/soma.js', 'Criar test/soma.test.js'],
+  suposicoes: [],
+  conceitosCriticos: [],
+  perguntas: [],
+};
+
+export const EXECUTION = {
+  resumo: 'Função soma criada com teste.',
+  criterios: [{ id: 'C1', testes: [{ arquivo: 'test/soma.test.js', nome: 'soma de dois números' }] }],
+  suposicoes: [],
+  perguntas: [],
+};
+
+export const EXECUTION_FILES = {
+  'src/soma.js': 'export const soma = (a, b) => a + b;\n',
+  'test/soma.test.js': "test('soma de dois números', () => {});\n",
+};
+
+export const REVIEW_OK = {
+  aprovado: true,
+  criterios: [{ id: 'C1', atendido: true, evidencia: 'test/soma.test.js' }],
+  problemas: [],
+};

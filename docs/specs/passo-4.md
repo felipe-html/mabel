@@ -172,10 +172,10 @@ Em `<dados>/items/<item_id>/`, fora do worktree para não entrarem nos commits:
 
 ### Critérios de aceite
 
-- [ ] Cada etapa monta os argumentos certos (ferramentas, modo, modelo, limites, esquema, sessão).
-- [ ] Saída estruturada ausente ou fora do esquema é falha da etapa, não exceção.
-- [ ] Artefatos gravados por etapa e tentativa.
-- [ ] Testes com um `claude` falso dirigido por cenário: arquivo JSON com a resposta de
+- [x] Cada etapa monta os argumentos certos (ferramentas, modo, modelo, limites, esquema, sessão).
+- [x] Saída estruturada ausente ou fora do esquema é falha da etapa, não exceção.
+- [x] Artefatos gravados por etapa e tentativa.
+- [x] Testes com um `claude` falso dirigido por cenário: arquivo JSON com a resposta de
       cada chamada (saída estruturada e, para executar, arquivos a criar ou alterar no cwd).
 
 ## Incremento 4.3 — Gates, retentativas e escalonamento
