@@ -16,16 +16,14 @@ primeiro item não marcado.
 - [x] `scripts/setup.sh`: preflight, instalação e verificação do ambiente.
 - [x] Menu interativo ao rodar `mabel` sem argumentos (setas, números, enter, q).
 
-## Passo 2 — Runner e auditoria
+## Passo 2 — Runner, auditoria e saldo
 
-- [ ] Schema SQLite (`node:sqlite`): `runs`, `events`, `rate_limits`. Banco em `~/.mabel/mabel.db`.
-- [ ] Runner: inicia `claude -p` com `--output-format stream-json --verbose`, lê linha a linha e grava cada evento.
-- [ ] Registro da run: item, etapa, modelo, início, fim, custo, tokens, `session_id`. Se o banco não estiver gravável, a run não inicia (G1).
-- [ ] Cópia do transcript bruto da run para o armazenamento do Mabel.
-- [ ] Leitura do `rate_limit_event` e persistência da última leitura de saldo.
-- [ ] Chamada mínima para obter leitura de saldo quando não houver leitura recente.
-- [ ] `mabel status` com o cabeçalho das janelas de 5 horas e 7 dias (saldo, reset, idade da leitura).
-- [ ] Comando de diagnóstico para disparar uma run avulsa (ex.: `mabel exec "<prompt>"`), útil até a fila existir.
+Especificação: `docs/specs/passo-2.md`.
+
+- [ ] 2.1 Banco SQLite, runner e `mabel exec` (G1).
+- [ ] 2.2 Leitura de saldo, `checkBalance`, probe e `mabel status`.
+- [ ] 2.3 `mabel runs` com lista e detalhe da run.
+- [ ] 2.4 Menu como painel: cabeçalho de saldo e volta ao menu após cada comando.
 
 ## Passo 3 — Backlog, fila e quadro
 
@@ -62,3 +60,4 @@ primeiro item não marcado.
 | 2026-10-11 | Passo 1 concluído. |
 | 2026-10-11 | Script de setup do ambiente (`scripts/setup.sh`). |
 | 2026-10-11 | Menu interativo na tela inicial. |
+| 2026-10-11 | Especificação do passo 2 (`docs/specs/passo-2.md`). |
