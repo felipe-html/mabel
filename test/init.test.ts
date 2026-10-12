@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -14,7 +14,10 @@ import { renderItemBlock } from '../src/backlog.ts';
 const CLI = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 
 function mabel(cwd: string, ...args: string[]) {
-  const home = mkdtempSync(join(tmpdir(), 'mabel-home-'));
+  return mabelIn(mkdtempSync(join(tmpdir(), 'mabel-home-')), cwd, ...args);
+}
+
+function mabelIn(home: string, cwd: string, ...args: string[]) {
   return spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, ...args], {
     cwd,
     encoding: 'utf8',
@@ -127,6 +130,20 @@ test('init com --stack em projeto sem código grava setup e verify vazios', () =
   const backlog = readFileSync(join(root, '.mabel', 'backlog.md'), 'utf8');
   assert.match(backlog, /estrutura mínima de Rust/);
   assert.match(backlog, /`cargo clippy -- -D warnings` e `cargo test` rodam e passam/);
+});
+
+test('init depois de apagar o .mabel/ reaproveita o id registrado', () => {
+  const home = mkdtempSync(join(tmpdir(), 'mabel-home-'));
+  const root = makeRepo({ 'package.json': PKG({ test: 'node --test' }) });
+  assert.equal(mabelIn(home, root, 'init').status, 0);
+  const configPath = join(root, '.mabel', 'config.json');
+  const { projectId } = JSON.parse(readFileSync(configPath, 'utf8'));
+
+  rmSync(join(root, '.mabel'), { recursive: true });
+  const again = mabelIn(home, root, 'init');
+  assert.equal(again.status, 0, again.stderr);
+  assert.match(again.stdout, /histórico anterior foi mantido/);
+  assert.equal(JSON.parse(readFileSync(configPath, 'utf8')).projectId, projectId);
 });
 
 test('init com --stack inválido lista as stacks e falha', () => {

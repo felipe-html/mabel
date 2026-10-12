@@ -93,6 +93,12 @@ export function writeConfig(root: string, config: ProjectConfig): void {
   writeFileSync(mabelPath(root, 'config.json'), `${JSON.stringify(config, null, 2)}\n`);
 }
 
+/** Id com que a raiz já foi registrada, por exemplo antes de o `.mabel/` ser apagado. */
+export function registeredProjectId(db: DatabaseSync, root: string): string | undefined {
+  const row = db.prepare('SELECT id FROM projects WHERE root = ?').get(root) as { id: string } | undefined;
+  return row?.id;
+}
+
 /** Grava o projeto no banco; se o repositório mudou de lugar, atualiza a raiz pelo id. */
 export function registerProject(db: DatabaseSync, root: string, projectId: string): void {
   const byRoot = db.prepare('SELECT id FROM projects WHERE root = ?').get(root) as { id: string } | undefined;

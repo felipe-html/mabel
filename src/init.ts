@@ -22,6 +22,7 @@ import {
   newProjectId,
   readConfig,
   registerProject,
+  registeredProjectId,
 } from './project.ts';
 import { select } from './menu.ts';
 import { STACKS, type Stack, detectCommands, findStack, stackLabel } from './stacks.ts';
@@ -214,8 +215,10 @@ export async function init(args: string[]): Promise<number> {
     }
     process.stdout.write('\n');
 
+    // Repositório que já foi projeto Mabel: o id anterior mantém o histórico no banco.
+    const previousId = registeredProjectId(db, root);
     const config: ProjectConfig = {
-      projectId: newProjectId(),
+      projectId: previousId ?? newProjectId(),
       baseBranch: currentBranch(root),
       setup,
       verify,
@@ -237,6 +240,7 @@ export async function init(args: string[]): Promise<number> {
     syncBacklog(db, { id: config.projectId, root, name: basename(root), config });
 
     const notes = [`${style.bold('.mabel/ criado')} em ${root} · branch base ${config.baseBranch}`];
+    if (previousId) notes.push('Este repositório já foi um projeto Mabel: o histórico anterior foi mantido.');
     if (verify.length === 0 && empty && stack) {
       notes.push('Os comandos de `verify` entram no config com o item 1; até lá, o G3 fica sem gate mecânico.');
     } else if (verify.length === 0) {
