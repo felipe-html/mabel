@@ -120,13 +120,22 @@ interface ItemRow {
   next_input: string | null;
 }
 
-/** Pendências gravadas antes das sugestões guardavam as perguntas como texto puro. */
+/**
+ * Pendências antigas: as gravadas antes das sugestões guardavam as perguntas como texto puro,
+ * e as anteriores à autonomia não tinham `regraCritica`.
+ */
 function readPending(json: string): Pending {
-  const pending = JSON.parse(json) as Omit<Pending, 'questions'> & { questions?: (Question | string)[] };
+  const pending = JSON.parse(json) as Omit<Pending, 'questions'> & {
+    questions?: (Partial<Question> | string)[];
+  };
   if (!pending.questions) return pending as Pending;
   return {
     ...pending,
-    questions: pending.questions.map((q) => (typeof q === 'string' ? { texto: q, sugestao: '' } : q)),
+    questions: pending.questions.map((q) =>
+      typeof q === 'string'
+        ? { texto: q, sugestao: '', regraCritica: false }
+        : { texto: q.texto ?? '', sugestao: q.sugestao ?? '', regraCritica: q.regraCritica ?? false },
+    ),
   };
 }
 

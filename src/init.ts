@@ -244,6 +244,7 @@ export async function init(args: string[]): Promise<number> {
       verify,
       models: { ...DEFAULT_MODELS },
       limits: structuredClone(DEFAULT_LIMITS),
+      autonomia: 'sugestoes',
     };
 
     let backlog = BACKLOG_TEMPLATE;

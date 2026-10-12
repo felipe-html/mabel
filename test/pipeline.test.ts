@@ -17,9 +17,9 @@ test('G2: cada condição do gate de início', () => {
     kind: 'incomplete',
     reason: 'saída estruturada ausente',
   });
-  assert.deepEqual(startGate(plan({ perguntas: [{ texto: 'Qual banco?', sugestao: 'SQLite' }] }), undefined, NO_RULES, false), {
+  assert.deepEqual(startGate(plan({ perguntas: [{ texto: 'Qual banco?', sugestao: 'SQLite', regraCritica: false }] }), undefined, NO_RULES, false), {
     kind: 'questions',
-    questions: [{ texto: 'Qual banco?', sugestao: 'SQLite' }],
+    questions: [{ texto: 'Qual banco?', sugestao: 'SQLite', regraCritica: false }],
   });
   assert.deepEqual(startGate(plan({ criterios: [] }), undefined, NO_RULES, false), {
     kind: 'incomplete',
@@ -132,13 +132,13 @@ test('plano incompleto: refeito uma vez pela mesma sessão; segunda falha → ne
 test('G7: pergunta na execução para sem commit; responder retoma a sessão da execução', async () => {
   const p = pipeline([
     { structured_output: PLAN },
-    { session_id: 'exec-1', structured_output: { ...EXECUTION, perguntas: [{ texto: 'Arredondar para cima?', sugestao: 'Sim' }] }, files: EXECUTION_FILES },
+    { session_id: 'exec-1', structured_output: { ...EXECUTION, perguntas: [{ texto: 'Arredondar para cima?', sugestao: 'Sim', regraCritica: true }] }, files: EXECUTION_FILES },
     exec(1),
     { structured_output: REVIEW_OK },
   ]);
   assert.deepEqual(await p.advance(), { kind: 'stopped', status: 'needs_human' });
   assert.equal(p.item().pendingKind, 'question_execute');
-  assert.deepEqual(p.item().pending?.questions, [{ texto: 'Arredondar para cima?', sugestao: 'Sim' }]);
+  assert.deepEqual(p.item().pending?.questions, [{ texto: 'Arredondar para cima?', sugestao: 'Sim', regraCritica: true }]);
   assert.equal(p.branchLog(), '');
   assert.ok(existsSync(join(p.item().worktree!, 'src/soma.js')));
   assert.equal(p.item().attempts, 0);
@@ -268,7 +268,7 @@ test('responder --replanejar em attempts_exhausted volta ao planejamento em sess
 
 test('responder em cada pending_kind leva ao estado e à sessão da tabela', async () => {
   const kinds = [
-    ['question_plan', { structured_output: plan({ perguntas: [{ texto: 'Qual?', sugestao: '' }] }), session_id: 'plan-q' }],
+    ['question_plan', { structured_output: plan({ perguntas: [{ texto: 'Qual?', sugestao: '', regraCritica: false }] }), session_id: 'plan-q' }],
     ['critical_approval', { structured_output: plan({ conceitosCriticos: ['Desconto'] }), session_id: 'plan-c' }],
   ] as const;
   for (const [kind, response] of kinds) {
@@ -288,7 +288,7 @@ test('responder em cada pending_kind leva ao estado e à sessão da tabela', asy
 
   const executeQuestion = pipeline([
     { structured_output: PLAN },
-    { session_id: 'exec-q', structured_output: { ...EXECUTION, perguntas: [{ texto: '?', sugestao: '' }] }, files: EXECUTION_FILES },
+    { session_id: 'exec-q', structured_output: { ...EXECUTION, perguntas: [{ texto: '?', sugestao: '', regraCritica: false }] }, files: EXECUTION_FILES },
   ]);
   await executeQuestion.advance();
   assert.equal(respond(executeQuestion.ctx.db, executeQuestion.ctx.project, executeQuestion.item(), 'r', { replan: true }), 'planning');

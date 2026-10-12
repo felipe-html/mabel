@@ -8,7 +8,7 @@ import { formatCost, formatDuration } from './format.ts';
 import { inboxSession, pendingItems, terminalIO } from './inbox.ts';
 import { type Item, type ItemStatus, getItemById, listItems, syncBacklog, transition } from './items.ts';
 import { LockError, acquireLock } from './lock.ts';
-import { type AdvanceResult, advanceItem } from './pipeline.ts';
+import { type AdvanceResult, advanceItem, autonomousDecisions } from './pipeline.ts';
 import { type Project, ProjectError, mabelCommitted, resolveProject } from './project.ts';
 import { type RunHandle, type RunStage, startRun } from './runner.ts';
 import { probeRequest } from './status.ts';
@@ -57,6 +57,8 @@ export interface QueueResult {
   finalStates: Map<number, ItemStatus>;
   costUsd: number;
   elapsedMs: number;
+  /** Perguntas respondidas pela sugestão nesta execução (gate `autonomy`). */
+  autonomous: { number: number; decision: string }[];
 }
 
 const STAGE_LABELS: Record<RunStage, string> = { plan: 'planejar', execute: 'executar', review: 'revisar' };
@@ -225,7 +227,14 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
     const cost = db
       .prepare('SELECT coalesce(sum(cost_usd), 0) AS total FROM runs WHERE started_at >= ?')
       .get(startedAt.toISOString()) as { total: number };
-    return { end, message, finalStates, costUsd: cost.total, elapsedMs: Date.now() - startedAt.getTime() };
+    return {
+      end,
+      message,
+      finalStates,
+      costUsd: cost.total,
+      elapsedMs: Date.now() - startedAt.getTime(),
+      autonomous: autonomousDecisions(db, { projectId: project.id, since: startedAt }),
+    };
   });
   return { interrupt, done };
 }
@@ -241,8 +250,13 @@ export function renderQueueSummary(result: QueueResult): string {
     paused: 'pausado',
     not_found: 'nada a fazer',
   };
-  const head = `■ ${endings[result.end]} · ${states} · ${formatCost(result.costUsd)} · ${formatDuration(result.elapsedMs)}`;
-  return result.message ? `${head}\n${result.message}` : head;
+  const lines = [`■ ${endings[result.end]} · ${states} · ${formatCost(result.costUsd)} · ${formatDuration(result.elapsedMs)}`];
+  if (result.message) lines.push(result.message);
+  if (result.autonomous.length > 0) {
+    lines.push('', 'Decididas pela sugestão (revise no merge):');
+    for (const { number, decision } of result.autonomous) lines.push(`  #${number} ${decision}`);
+  }
+  return lines.join('\n');
 }
 
 export async function run(args: string[]): Promise<number> {

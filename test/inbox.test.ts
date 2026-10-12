@@ -44,9 +44,9 @@ const QUESTIONS = {
   structured_output: {
     ...PLAN,
     perguntas: [
-      { texto: 'Quais cômodos aparecem?', sugestao: 'Sala e Cozinha' },
-      { texto: 'Qual moeda?', sugestao: '' },
-      { texto: 'Qual cor do botão?', sugestao: 'Azul' },
+      { texto: 'Quais cômodos aparecem?', sugestao: 'Sala e Cozinha', regraCritica: false },
+      { texto: 'Qual moeda?', sugestao: '', regraCritica: false },
+      { texto: 'Qual cor do botão?', sugestao: 'Azul', regraCritica: false },
     ],
   },
   session_id: 'plan-q',
@@ -119,7 +119,7 @@ test('perguntas da execução: suposição crítica confirmada e r replaneja com
     {
       structured_output: {
         ...EXECUTION,
-        perguntas: [{ texto: 'Arredondar?', sugestao: 'Para cima' }],
+        perguntas: [{ texto: 'Arredondar?', sugestao: 'Para cima', regraCritica: false }],
         suposicoes: [{ texto: 'taxa zero', regraCritica: true }],
       },
       files: EXECUTION_FILES,
@@ -149,7 +149,7 @@ test('fim da inbox pergunta se retoma a esteira; sem respostas não pergunta', a
 test('pendência antiga com perguntas em texto continua legível', () => {
   const p = inboxProject('\n## A\nprimeiro\n', [QUESTIONS]);
   p.db.prepare('UPDATE items SET pending = ? WHERE id = ?').run(JSON.stringify({ questions: ['Qual banco?'] }), p.item(1).id);
-  assert.deepEqual(p.item(1).pending?.questions, [{ texto: 'Qual banco?', sugestao: '' }]);
+  assert.deepEqual(p.item(1).pending?.questions, [{ texto: 'Qual banco?', sugestao: '', regraCritica: false }]);
 });
 
 test('fora do TTY, mabel inbox só lista as pendências', () => {

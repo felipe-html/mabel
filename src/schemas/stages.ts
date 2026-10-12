@@ -17,13 +17,20 @@ const assumptions: Schema = {
   items: object({ texto: str, regraCritica: { type: 'boolean' } }),
 };
 
-/** Pergunta ao humano, com a resposta que o agente proporia (vazia quando não há). */
+/**
+ * Pergunta ao humano, com a resposta que o agente proporia (vazia quando não há).
+ * `regraCritica` marca a pergunta que toca uma regra crítica do projeto: ela sempre para o item.
+ */
 export interface Question {
   texto: string;
   sugestao: string;
+  regraCritica: boolean;
 }
 
-const questions: Schema = { type: 'array', items: object({ texto: str, sugestao: str }) };
+const questions: Schema = {
+  type: 'array',
+  items: object({ texto: str, sugestao: str, regraCritica: { type: 'boolean' } }),
+};
 
 export interface PlanCriterion {
   id: string;

@@ -165,6 +165,11 @@ async function criticalFlow(
     io.write(`${INDENT}critérios:`);
     for (const c of plan.criterios) io.write(`${INDENT}  ${c.id} (${c.verificacao}) ${c.texto}`);
     io.write(`${INDENT}escopo: ${plan.escopo.join(', ')}`);
+    // Inclui as respostas autônomas: aqui o humano revê o que o agente decidiu sozinho.
+    if (plan.suposicoes.length > 0) {
+      io.write(`${INDENT}suposições:`);
+      for (const s of plan.suposicoes) io.write(`${INDENT}  - ${s.texto}${s.regraCritica ? ' (regra crítica)' : ''}`);
+    }
   }
   for (;;) {
     const input = await choose<string>(io, 'a aprova · texto ajusta os critérios · c cancela · p pula', (text) => {

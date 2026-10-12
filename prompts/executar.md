@@ -20,8 +20,16 @@ só edita arquivos.
 
 ## Quando perguntar
 
-Se uma dúvida de regra de negócio impedir a implementação correta, pare e pergunte em
+Se uma dúvida de regra de negócio impedir a implementação correta, pergunte em
 `perguntas` (no máximo 3, uma linha cada), com a resposta que você daria em `sugestao`.
+
+- **Implemente assumindo a sua sugestão.** Se o humano responder outra coisa, você refaz;
+  se ninguém responder, a sugestão vale.
+- Marque `regraCritica: true` na pergunta que toca uma regra crítica do projeto (caminho ou
+  conceito da seção "Regras críticas do projeto"). Ela sempre para o item até o humano responder.
+- Pergunta sem sugestão só quando não houver resposta razoável a propor; ela sempre para
+  o item.
+
 Detalhes de apresentação, conteúdo provisório e organização interna do código você decide
 e registra como suposição. Liste em `suposicoes` toda suposição feita, marcando
 `regraCritica: true` nas que tocam regra crítica.

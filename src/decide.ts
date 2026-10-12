@@ -7,7 +7,7 @@ import { dataDir, openDb } from './db.ts';
 import { DecisionError, approve, cancel, respond } from './decisions.ts';
 import { formatCost } from './format.ts';
 import { type Item, type PendingKind, TransitionError, getItem, itemCost } from './items.ts';
-import { attemptsSummary } from './pipeline.ts';
+import { attemptsSummary, autonomousDecisions } from './pipeline.ts';
 import { type Project, ProjectError, resolveProject } from './project.ts';
 import type { PlanOutput } from './schemas/stages.ts';
 import { itemDir, readArtifact } from './stages.ts';
@@ -99,6 +99,11 @@ export function renderItemDetail(db: DatabaseSync, home: string, item: Item): st
     if (existsSync(planPath)) lines.push(`  plano: ${planPath}`);
   } else if (item.criteria.length > 0) {
     lines.push('', style.bold('Critérios do backlog'), ...item.criteria.map((criterion) => `  - ${criterion}`));
+  }
+
+  const autonomous = autonomousDecisions(db, { itemId: item.id });
+  if (autonomous.length > 0) {
+    lines.push('', style.bold('Decididas pela sugestão'), ...autonomous.map(({ decision }) => `  ${decision}`));
   }
 
   const runs = db
