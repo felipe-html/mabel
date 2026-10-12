@@ -56,6 +56,10 @@ achados do teste orientam a especificação dos passos seguintes.
       planejador calibrado para perguntar só o que bloqueia.
 - [x] Inbox: `/inbox` com perguntas uma a uma, sugestão de resposta, "decide você" e
       retomada da esteira (`docs/specs/inbox.md`).
+- [ ] Jornadas longas (`docs/specs/jornadas.md`):
+  - [ ] J.1 Autonomia nas perguntas: pergunta não crítica com sugestão não para o item.
+  - [ ] J.2 Estado `planned` e planejamento em lote no `run` (muda o ciclo de vida do contrato).
+  - [ ] J.3 Aviso do sistema quando a esteira para ou espera você.
 - [ ] Gravar no banco as pausas da fila (saldo de 7 dias, falta de leitura) e as respostas
       do humano às perguntas da política de saldo. Hoje só aparecem na saída (auditoria).
 - [ ] 2.3 `mabel runs` com lista e detalhe da run (`docs/specs/passo-2.md`).
@@ -88,3 +92,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-11 | Correção: `init` registra o projeto antes de gravar, grava o `config.json` por último e desfaz os arquivos criados se a gravação falhar. |
 | 2026-10-12 | Achados do teste com o `ferias-planner`: os 3 itens pararam em `needs_human` no planejamento. Correções: `init` commita o `.mabel/`, `run` exige o `.mabel/` na branch base, worktree parado no planejamento avança até a base, prompts com critério do que perguntar e do que decidir. Spec da inbox (`docs/specs/inbox.md`). |
 | 2026-10-12 | Inbox (`docs/specs/inbox.md`): `/inbox` percorre os itens em `needs_human` pergunta por pergunta, com sugestão do agente (enter aceita), "decide você" (fora de `critical_approval`) e pular; cada item vira uma decisão só, gravada como `humano: inbox …`. O `run` num TTY oferece a inbox quando a fila termina com pendências e retoma a esteira em seguida. Perguntas passam a `{ texto, sugestao }`; pendências antigas continuam legíveis. Verificado num pseudo-terminal com o `claude` falso: run → inbox → run até `awaiting_merge`. |
+| 2026-10-12 | Spec das jornadas longas (`docs/specs/jornadas.md`): autonomia ligada por padrão, planejamento em lote como padrão do `run`, estado `planned` (mudança no ciclo de vida autorizada) e aviso do sistema. |
