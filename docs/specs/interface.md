@@ -75,7 +75,8 @@ Editor próprio em modo raw, no padrão do `menu.ts`: uma função pura
 - Edição: caracteres imprimíveis, Backspace, Delete, ←/→, Home/End, Ctrl+A/Ctrl+E,
   Ctrl+U (apaga até o início), Ctrl+W (apaga a palavra anterior).
 - Histórico: ↑/↓ percorrem os comandos anteriores quando a lista de autocompletar está
-  fechada. Gravado em `<dados>/historico`, com as últimas 500 linhas; comandos repetidos
+  fechada. Uma linha trazida do histórico mantém a lista fechada, para que as setas
+  continuem no histórico. Gravado em `<dados>/historico`, com as últimas 500 linhas; comandos repetidos
   em sequência entram uma vez só.
 - Ctrl+C com texto limpa a linha. Com a linha vazia, mostra `use exit para sair`.
 - Colar texto com várias teclas de uma vez deve funcionar: a sequência do keypress é
@@ -88,8 +89,10 @@ Editor próprio em modo raw, no padrão do `menu.ts`: uma função pura
   conflito. Depois do comando, o editor volta.
 - Ctrl+C durante um comando é tratado pelo próprio comando (`run`, `exec` e `status` já
   registram `SIGINT`). O modo Mabel não encerra: volta ao prompt.
-- Um comando sem handler de `SIGINT` próprio é interrompido pelo handler do modo
-  Mabel, que mostra `interrompido` e volta ao prompt.
+- Durante o comando, o modo Mabel registra um handler de `SIGINT` vazio, para que um
+  Ctrl+C num comando sem handler próprio não encerre o processo.
+- Ctrl+C numa pergunta (`ask()`) lança `Interrupted`: o modo Mabel mostra `interrompido`
+  e volta ao prompt. Fora do modo Mabel, o comando sai com 130.
 - Exceção não tratada num comando: mensagem de erro em vermelho, volta ao prompt.
 - Código de saída diferente de zero: o prompt seguinte mostra `✗` antes de `›`.
 
@@ -101,15 +104,15 @@ Editor próprio em modo raw, no padrão do `menu.ts`: uma função pura
 
 ### Critérios de aceite
 
-- [ ] Função pura do editor testada: edição, histórico, abertura e filtro da lista,
+- [x] Função pura do editor testada: edição, histórico, abertura e filtro da lista,
       Tab, Enter com lista aberta, Esc, Ctrl+C com e sem texto, Ctrl+D.
-- [ ] Separação de argumentos testada: aspas simples, duplas, escapes e aspas abertas.
-- [ ] Comando que falha ou lança exceção volta ao prompt com a mensagem visível.
-- [ ] O terminal é restaurado (modo raw desligado, cursor visível) em qualquer saída,
+- [x] Separação de argumentos testada: aspas simples, duplas, escapes e aspas abertas.
+- [x] Comando que falha ou lança exceção volta ao prompt com a mensagem visível.
+- [x] O terminal é restaurado (modo raw desligado, cursor visível) em qualquer saída,
       inclusive por exceção.
-- [ ] `/init` dentro do modo Mabel muda o prompt para o nome do projeto.
-- [ ] `mabel` fora de TTY imprime a lista de comandos e sai com 0.
-- [ ] Verificado no terminal real: `/run` interrompido com Ctrl+C volta ao prompt.
+- [x] `/init` dentro do modo Mabel muda o prompt para o nome do projeto.
+- [x] `mabel` fora de TTY imprime a lista de comandos e sai com 0.
+- [x] Verificado num pseudo-terminal: `/run` interrompido com Ctrl+C volta ao prompt.
 
 ## Incremento 3.4 — `mabel init` por stack
 

@@ -25,8 +25,10 @@ export interface Command {
   /** Passo do plano em que o comando será implementado; ausente quando já está disponível. */
   plannedStep?: number;
   run?: (args: string[]) => number | Promise<number>;
-  /** Argumentos usados quando o comando é escolhido no menu interativo. */
-  menuArgs?: () => string[] | Promise<string[]>;
+  /** Pede os argumentos quando o comando é chamado sem eles no modo Mabel. */
+  promptArgs?: () => string[] | Promise<string[]>;
+  /** Só faz sentido no shell; não aparece no modo Mabel. */
+  shellOnly?: boolean;
 }
 
 export const commands: Command[] = [
@@ -52,35 +54,35 @@ export const commands: Command[] = [
     name: 'item',
     description: 'Mostra o detalhe de um item: estado, pendência, plano, custo e runs',
     usage: itemUsage,
-    menuArgs: askItemNumber,
+    promptArgs: askItemNumber,
     run: itemCommand,
   },
   {
     name: 'aprovar',
     description: 'Aprova os critérios de um item crítico',
     usage: approveUsage,
-    menuArgs: askItemNumber,
+    promptArgs: askItemNumber,
     run: approveCommand,
   },
   {
     name: 'responder',
     description: 'Responde a um item parado em needs_human',
     usage: respondUsage,
-    menuArgs: askRespond,
+    promptArgs: askRespond,
     run: respondCommand,
   },
   {
     name: 'cancelar',
     description: 'Cancela um item',
     usage: cancelUsage,
-    menuArgs: askCancel,
+    promptArgs: askCancel,
     run: cancelCommand,
   },
   {
     name: 'exec',
     description: 'Executa um prompt avulso no Claude Code, com auditoria',
     usage: execUsage,
-    menuArgs: askPrompt,
+    promptArgs: askPrompt,
     run: exec,
   },
   {
@@ -99,7 +101,7 @@ export const commands: Command[] = [
     name: 'completion',
     description: 'Gera o script de autocompletar do shell',
     usage: 'mabel completion zsh',
-    menuArgs: () => ['zsh'],
+    shellOnly: true,
     run: (args) => {
       if (args[0] !== 'zsh') {
         process.stderr.write('Shell não suportado. Uso: mabel completion zsh\n');

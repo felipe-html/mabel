@@ -3,8 +3,9 @@ import { readFileSync } from 'node:fs';
 import { latestReadings, renderBalanceHeader } from './balance.ts';
 import { banner } from './banner.ts';
 import { type Command, commands, findCommand } from './commands.ts';
-import { type MenuOption, select } from './menu.ts';
+import { Interrupted } from './ask.ts';
 import { openDb } from './db.ts';
+import { repl } from './repl.ts';
 import { paint, style } from './style.ts';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
@@ -56,20 +57,7 @@ async function home(): Promise<number> {
   }
 
   process.stdout.write(`${balanceHeader().join('\n')}\n\n`);
-  const options: MenuOption[] = [
-    ...commands.map((command) => ({
-      label: command.name,
-      hint: command.description,
-      disabledReason: command.plannedStep ? `\`${command.name}\` ${plannedNote(command)}` : undefined,
-    })),
-    { label: 'sair', hint: 'Fecha o Mabel' },
-  ];
-  const chosen = await select(options, style);
-  const command = chosen === null ? undefined : commands[chosen];
-  if (!command?.run) return 0;
-
-  process.stdout.write('\n');
-  return command.run((await command.menuArgs?.()) ?? []);
+  return repl();
 }
 
 async function main(argv: string[]): Promise<number> {
@@ -98,7 +86,12 @@ async function main(argv: string[]): Promise<number> {
     process.stderr.write(`\`mabel ${command.name}\` ${plannedNote(command)}.\n`);
     return 1;
   }
-  return command.run(args);
+  try {
+    return await command.run(args);
+  } catch (error) {
+    if (error instanceof Interrupted) return 130;
+    throw error;
+  }
 }
 
 process.exitCode = await main(process.argv.slice(2));

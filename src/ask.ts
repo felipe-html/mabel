@@ -2,11 +2,25 @@ import { createInterface } from 'node:readline/promises';
 
 export const interactive = (): boolean => Boolean(process.stdin.isTTY && process.stdout.isTTY);
 
-/** Lê uma linha do terminal. Devolve o texto sem espaços nas pontas. */
+/** Ctrl+C durante uma pergunta. */
+export class Interrupted extends Error {
+  constructor() {
+    super('interrompido');
+  }
+}
+
+/** Lê uma linha do terminal. Devolve o texto sem espaços nas pontas; ctrl+c lança `Interrupted`. */
 export async function ask(question: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const abort = new AbortController();
+  rl.on('SIGINT', () => abort.abort());
   try {
-    return (await rl.question(question)).trim();
+    return (await rl.question(question, { signal: abort.signal })).trim();
+  } catch (error) {
+    if (abort.signal.aborted) {
+      throw new Interrupted();
+    }
+    throw error;
   } finally {
     rl.close();
   }

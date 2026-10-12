@@ -47,7 +47,7 @@ achados do teste orientam a especificação dos passos seguintes.
 
 ## Depois do teste
 
-- [ ] 2.4 Modo Mabel: prompt com comandos `/`, lista de autocompletar e histórico
+- [x] 2.4 Modo Mabel: prompt com comandos `/`, lista de autocompletar e histórico
       (`docs/specs/interface.md`). Substitui o menu como painel.
 - [ ] 3.4 `mabel init` por stack: catálogo Node/Python/Go/Rust e item da base de testes
       concreto (`docs/specs/interface.md`).
@@ -77,3 +77,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-11 | Incremento 4.3: pipeline do item com G2, G7 na execução, G3, revisão, retentativas com escalonamento e as decisões `responder`/`aprovar`/`cancelar` como funções (os comandos entram no 4.4). |
 | 2026-10-11 | Incremento 4.4: `mabel run` com política de saldo, retomada após ctrl+c, `item`/`aprovar`/`responder`/`cancelar`. Teste real: item simples em `awaiting_merge` por US$ 0,35. Passo 4 concluído; próximo marco é o teste com aplicação real. |
 | 2026-10-11 | Revisão da interface e do `init` (`docs/specs/interface.md`): modo Mabel com comandos `/` substitui o menu como painel; `init` passa a usar um catálogo de stacks. |
+| 2026-10-11 | Incremento 2.4: modo Mabel com editor de linha próprio, lista de autocompletar, histórico em `<dados>/historico` e ctrl+c que volta ao prompt. Verificado num pseudo-terminal: `/init`, `/item` interrompido, `/exec` e `/run` interrompidos, `/status`. |
