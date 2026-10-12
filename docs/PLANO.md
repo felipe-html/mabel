@@ -47,10 +47,13 @@ achados do teste orientam a especificação dos passos seguintes.
 
 ## Depois do teste
 
+- [ ] 2.4 Modo Mabel: prompt com comandos `/`, lista de autocompletar e histórico
+      (`docs/specs/interface.md`). Substitui o menu como painel.
+- [ ] 3.4 `mabel init` por stack: catálogo Node/Python/Go/Rust e item da base de testes
+      concreto (`docs/specs/interface.md`).
 - [ ] Gravar no banco as pausas da fila (saldo de 7 dias, falta de leitura) e as respostas
       do humano às perguntas da política de saldo. Hoje só aparecem na saída (auditoria).
 - [ ] 2.3 `mabel runs` com lista e detalhe da run (`docs/specs/passo-2.md`).
-- [ ] 2.4 Menu como painel (`docs/specs/passo-2.md`).
 - [ ] Passo 5 — Travas e inbox: plugin com hooks e contexto hermético (G8), hook de escopo
       (G4), inbox em lote. A especificar com os achados do teste.
 
@@ -73,3 +76,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-11 | Incremento 4.2: prompts de sistema, esquemas e validador próprio, montagem das etapas, artefatos e `claude` falso por cenário. O esquema do plano foi validado com o `claude` real. |
 | 2026-10-11 | Incremento 4.3: pipeline do item com G2, G7 na execução, G3, revisão, retentativas com escalonamento e as decisões `responder`/`aprovar`/`cancelar` como funções (os comandos entram no 4.4). |
 | 2026-10-11 | Incremento 4.4: `mabel run` com política de saldo, retomada após ctrl+c, `item`/`aprovar`/`responder`/`cancelar`. Teste real: item simples em `awaiting_merge` por US$ 0,35. Passo 4 concluído; próximo marco é o teste com aplicação real. |
+| 2026-10-11 | Revisão da interface e do `init` (`docs/specs/interface.md`): modo Mabel com comandos `/` substitui o menu como painel; `init` passa a usar um catálogo de stacks. |

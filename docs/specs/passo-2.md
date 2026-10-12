@@ -241,17 +241,9 @@ Cabeçalho exibido acima do menu interativo e no `mabel status`:
 - [ ] Prefixo ambíguo lista as candidatas e encerra com erro.
 - [ ] Saída fora de TTY é texto simples, estável para testes.
 
-## Incremento 2.4 — Menu como painel
+## Incremento 2.4 — Substituído
 
-- O cabeçalho de saldo aparece acima do menu.
-- Ao terminar um comando escolhido no menu, mostra `enter para voltar ao menu` e redesenha
-  o menu. Apenas `sair`, `q` e `esc` encerram o Mabel.
-- `exec`, `status` e `runs` passam a constar como disponíveis no menu e no autocompletar.
-
-### Critérios de aceite
-
-- [ ] Comando que falha volta ao menu com a mensagem de erro visível.
-- [ ] O cursor do terminal é restaurado em qualquer saída, inclusive por exceção.
+O menu como painel foi substituído pelo modo Mabel. Ver `docs/specs/interface.md`.
 
 ## Fora deste passo
 
