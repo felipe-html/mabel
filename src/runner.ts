@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { StringDecoder } from 'node:string_decoder';
+import { balanceChanged } from './balance.ts';
 import { runDir } from './db.ts';
 import { type ResultTotals, type ToolResult, type ToolUse, parseLine } from './stream.ts';
 
@@ -217,6 +218,7 @@ export function startRun(
             event.status ?? null,
           );
         }
+        if (event.readings.length > 0) balanceChanged();
         break;
       case 'result':
         totals = event.totals;

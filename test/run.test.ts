@@ -150,6 +150,31 @@ test('saldo de 5h abaixo de 30% fora do TTY espera o reset e retoma sozinho', as
   assert.equal(probes.n, 1);
 });
 
+test('janela de 7 dias acima do ritmo fora do TTY espera o ritmo alcançar e retoma sozinha', async () => {
+  const q = queueProject('\n## A\nprimeiro\n', [PLAN_OK, EXEC, REVIEW]);
+  syncBacklog(q.db, q.project);
+  // Relógio 30 h atrás: a espera de ~26 h termina antes do horário real das leituras do claude falso.
+  let now = Date.now() - 30 * 3600_000;
+  const clock: Clock = {
+    now: () => new Date(now),
+    sleep: async (ms) => {
+      now += ms;
+    },
+  };
+  const insert = q.db.prepare(
+    'INSERT INTO rate_limits (observed_at, window, utilization, resets_at, status) VALUES (?, ?, ?, ?, ?)',
+  );
+  // Um dia de sete decorrido (ritmo de 14%) com 40% usados: alcança em 2,1 dias desde o início.
+  insert.run(new Date(now).toISOString(), 'five_hour', 0.1, new Date(now + 3600_000).toISOString(), 'allowed');
+  insert.run(new Date(now).toISOString(), 'seven_day', 0.4, new Date(now + 6 * 86400_000).toISOString(), 'allowed');
+  const start = now;
+
+  const result = await startQueue({ db: q.db, home: q.home, project: q.project, clock, interactive: false }).done;
+  assert.equal(result.end, 'empty');
+  assert.deepEqual([...result.finalStates], [[1, 'awaiting_merge']]);
+  assert.ok(now - start >= 1.1 * 86400_000 - 1000, 'esperou o ritmo');
+});
+
 test('saldo de 7 dias abaixo de 30% fora do TTY pausa a fila com o motivo', async () => {
   const q = queueProject('\n## A\nprimeiro\n', [PLAN_OK]);
   syncBacklog(q.db, q.project);

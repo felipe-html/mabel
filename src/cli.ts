@@ -1,12 +1,10 @@
 #!/usr/bin/env -S node --disable-warning=ExperimentalWarning
 import { readFileSync } from 'node:fs';
-import { latestReadings, renderBalanceHeader } from './balance.ts';
 import { banner } from './banner.ts';
 import { type Command, commands, findCommand } from './commands.ts';
 import { Interrupted } from './ask.ts';
-import { openDb } from './db.ts';
 import { repl } from './repl.ts';
-import { paint, style } from './style.ts';
+import { style } from './style.ts';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
   version: string;
@@ -32,19 +30,6 @@ function menu(): string {
   ].join('\n');
 }
 
-function balanceHeader(): string[] {
-  try {
-    const db = openDb();
-    try {
-      return renderBalanceHeader(latestReadings(db), new Date(), paint);
-    } finally {
-      db.close();
-    }
-  } catch (error) {
-    return [style.dim(` saldo indisponível: ${(error as Error).message}`)];
-  }
-}
-
 async function home(): Promise<number> {
   if (process.env.MABEL_BANNER !== '0') {
     process.stdout.write(`\n${banner(process.stdout.columns ?? 80)}\n\n`);
@@ -56,7 +41,6 @@ async function home(): Promise<number> {
     return 0;
   }
 
-  process.stdout.write(`${balanceHeader().join('\n')}\n\n`);
   return repl();
 }
 

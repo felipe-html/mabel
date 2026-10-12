@@ -11,8 +11,12 @@ import {
   checkBalance,
   formatAge,
   formatReset,
+  paceOf,
+  renderBalanceFooter,
   renderBalanceHeader,
+  stageEstimate,
 } from '../src/balance.ts';
+import { openDb } from '../src/db.ts';
 
 // Datas no fuso local, para os testes não dependerem do TZ da máquina.
 const NOW = new Date(2026, 9, 14, 10, 0); // quarta, 14/10/2026 10:00
@@ -56,6 +60,98 @@ test('checkBalance: leitura vencida pede atualização', () => {
   assert.deepEqual(checkBalance([expired, reading('seven_day', 0.1)], NOW), { action: 'refresh', reason: 'expired' });
 });
 
+test('checkBalance: leitura de mais de 30 min pede atualização', () => {
+  const old = new Date(2026, 9, 14, 9, 29);
+  const readings = [reading('five_hour', 0.1, LATER_TODAY, old), reading('seven_day', 0.1)];
+  assert.deepEqual(checkBalance(readings, NOW), { action: 'refresh', reason: 'stale' });
+  const recent = [reading('five_hour', 0.1, LATER_TODAY, new Date(2026, 9, 14, 9, 31)), reading('seven_day', 0.1)];
+  assert.deepEqual(checkBalance(recent, NOW), { action: 'proceed' });
+});
+
+test('checkBalance: com estimativa, vale o saldo projetado contra o piso de 10%', () => {
+  const sevenDay = reading('seven_day', 0.2);
+  assert.deepEqual(checkBalance([reading('five_hour', 0.85), sevenDay], NOW, { five_hour: 0.02 }), {
+    action: 'proceed',
+  });
+  const decision = checkBalance([reading('five_hour', 0.89), sevenDay], NOW, { five_hour: 0.02 });
+  assert.ok(decision.action === 'ask' && decision.window === 'five_hour' && decision.estimate === 0.02);
+  // Sem estimativa, o limiar de 30% continua valendo.
+  assert.equal(checkBalance([reading('five_hour', 0.85), sevenDay], NOW).action, 'ask');
+});
+
+test('checkBalance: janela de 7 dias acima do ritmo pede pausa até o ritmo alcançar', () => {
+  // Um dia de sete decorrido (ritmo de 14%) com 40% usados.
+  const resetsAt = new Date(NOW.getTime() + 6 * 86_400_000);
+  const decision = checkBalance([reading('five_hour', 0.1), reading('seven_day', 0.4, resetsAt)], NOW);
+  assert.equal(decision.action, 'pace');
+  assert.ok(decision.action === 'pace');
+  assert.equal(Math.round(decision.expected * 100), 14);
+  // Alcança quando o ritmo chega a 40% − 10% = 30% da janela: 2,1 dias depois do início.
+  assert.equal(decision.caughtUpAt.getTime(), resetsAt.getTime() - 7 * 86_400_000 + 0.3 * 7 * 86_400_000);
+  // A estimativa da etapa entra no uso: 30% sozinho está no ritmo, com a etapa não.
+  assert.equal(checkBalance([reading('five_hour', 0.1), reading('seven_day', 0.2, resetsAt)], NOW).action, 'proceed');
+  assert.equal(
+    checkBalance([reading('five_hour', 0.1), reading('seven_day', 0.2, resetsAt)], NOW, { seven_day: 0.1 }).action,
+    'pace',
+  );
+});
+
+test('paceOf: com folga, no ritmo e acima do ritmo', () => {
+  const resetsAt = new Date(NOW.getTime() + 3.5 * 86_400_000); // metade da janela
+  assert.equal(paceOf(reading('seven_day', 0.3, resetsAt), NOW).state, 'behind');
+  assert.equal(paceOf(reading('seven_day', 0.55, resetsAt), NOW).state, 'on');
+  assert.equal(paceOf(reading('seven_day', 0.65, resetsAt), NOW).state, 'ahead');
+});
+
+test('stageEstimate: média das 10 runs mais recentes, só com leituras da mesma janela', () => {
+  const db = openDb(mkdtempSync(join(tmpdir(), 'mabel-estimate-')));
+  const insertRun = db.prepare(
+    `INSERT INTO runs (id, kind, stage, prompt, cwd, status, started_at) VALUES (?, 'stage', ?, '', '', 'succeeded', ?)`,
+  );
+  const insertReading = db.prepare(
+    'INSERT INTO rate_limits (run_id, observed_at, window, utilization, resets_at) VALUES (?, ?, ?, ?, ?)',
+  );
+  let n = 0;
+  const run = (stage: string, used: number, resets: [string, string] = ['r1', 'r1']) => {
+    const id = `run-${++n}`;
+    const at = new Date(2026, 9, 1, 0, n).toISOString();
+    insertRun.run(id, stage, at);
+    insertReading.run(id, at, 'five_hour', 0.2, resets[0]);
+    insertReading.run(id, at, 'five_hour', 0.2 + used, resets[1]);
+  };
+  try {
+    run('execute', 0.04);
+    run('execute', 0.06);
+    assert.deepEqual(stageEstimate(db, 'execute'), {});
+    run('execute', 0.5, ['r1', 'r2']); // atravessou um reset: fora da conta
+    assert.deepEqual(stageEstimate(db, 'execute'), {});
+    run('execute', 0.05);
+    assert.equal(Math.round((stageEstimate(db, 'execute').five_hour ?? 0) * 1000), 50);
+    for (let i = 0; i < 10; i++) run('execute', 0.01);
+    assert.equal(Math.round((stageEstimate(db, 'execute').five_hour ?? 0) * 1000), 10);
+    assert.deepEqual(stageEstimate(db, 'review'), {});
+  } finally {
+    db.close();
+  }
+});
+
+test('rodapé de saldo cabe na largura e perde detalhes quando falta espaço', () => {
+  const readings = [
+    reading('five_hour', 0.28, LATER_TODAY, new Date(2026, 9, 14, 9, 57)),
+    reading('seven_day', 0.11, FRIDAY, new Date(2026, 9, 14, 9, 57)),
+  ];
+  assert.equal(
+    renderBalanceFooter(readings, NOW, 120),
+    ' 5h ███████░░░ 72% · hoje 16:40 │ 7d █████████░ 89% · sex 09:00 · com folga │ leitura de 3 min atrás',
+  );
+  assert.equal(renderBalanceFooter(readings, NOW, 60), ' 5h ███████░░░ 72% │ 7d █████████░ 89% · com folga');
+  assert.equal(renderBalanceFooter(readings, NOW, 20), ' 5h 72% 7d 89%');
+  for (const width of [20, 40, 60, 80, 100]) assert.ok(renderBalanceFooter(readings, NOW, width).length <= width);
+  const expired = [reading('five_hour', 0.5, new Date(2026, 9, 14, 9, 0)), reading('seven_day', 0.1)];
+  assert.match(renderBalanceFooter(expired, NOW, 120), /5h █████░░░░░ 50% · hoje 09:00 \(vencida\)/);
+  assert.equal(renderBalanceFooter([], NOW, 80), ' saldo desconhecido · /status --atualizar');
+});
+
 test('cabeçalho de saldo renderizado sem cores', () => {
   const lines = renderBalanceHeader(
     [
@@ -66,7 +162,7 @@ test('cabeçalho de saldo renderizado sem cores', () => {
   );
   assert.deepEqual(lines, [
     ' 5h  ████████░░  78% livre · reset hoje 16:40',
-    ' 7d  █████████░  91% livre · reset sex 09:00        leitura de 4 min atrás',
+    ' 7d  █████████░  91% livre · reset sex 09:00 · com folga        leitura de 4 min atrás',
   ]);
 });
 
