@@ -47,6 +47,8 @@ achados do teste orientam a especificação dos passos seguintes.
 
 ## Depois do teste
 
+- [ ] Gravar no banco as pausas da fila (saldo de 7 dias, falta de leitura) e as respostas
+      do humano às perguntas da política de saldo. Hoje só aparecem na saída (auditoria).
 - [ ] 2.3 `mabel runs` com lista e detalhe da run (`docs/specs/passo-2.md`).
 - [ ] 2.4 Menu como painel (`docs/specs/passo-2.md`).
 - [ ] Passo 5 — Travas e inbox: plugin com hooks e contexto hermético (G8), hook de escopo
