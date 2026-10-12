@@ -61,7 +61,6 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-11 | Script de setup do ambiente (`scripts/setup.sh`). |
 | 2026-10-11 | Menu interativo na tela inicial. |
 | 2026-10-11 | Especificação do passo 2 (`docs/specs/passo-2.md`). |
-| 2026-10-11 | Incremento 2.1 concluído. |
 | 2026-10-11 | Especificações dos passos 3 e 4; ordem revista para antecipar o teste com aplicação real. |
 | 2026-10-11 | Incremento 2.1: banco SQLite, runner e `mabel exec`, validado com run real em haiku. |
 | 2026-10-11 | Incremento 2.2: saldo, `checkBalance`, probe e `mabel status`; probe validado com o `claude` real. |

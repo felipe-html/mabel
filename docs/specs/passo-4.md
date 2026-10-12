@@ -188,15 +188,15 @@ Passa quando, nesta ordem:
 2. `perguntas` está vazio. Senão → `needs_human` com as perguntas.
 3. `criterios` não está vazio e todo critério tem `verificacao`.
 4. `escopo` não está vazio.
+5. **Regra crítica**: o item é crítico se algum glob do `escopo` casar com um caminho de
+   `regras-criticas.md` (checagem mecânica), se `conceitosCriticos` não estiver vazio ou se
+   alguma suposição tiver `regraCritica: true`. Item crítico → `needs_human` pedindo
+   aprovação dos critérios, exceto se já aprovados (`mabel aprovar`).
 
 Falha nas condições 1, 3 ou 4 é **plano incompleto**: o planejamento é refeito uma vez,
 retomando a mesma sessão com o motivo da falha (o item continua em `planning`; a falha
 fica em `gate_results`). Segunda falha → `needs_human` com o motivo. Plano incompleto não
 conta como tentativa de execução.
-5. **Regra crítica**: o item é crítico se algum glob do `escopo` casar com um caminho de
-   `regras-criticas.md` (checagem mecânica), se `conceitosCriticos` não estiver vazio ou se
-   alguma suposição tiver `regraCritica: true`. Item crítico → `needs_human` pedindo
-   aprovação dos critérios, exceto se já aprovados (`mabel aprovar`).
 
 Item não crítico segue com os critérios do plano sem aprovação humana.
 
@@ -322,9 +322,9 @@ O item guarda o motivo da parada em `items.pending_kind`. O `responder` age conf
 
 | Motivo (`pending_kind`) | Origem | `responder` | `--replanejar` |
 |---|---|---|---|
-| `question_plan` | Perguntas ou suposição crítica no planejamento | → `planning`, retoma a sessão do planejamento com a resposta | Igual |
+| `question_plan` | Perguntas no planejamento | → `planning`, retoma a sessão do planejamento com a resposta | Igual |
 | `plan_incomplete` | Plano incompleto duas vezes | → `planning`, retoma a sessão do planejamento com a resposta | Igual |
-| `critical_approval` | Item crítico aguardando aprovação | A resposta é um ajuste dos critérios: → `planning`, retoma a sessão do planejamento. Para aprovar sem ajuste, use `aprovar` | Igual |
+| `critical_approval` | Item crítico aguardando aprovação (caminho ou conceito crítico, ou suposição com `regraCritica` no planejamento) | A resposta é um ajuste dos critérios: → `planning`, retoma a sessão do planejamento. Para aprovar sem ajuste, use `aprovar` | Igual |
 | `question_execute` | Perguntas ou suposição crítica na execução | → `executing`, retoma a sessão daquela execução com a resposta. Contador de tentativas inalterado | → `planning`, sessão nova com o plano anterior, a resposta e o resumo das tentativas |
 | `attempts_exhausted` | Três tentativas reprovadas | → `executing`, **novo ciclo** de até 3 tentativas: contador do ciclo zerado, sessão nova com a resposta e o resumo das tentativas anteriores, todas as tentativas do ciclo com o modelo escalonado. Nova reprovação no ciclo → `needs_human` (`attempts_exhausted`) de novo | → `planning`, sessão nova com o plano anterior, a resposta e o resumo das tentativas; ao voltar à execução, novo ciclo com as regras normais |
 
