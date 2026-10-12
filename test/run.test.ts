@@ -37,7 +37,7 @@ function queueProject(backlog: string, responses: unknown[]) {
 test('fila de três itens: dois em awaiting_merge, um em needs_human; responder e novo run concluem', () => {
   const q = queueProject('\n## A\nprimeiro\n\n## B\nsegundo\n\n## C\nterceiro\n', [
     PLAN_OK, EXEC, REVIEW,
-    { structured_output: { ...PLAN, perguntas: ['Qual banco usar?'] }, session_id: 'plan-b' },
+    { structured_output: { ...PLAN, perguntas: [{ texto: 'Qual banco usar?', sugestao: 'SQLite' }] }, session_id: 'plan-b' },
     PLAN_OK, EXEC, REVIEW,
     PLAN_OK, EXEC, REVIEW,
   ]);
@@ -168,7 +168,7 @@ test('saldo de 7 dias abaixo de 30% fora do TTY pausa a fila com o motivo', asyn
 test('aprovar e cancelar pela linha de comando', () => {
   const q = queueProject('\n## A\nprimeiro\n\n## B\nsegundo\n', [
     { structured_output: { ...PLAN, conceitosCriticos: ['Desconto'] } },
-    { structured_output: { ...PLAN, perguntas: ['?'] } },
+    { structured_output: { ...PLAN, perguntas: [{ texto: '?', sugestao: '' }] } },
   ]);
   q.cli('run');
   assert.deepEqual(q.states(), [[1, 'needs_human'], [2, 'needs_human']]);

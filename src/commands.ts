@@ -14,6 +14,7 @@ import {
   respondCommand,
   respondUsage,
 } from './decide.ts';
+import { inboxCommand, inboxUsage } from './inbox.ts';
 import { init, initUsage } from './init.ts';
 import { run, runUsage } from './run.ts';
 import { status } from './status.ts';
@@ -93,9 +94,9 @@ export const commands: Command[] = [
   },
   {
     name: 'inbox',
-    description: 'Lista as decisões que aguardam você',
-    usage: 'mabel inbox',
-    plannedStep: 5,
+    description: 'Responde às decisões que aguardam você, uma por vez',
+    usage: inboxUsage,
+    run: inboxCommand,
   },
   {
     name: 'completion',

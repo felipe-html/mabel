@@ -14,7 +14,7 @@ import {
 } from './items.ts';
 import { type CriticalRules, type Project, readCriticalRules } from './project.ts';
 import { type RunHandle, type RunObserver, type RunOutcome, type RunStage, isUsageLimit } from './runner.ts';
-import type { ExecuteOutput, PlanOutput } from './schemas/stages.ts';
+import type { ExecuteOutput, PlanOutput, Question } from './schemas/stages.ts';
 import {
   type StageContext,
   itemDir,
@@ -56,7 +56,7 @@ export function escalate(model: string): string {
 
 export type StartVerdict =
   | { kind: 'pass' }
-  | { kind: 'questions'; questions: string[] }
+  | { kind: 'questions'; questions: Question[] }
   | { kind: 'incomplete'; reason: string }
   | { kind: 'critical'; reasons: string[] };
 
@@ -242,16 +242,18 @@ async function planStep(env: PipelineEnv, item: Item): Promise<Step> {
     item.approvedAt !== null,
   );
   switch (verdict.kind) {
-    case 'questions':
-      recordGate(env.db, item.id, 0, 'start', false, `perguntas: ${verdict.questions.join(' | ')}`);
+    case 'questions': {
+      const texts = verdict.questions.map((q) => q.texto).join(' | ');
+      recordGate(env.db, item.id, 0, 'start', false, `perguntas: ${texts}`);
       return stopForHuman(
         env,
         item,
         'question_plan',
         { sessionId, questions: verdict.questions },
-        `perguntas do planejamento: ${verdict.questions.join(' | ')}`,
+        `perguntas do planejamento: ${texts}`,
         runId,
       );
+    }
     case 'incomplete':
       recordGate(env.db, item.id, 0, 'start', false, `plano incompleto: ${verdict.reason}`);
       if (item.planRetries < 1) {
@@ -364,7 +366,7 @@ async function executeStep(env: PipelineEnv, item: Item): Promise<Step> {
   const critical = result.output.suposicoes.filter((s) => s.regraCritica).map((s) => s.texto);
   if (result.output.perguntas.length > 0 || critical.length > 0) {
     const parts = [
-      ...result.output.perguntas.map((q) => `pergunta: ${q}`),
+      ...result.output.perguntas.map((q) => `pergunta: ${q.texto}`),
       ...critical.map((s) => `suposição crítica: ${s}`),
     ];
     return stopForHuman(

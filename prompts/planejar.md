@@ -35,7 +35,13 @@ dúvida em que errar exigiria refazer o trabalho ou contrariaria uma regra de ne
   simples e fácil de trocar depois, e registre a escolha como suposição.
 
 No máximo **3 perguntas**, cada uma numa linha, em português claro, decidíveis sem abrir o
-código. Se houver perguntas, o plano ainda deve vir completo com o que já for possível.
+código. Em cada pergunta, `sugestao` traz a resposta que você daria: o humano aceita com
+enter. Deixe `sugestao` vazia só quando não houver resposta razoável a propor. Se houver
+perguntas, o plano ainda deve vir completo com o que já for possível.
+
+Quando a resposta do humano a uma pergunta for "decida e registre como suposição", a
+decisão é sua: escolha (de preferência a sua sugestão), registre em `suposicoes` e não
+repita a pergunta.
 
 ## Saída
 

@@ -70,13 +70,17 @@ export function renderItemDetail(db: DatabaseSync, home: string, item: Item): st
   if (item.status === 'needs_human' && item.pendingKind) {
     const pending = item.pending ?? {};
     lines.push('', style.bold(`Aguardando você (${item.pendingKind})`));
-    for (const question of pending.questions ?? []) lines.push(`  ? ${question}`);
+    for (const question of pending.questions ?? []) {
+      lines.push(`  ? ${question.texto}`);
+      if (question.sugestao) lines.push(`    sugestão: ${question.sugestao}`);
+    }
     for (const assumption of pending.criticalAssumptions ?? []) lines.push(`  ! suposição crítica: ${assumption}`);
     if (pending.reason) lines.push(`  ${pending.reason}`);
     if (item.pendingKind === 'attempts_exhausted') {
       lines.push(...(pending.summary || attemptsSummary(db, item.id)).split('\n').map((line) => `  ${line}`));
     }
-    lines.push('', 'Comandos:', ...SUGGESTIONS[item.pendingKind](item.number).map((command) => `  ${command}`));
+    lines.push('', 'Comandos:', '  mabel inbox   (responde tudo, uma pergunta por vez)');
+    lines.push(...SUGGESTIONS[item.pendingKind](item.number).map((command) => `  ${command}`));
   }
 
   lines.push('', style.bold('Item'));

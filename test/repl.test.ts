@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { commands } from '../src/commands.ts';
 import { HISTORY_LIMIT, loadHistory, locate, parseLine, pushHistory, replSuggestions } from '../src/repl.ts';
 import { makeRepo } from './helpers.ts';
 
@@ -28,7 +29,12 @@ test('texto sem /, comando desconhecido, planejado e aspas abertas viram mensage
   };
   assert.match(text('init'), /Comandos começam com \//);
   assert.match(text('/voar'), /Comando desconhecido: \/voar/);
-  assert.match(text('/inbox'), /passo 5/);
+  commands.push({ name: 'voo', description: 'Planejado', usage: 'mabel voo', plannedStep: 9 });
+  try {
+    assert.match(text('/voo'), /passo 9/);
+  } finally {
+    commands.pop();
+  }
   assert.match(text('/exec "aberto'), /sem fechamento/);
   assert.match(text('/completion zsh'), /desconhecido/, 'completion só existe no shell');
 });

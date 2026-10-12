@@ -5,6 +5,7 @@ import { type BalanceReading, balanceOf, checkBalance, formatReset, latestReadin
 import { dataDir, openDb } from './db.ts';
 import { ToolLog, summaryLine } from './exec.ts';
 import { formatCost, formatDuration } from './format.ts';
+import { inboxSession, pendingItems, terminalIO } from './inbox.ts';
 import { type Item, type ItemStatus, getItemById, listItems, syncBacklog, transition } from './items.ts';
 import { LockError, acquireLock } from './lock.ts';
 import { type AdvanceResult, advanceItem } from './pipeline.ts';
@@ -274,18 +275,29 @@ export async function run(args: string[]): Promise<number> {
       return 1;
     }
     release = acquireLock(home, project.id);
-    const queue = startQueue({ db, home, project, itemNumber, once: values.uma, interactive: isInteractive() });
-    const onSigint = () => queue.interrupt();
-    process.on('SIGINT', onSigint);
-    let result: QueueResult;
-    try {
-      result = await queue.done;
-    } finally {
-      process.off('SIGINT', onSigint);
+    const interactive = isInteractive();
+    // run → inbox → run: com itens aguardando, o humano responde e a fila segue sem sair.
+    for (;;) {
+      const queue = startQueue({ db, home, project, itemNumber, once: values.uma, interactive });
+      const onSigint = () => queue.interrupt();
+      process.on('SIGINT', onSigint);
+      let result: QueueResult;
+      try {
+        result = await queue.done;
+      } finally {
+        process.off('SIGINT', onSigint);
+      }
+      process.stdout.write(`\n${renderQueueSummary(result)}\n`);
+      if (result.end === 'interrupted') return 130;
+      if (result.end === 'not_found') return 1;
+      const waiting = pendingItems(db, project.id).length;
+      if (!interactive || waiting === 0) return 0;
+      const label = waiting === 1 ? '1 item aguarda você' : `${waiting} itens aguardam você`;
+      if (!(await confirm(`\n${label}. Abrir a inbox agora?`))) return 0;
+      process.stdout.write('\n');
+      if (!(await inboxSession(db, home, project, terminalIO))) return 0;
+      process.stdout.write('\n');
     }
-    process.stdout.write(`\n${renderQueueSummary(result)}\n`);
-    if (result.end === 'interrupted') return 130;
-    return result.end === 'not_found' ? 1 : 0;
   } catch (error) {
     if (error instanceof ProjectError || error instanceof LockError) {
       process.stderr.write(`${error.message}\n`);

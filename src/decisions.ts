@@ -8,6 +8,15 @@ export class DecisionError extends Error {}
 
 const CLEAR_PENDING: ItemUpdate = { pendingKind: null, pending: null };
 
+/** Por onde a decisão chegou; entra no motivo da transição (`humano: inbox …`). */
+export interface DecisionOptions {
+  via?: 'inbox';
+}
+
+function via(reason: string, options: DecisionOptions): string {
+  return options.via ? `${options.via} ${reason}` : reason;
+}
+
 function decide(db: DatabaseSync, project: Project, item: Item, to: ItemStatus, reason: string, update: ItemUpdate) {
   db.exec('SAVEPOINT decision');
   try {
@@ -31,12 +40,12 @@ export function respond(
   project: Project,
   item: Item,
   answer: string,
-  { replan = false }: { replan?: boolean } = {},
+  { replan = false, ...options }: { replan?: boolean } & DecisionOptions = {},
 ): ItemStatus {
   if (item.status !== 'needs_human' || !item.pendingKind) {
     throw new DecisionError(`#${item.number} não está aguardando resposta (estado: ${item.status}).`);
   }
-  const reason = `responder${replan ? ' --replanejar' : ''}: ${truncate(answer.replace(/\s+/g, ' '), 200)}`;
+  const reason = via(`responder${replan ? ' --replanejar' : ''}: ${truncate(answer.replace(/\s+/g, ' '), 200)}`, options);
   const sessionId = item.pending?.sessionId ?? undefined;
   const replanFresh: ItemUpdate = {
     attempts: 0,
@@ -80,11 +89,11 @@ export function respond(
 }
 
 /** Aprova os critérios de um item crítico: segue para a execução com o plano atual. */
-export function approve(db: DatabaseSync, project: Project, item: Item): void {
+export function approve(db: DatabaseSync, project: Project, item: Item, options: DecisionOptions = {}): void {
   if (item.status !== 'needs_human' || item.pendingKind !== 'critical_approval') {
     throw new DecisionError(`#${item.number} não está aguardando aprovação de critérios (estado: ${item.status}).`);
   }
-  decide(db, project, item, 'executing', 'critérios aprovados', {
+  decide(db, project, item, 'executing', via('critérios aprovados', options), {
     approvedAt: new Date().toISOString(),
     attempts: 0,
     escalatedCycle: false,
@@ -92,9 +101,9 @@ export function approve(db: DatabaseSync, project: Project, item: Item): void {
   });
 }
 
-export function cancel(db: DatabaseSync, project: Project, item: Item): void {
+export function cancel(db: DatabaseSync, project: Project, item: Item, options: DecisionOptions = {}): void {
   if (!TRANSITIONS[item.status].includes('cancelled')) {
     throw new DecisionError(`#${item.number} não pode ser cancelado no estado ${item.status}.`);
   }
-  decide(db, project, item, 'cancelled', 'cancelado', { nextInput: null });
+  decide(db, project, item, 'cancelled', via('cancelado', options), { nextInput: null });
 }

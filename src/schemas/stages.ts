@@ -17,6 +17,14 @@ const assumptions: Schema = {
   items: object({ texto: str, regraCritica: { type: 'boolean' } }),
 };
 
+/** Pergunta ao humano, com a resposta que o agente proporia (vazia quando não há). */
+export interface Question {
+  texto: string;
+  sugestao: string;
+}
+
+const questions: Schema = { type: 'array', items: object({ texto: str, sugestao: str }) };
+
 export interface PlanCriterion {
   id: string;
   texto: string;
@@ -35,14 +43,14 @@ export interface PlanOutput {
   passos: string[];
   suposicoes: Assumption[];
   conceitosCriticos: string[];
-  perguntas: string[];
+  perguntas: Question[];
 }
 
 export interface ExecuteOutput {
   resumo: string;
   criterios: { id: string; testes: { arquivo: string; nome: string }[] }[];
   suposicoes: Assumption[];
-  perguntas: string[];
+  perguntas: Question[];
 }
 
 export interface ReviewOutput {
@@ -61,7 +69,7 @@ export const planSchema: Schema = object({
   passos: strings,
   suposicoes: assumptions,
   conceitosCriticos: strings,
-  perguntas: strings,
+  perguntas: questions,
 });
 
 export const executeSchema: Schema = object({
@@ -71,7 +79,7 @@ export const executeSchema: Schema = object({
     items: object({ id: str, testes: { type: 'array', items: object({ arquivo: str, nome: str }) } }),
   },
   suposicoes: assumptions,
-  perguntas: strings,
+  perguntas: questions,
 });
 
 export const reviewSchema: Schema = object({

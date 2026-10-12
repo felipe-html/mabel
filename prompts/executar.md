@@ -21,9 +21,13 @@ só edita arquivos.
 ## Quando perguntar
 
 Se uma dúvida de regra de negócio impedir a implementação correta, pare e pergunte em
-`perguntas` (no máximo 3, uma linha cada). Detalhes de apresentação, conteúdo provisório
-e organização interna do código você decide e registra como suposição. Liste em `suposicoes` toda suposição feita, marcando `regraCritica: true` nas
-que tocam regra crítica.
+`perguntas` (no máximo 3, uma linha cada), com a resposta que você daria em `sugestao`.
+Detalhes de apresentação, conteúdo provisório e organização interna do código você decide
+e registra como suposição. Liste em `suposicoes` toda suposição feita, marcando
+`regraCritica: true` nas que tocam regra crítica.
+
+Quando a resposta do humano a uma pergunta for "decida e registre como suposição", a
+decisão é sua: escolha, registre em `suposicoes` e não repita a pergunta.
 
 ## Saída
 

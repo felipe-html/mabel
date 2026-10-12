@@ -5,6 +5,7 @@ import { latestReadings } from './balance.ts';
 import { type ItemFields, insertIds, parseBacklog, validateBacklog } from './backlog.ts';
 import { type BoardItem, renderBoard, writeBoardFile } from './board.ts';
 import { type Project, mabelPath } from './project.ts';
+import type { Question } from './schemas/stages.ts';
 
 export const ITEM_STATES = [
   'backlog',
@@ -74,7 +75,7 @@ export type PendingKind =
 /** Detalhes da parada em `needs_human`, mostrados pelo `mabel item`. */
 export interface Pending {
   sessionId?: string | null;
-  questions?: string[];
+  questions?: Question[];
   criticalAssumptions?: string[];
   reason?: string;
   summary?: string;
@@ -119,6 +120,16 @@ interface ItemRow {
   next_input: string | null;
 }
 
+/** Pendências gravadas antes das sugestões guardavam as perguntas como texto puro. */
+function readPending(json: string): Pending {
+  const pending = JSON.parse(json) as Omit<Pending, 'questions'> & { questions?: (Question | string)[] };
+  if (!pending.questions) return pending as Pending;
+  return {
+    ...pending,
+    questions: pending.questions.map((q) => (typeof q === 'string' ? { texto: q, sugestao: '' } : q)),
+  };
+}
+
 function fromRow(row: ItemRow): Item {
   return {
     id: row.id,
@@ -137,7 +148,7 @@ function fromRow(row: ItemRow): Item {
     branch: row.branch,
     worktree: row.worktree,
     pendingKind: row.pending_kind,
-    pending: row.pending ? (JSON.parse(row.pending) as Pending) : null,
+    pending: row.pending ? readPending(row.pending) : null,
     approvedAt: row.approved_at,
     escalatedCycle: row.escalated_cycle === 1,
     attemptNo: row.attempt_no,

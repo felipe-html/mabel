@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { makeRepo } from './helpers.ts';
 
 const CLI = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 
@@ -26,10 +30,15 @@ test('comando desconhecido falha com o menu', () => {
   assert.match(result.stderr, /Comando desconhecido: voar/);
 });
 
-test('comando planejado avisa o passo em que será implementado', () => {
-  const result = mabel('inbox');
+test('inbox fora de um projeto Mabel falha com mensagem', () => {
+  const root = makeRepo();
+  const result = spawnSync(process.execPath, [CLI, 'inbox'], {
+    cwd: root,
+    encoding: 'utf8',
+    env: { ...process.env, MABEL_HOME: mkdtempSync(join(tmpdir(), 'mabel-home-')) },
+  });
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /passo 5/);
+  assert.match(result.stderr, /não é um projeto Mabel/);
 });
 
 test('completion zsh gera script com compdef e todos os comandos', () => {
