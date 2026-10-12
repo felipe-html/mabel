@@ -49,7 +49,7 @@ achados do teste orientam a especificação dos passos seguintes.
 
 - [x] 2.4 Modo Mabel: prompt com comandos `/`, lista de autocompletar e histórico
       (`docs/specs/interface.md`). Substitui o menu como painel.
-- [ ] 3.4 `mabel init` por stack: catálogo Node/Python/Go/Rust e item da base de testes
+- [x] 3.4 `mabel init` por stack: catálogo Node/Python/Go/Rust e item da base de testes
       concreto (`docs/specs/interface.md`).
 - [ ] Gravar no banco as pausas da fila (saldo de 7 dias, falta de leitura) e as respostas
       do humano às perguntas da política de saldo. Hoje só aparecem na saída (auditoria).
@@ -78,3 +78,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-11 | Incremento 4.4: `mabel run` com política de saldo, retomada após ctrl+c, `item`/`aprovar`/`responder`/`cancelar`. Teste real: item simples em `awaiting_merge` por US$ 0,35. Passo 4 concluído; próximo marco é o teste com aplicação real. |
 | 2026-10-11 | Revisão da interface e do `init` (`docs/specs/interface.md`): modo Mabel com comandos `/` substitui o menu como painel; `init` passa a usar um catálogo de stacks. |
 | 2026-10-11 | Incremento 2.4: modo Mabel com editor de linha próprio, lista de autocompletar, histórico em `<dados>/historico` e ctrl+c que volta ao prompt. Verificado num pseudo-terminal: `/init`, `/item` interrompido, `/exec` e `/run` interrompidos, `/status`. |
+| 2026-10-11 | Incremento 3.4: catálogo de stacks (`src/stacks.ts`) com a detecção existente, `init` com confirmação `[S/n/editar]`, menu de stack e `--stack`. Verificado num pseudo-terminal: repositório vazio com Node e projeto Node existente sem testes. |

@@ -14,7 +14,7 @@ import {
   respondCommand,
   respondUsage,
 } from './decide.ts';
-import { init } from './init.ts';
+import { init, initUsage } from './init.ts';
 import { run, runUsage } from './run.ts';
 import { status } from './status.ts';
 
@@ -35,7 +35,7 @@ export const commands: Command[] = [
   {
     name: 'init',
     description: 'Prepara o projeto atual para o Mabel',
-    usage: 'mabel init',
+    usage: initUsage,
     run: init,
   },
   {

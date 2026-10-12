@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
+import { parseArgs } from 'node:util';
 import { ask, confirm, interactive } from './ask.ts';
 import { BACKLOG_TEMPLATE, type ItemFields, appendBlocks, renderItemBlock } from './backlog.ts';
 import { syncBacklog } from './items.ts';
@@ -13,7 +14,6 @@ import {
   type ProjectConfig,
   type VerifyCommand,
   currentBranch,
-  detectCommands,
   gitRoot,
   hasCommits,
   hasTestCommand,
@@ -23,28 +23,93 @@ import {
   readConfig,
   registerProject,
 } from './project.ts';
+import { select } from './menu.ts';
+import { STACKS, type Stack, detectCommands, findStack, stackLabel } from './stacks.ts';
 import { style } from './style.ts';
 
 export const TEST_BASE_TITLE = 'Estabelecer base de testes';
 
-/** Item criado pelo `init` em projeto sem testes. `stack` só é usado em projeto sem código. */
-export function testBaseItem(stack?: string): ItemFields {
-  const intent = [
-    'O projeto não tem testes automatizados. Escolher um framework de testes adequado à',
-    'stack, configurar o comando de teste e escrever ao menos um teste que passe.',
-  ];
-  if (stack !== undefined) intent.push('', `Stack: ${stack || 'a definir'}`);
+export const initUsage = `mabel init [--stack ${STACKS.map((stack) => stack.id).join('|')}]`;
+
+export interface TestBaseOptions {
+  /** Projeto sem código: o item cria a estrutura mínima. */
+  empty: boolean;
+  stack?: Stack;
+  /** Stack fora do catálogo, descrita pelo usuário. */
+  other?: string;
+}
+
+const code = (text: string) => `\`${text}\``;
+const joinAnd = (parts: string[]) =>
+  parts.length <= 1 ? parts.join('') : `${parts.slice(0, -1).join(', ')} e ${parts.at(-1)}`;
+
+/** Item criado pelo `init` em projeto sem testes. Fica concreto quando a stack é do catálogo. */
+export function testBaseItem({ empty, stack, other }: TestBaseOptions): ItemFields {
+  const base = { number: 1, title: TEST_BASE_TITLE, dependsOn: [], restrictions: null };
+  if (stack && empty) {
+    const { framework, setup, verify } = stack.template;
+    const config = [
+      ...(setup ? [`${code('setup')} igual a ${code(setup)}`] : []),
+      `${code('verify')} com ${joinAnd(verify.map((command) => `${code(command.name)} (${code(command.command)})`))}`,
+    ];
+    return {
+      ...base,
+      intent: [
+        `O projeto ainda não tem código. Criar a estrutura mínima de ${stack.label} com ${framework}`,
+        'e escrever ao menos um teste que passe.',
+      ].join('\n'),
+      criteria: [
+        `${joinAnd(verify.map((command) => code(command.command)))} rodam e passam`,
+        `${code('.mabel/config.json')} tem ${joinAnd(config)}`,
+      ],
+    };
+  }
+  const intent = stack
+    ? [
+        `O projeto não tem testes automatizados. Configurar ${stack.template.framework}, o comando de`,
+        'teste e escrever ao menos um teste que passe.',
+        '',
+        `Comando sugerido: ${code(stack.template.verify.at(-1)?.command ?? '')}`,
+      ]
+    : [
+        'O projeto não tem testes automatizados. Escolher um framework de testes adequado à',
+        'stack, configurar o comando de teste e escrever ao menos um teste que passe.',
+      ];
+  if (!stack && (empty || other)) intent.push('', `Stack: ${other || 'a definir'}`);
   return {
-    number: 1,
-    title: TEST_BASE_TITLE,
+    ...base,
     intent: intent.join('\n'),
     criteria: [
       'Um comando de teste roda e passa',
       'O comando de teste está em `verify` no `.mabel/config.json`',
     ],
-    dependsOn: [],
-    restrictions: null,
   };
+}
+
+type StackChoice = { stack: Stack } | { other: string } | null;
+
+/** Menu com o catálogo e "Outra". `null` quando o usuário sai do menu. */
+async function chooseStack(question: string, askOther: boolean): Promise<StackChoice> {
+  process.stdout.write(`${style.bold(question)}\n`);
+  const options = [
+    ...STACKS.map((stack) => ({ label: stack.label, hint: `testes com ${stack.template.framework.replaceAll('`', '')}` })),
+    { label: 'Outra', hint: askOther ? 'você descreve a stack' : 'o agente escolhe o framework' },
+  ];
+  const chosen = await select(options, style);
+  if (chosen === null) return null;
+  const stack = STACKS[chosen];
+  if (stack) return { stack };
+  return { other: askOther ? await ask('Qual stack? ') : '' };
+}
+
+/** Pergunta `[S/n/editar]` até receber uma resposta válida. */
+async function confirmCommands(): Promise<'yes' | 'no' | 'edit'> {
+  for (;;) {
+    const answer = (await ask('Usar estes comandos? [S/n/editar] ')).toLowerCase();
+    if (!answer || answer.startsWith('s') || answer.startsWith('y')) return 'yes';
+    if (answer === 'n' || answer === 'nao' || answer === 'não') return 'no';
+    if (answer.startsWith('e')) return 'edit';
+  }
 }
 
 function describe(setup: string | null, verify: VerifyCommand[]): string[] {
@@ -58,7 +123,7 @@ function describe(setup: string | null, verify: VerifyCommand[]): string[] {
 
 /** No TTY: enter mantém, `-` remove, texto substitui; depois permite acrescentar comandos. */
 async function editCommands(setup: string | null, verify: VerifyCommand[]) {
-  process.stdout.write(style.dim("Enter mantém, '-' remove, texto substitui.\n"));
+  process.stdout.write(style.dim("Edite cada comando: enter mantém, '-' remove, texto novo substitui.\n"));
   const edit = async (label: string, current: string | null) => {
     const answer = await ask(`  ${label.padEnd(9)}[${current ?? ''}] `);
     if (answer === '-') return null;
@@ -70,7 +135,7 @@ async function editCommands(setup: string | null, verify: VerifyCommand[]) {
     const edited = await edit(command.name, command.command);
     if (edited) newVerify.push({ name: command.name, command: edited });
   }
-  process.stdout.write(style.dim('Acrescentar comando de verificação como `nome: comando` (enter termina).\n'));
+  process.stdout.write(style.dim('Comandos de verificação extras, um por linha como `nome: comando` (linha vazia termina).\n'));
   for (;;) {
     const answer = await ask('  + ');
     if (!answer) break;
@@ -86,8 +151,16 @@ function writeIfMissing(path: string, content: string): void {
 }
 
 export async function init(args: string[]): Promise<number> {
-  if (args.length > 0) {
-    process.stderr.write('Uso: mabel init\n');
+  let values: { stack?: string };
+  try {
+    ({ values } = parseArgs({ args, options: { stack: { type: 'string' } }, strict: true }));
+  } catch {
+    process.stderr.write(`Uso: ${initUsage}\n`);
+    return 1;
+  }
+  const forced = values.stack === undefined ? undefined : findStack(values.stack);
+  if (values.stack !== undefined && !forced) {
+    process.stderr.write(`Stack desconhecida: ${values.stack}. Use uma destas: ${STACKS.map((stack) => stack.id).join(', ')}.\n`);
     return 1;
   }
   const root = gitRoot(process.cwd());
@@ -114,9 +187,32 @@ export async function init(args: string[]): Promise<number> {
     }
 
     const empty = isEmptyProject(root);
-    let { setup, verify } = detectCommands(root);
-    process.stdout.write(`${style.bold('Comandos detectados')}\n${describe(setup, verify).join('\n')}\n\n`);
-    if (interactive()) ({ setup, verify } = await editCommands(setup, verify));
+    const detected = detectCommands(root);
+    let { setup, verify } = detected;
+    let stack = forced ?? detected.stacks[0];
+    let other: string | undefined;
+
+    if (detected.stacks.length > 0 || verify.length > 0) {
+      const title = detected.stacks.length > 0 ? `Stack detectada: ${stackLabel(detected.stacks)}` : 'Comandos detectados';
+      process.stdout.write(`${style.bold(title)}\n${describe(setup, verify).join('\n')}\n`);
+      if (interactive()) {
+        const answer = await confirmCommands();
+        if (answer === 'no') ({ setup, verify } = { setup: null, verify: [] });
+        if (answer === 'edit') ({ setup, verify } = await editCommands(setup, verify));
+      }
+    } else if (!stack && interactive()) {
+      const choice = empty
+        ? await chooseStack('Projeto sem código. Qual stack o projeto vai usar?', true)
+        : await chooseStack('Não reconheci a stack do projeto. Qual é?', false);
+      if (choice === null) {
+        process.stdout.write('init cancelado. Nada foi alterado.\n');
+        return 1;
+      }
+      if ('stack' in choice) stack = choice.stack;
+      else other = choice.other;
+      if (!empty) ({ setup, verify } = await editCommands(setup, verify));
+    }
+    process.stdout.write('\n');
 
     const config: ProjectConfig = {
       projectId: newProjectId(),
@@ -129,13 +225,7 @@ export async function init(args: string[]): Promise<number> {
 
     let backlog = BACKLOG_TEMPLATE;
     const noTests = !hasTestCommand(verify);
-    if (noTests) {
-      let stack: string | undefined;
-      if (empty) {
-        stack = interactive() ? await ask('Projeto sem código. Qual stack você quer usar? ') : '';
-      }
-      backlog = appendBlocks(backlog, [renderItemBlock(testBaseItem(stack))]);
-    }
+    if (noTests) backlog = appendBlocks(backlog, [renderItemBlock(testBaseItem({ empty, stack, other }))]);
 
     mkdirSync(join(root, MABEL_DIR), { recursive: true });
     writeIfMissing(mabelPath(root, 'regras-criticas.md'), CRITICAL_RULES_TEMPLATE);
@@ -147,7 +237,11 @@ export async function init(args: string[]): Promise<number> {
     syncBacklog(db, { id: config.projectId, root, name: basename(root), config });
 
     const notes = [`${style.bold('.mabel/ criado')} em ${root} · branch base ${config.baseBranch}`];
-    if (verify.length === 0) notes.push('Aviso: nenhum comando em `verify`; o G3 fica sem gate mecânico.');
+    if (verify.length === 0 && empty && stack) {
+      notes.push('Os comandos de `verify` entram no config com o item 1; até lá, o G3 fica sem gate mecânico.');
+    } else if (verify.length === 0) {
+      notes.push('Aviso: nenhum comando em `verify`; o G3 fica sem gate mecânico.');
+    }
     if (noTests) notes.push(`Projeto sem testes: "${TEST_BASE_TITLE}" é o primeiro item do backlog.`);
     process.stdout.write(`${notes.join('\n')}\n`);
 

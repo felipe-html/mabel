@@ -169,7 +169,8 @@ Cada pergunta tem padrão no Enter. Um passo por vez:
 
 Num projeto existente sem testes, o item sugere o framework da stack.
 
-Num projeto sem código, `setup` e `verify` ficam **vazios** no `config.json`: o `setup` roda
+Num projeto sem código, `setup` e `verify` ficam **vazios** no `config.json` (o aviso do
+`init` diz que entram com o item 1): o `setup` roda
 quando o worktree é criado (`worktree.ts`) e falharia sem o manifesto, bloqueando o item.
 O item 1 carrega o template completo:
 
@@ -193,12 +194,12 @@ detectada; num projeto sem código, usa `--stack` ou gera o item genérico de ho
 
 ### Critérios de aceite
 
-- [ ] Catálogo testado com repositórios temporários: detecção de cada stack, comandos
+- [x] Catálogo testado com repositórios temporários: detecção de cada stack, comandos
       de projeto existente iguais aos de hoje (os testes do 3.1 continuam passando).
-- [ ] Item da base de testes gerado por stack, testado por texto.
-- [ ] Projeto sem código grava `setup` nulo e `verify` vazio.
-- [ ] `--stack` inválido lista os ids válidos e sai com erro.
-- [ ] Verificado no terminal real: `/init` num repositório vazio, escolhendo Node.
+- [x] Item da base de testes gerado por stack, testado por texto.
+- [x] Projeto sem código grava `setup` nulo e `verify` vazio.
+- [x] `--stack` inválido lista os ids válidos e sai com erro.
+- [x] Verificado num pseudo-terminal: `/init` num repositório vazio, escolhendo Node.
 
 ## Fora desta especificação
 

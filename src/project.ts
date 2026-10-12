@@ -124,63 +124,6 @@ export function newProjectId(): string {
   return randomUUID();
 }
 
-// Detecção de comandos -------------------------------------------------------------------
-
-export interface DetectedCommands {
-  setup: string | null;
-  verify: VerifyCommand[];
-}
-
-const LOCKFILES: [string, string][] = [
-  ['package-lock.json', 'npm ci'],
-  ['pnpm-lock.yaml', 'pnpm install --frozen-lockfile'],
-  ['yarn.lock', 'yarn install --frozen-lockfile'],
-];
-
-/** Script `test` que o `npm init` gera por padrão: não é um comando de teste de verdade. */
-const NPM_PLACEHOLDER_TEST = /no test specified/;
-
-/** Lê os arquivos de build da raiz e propõe `setup` e `verify`. Somente leitura. */
-export function detectCommands(root: string): DetectedCommands {
-  const verify: VerifyCommand[] = [];
-  let setup: string | null = null;
-  const add = (name: string, command: string) => {
-    if (!verify.some((existing) => existing.name === name)) verify.push({ name, command });
-  };
-  const has = (file: string) => existsSync(join(root, file));
-
-  if (has('package.json')) {
-    let scripts: Record<string, unknown> = {};
-    try {
-      const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { scripts?: Record<string, unknown> };
-      scripts = pkg.scripts ?? {};
-    } catch {
-      // package.json inválido: nenhum script detectado.
-    }
-    for (const script of ['build', 'typecheck', 'lint', 'test']) {
-      const body = scripts[script];
-      if (typeof body !== 'string' || !body.trim()) continue;
-      if (script === 'test' && NPM_PLACEHOLDER_TEST.test(body)) continue;
-      add(script, script === 'test' ? 'npm test' : `npm run ${script}`);
-    }
-    // Sem lockfile, `npm install` ainda deixa o worktree pronto para os comandos acima.
-    setup = LOCKFILES.find(([lockfile]) => has(lockfile))?.[1] ?? 'npm install';
-  }
-  if (has('pyproject.toml') || has('pytest.ini')) add('test', 'pytest');
-  if (has('Cargo.toml')) {
-    add('build', 'cargo build');
-    add('test', 'cargo test');
-  }
-  if (has('go.mod')) {
-    add('build', 'go build ./...');
-    add('test', 'go test ./...');
-  }
-  if (has('Makefile') && /^test\s*:/m.test(readFileSync(join(root, 'Makefile'), 'utf8'))) {
-    add('test', 'make test');
-  }
-  return { setup, verify };
-}
-
 export function hasTestCommand(verify: VerifyCommand[]): boolean {
   return verify.some((command) => command.name === 'test' || /\b(test|pytest)\b/.test(command.command));
 }

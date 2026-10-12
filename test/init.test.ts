@@ -5,9 +5,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { createInitialCommit } from '../src/init.ts';
+import { createInitialCommit, testBaseItem } from '../src/init.ts';
 import { makeRepo } from './helpers.ts';
-import { detectCommands, hasCommits, isEmptyProject, parseCriticalRules } from '../src/project.ts';
+import { hasCommits, isEmptyProject, parseCriticalRules } from '../src/project.ts';
+import { STACKS, detectCommands as detect, findStack } from '../src/stacks.ts';
+import { renderItemBlock } from '../src/backlog.ts';
 
 const CLI = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 
@@ -27,6 +29,12 @@ function snapshot(dir: string): Record<string, [string, number]> {
     files[name] = [readFileSync(path, 'utf8'), statSync(path).mtimeMs];
   }
   return files;
+}
+
+/** Só `setup` e `verify`, como a detecção devolvia antes do catálogo. */
+function detectCommands(root: string) {
+  const { setup, verify } = detect(root);
+  return { setup, verify };
 }
 
 const PKG = (scripts: Record<string, string>) => JSON.stringify({ name: 'x', scripts });
@@ -78,6 +86,53 @@ test('detecção: pyproject.toml, Cargo.toml, go.mod, Makefile e projeto vazio',
   ]);
   assert.deepEqual(detectCommands(makeRepo({ Makefile: 'build:\n\tcc x.c\n' })).verify, []);
   assert.deepEqual(detectCommands(makeRepo()), { setup: null, verify: [] });
+});
+
+test('catálogo reconhece cada stack e junta mais de uma', () => {
+  const ids = (files: Record<string, string>) => detect(makeRepo(files)).stacks.map((stack) => stack.id);
+  assert.deepEqual(ids({ 'package.json': '{}' }), ['node']);
+  assert.deepEqual(ids({ 'requirements.txt': '' }), ['python']);
+  assert.deepEqual(ids({ 'go.mod': '' }), ['go']);
+  assert.deepEqual(ids({ 'Cargo.toml': '' }), ['rust']);
+  assert.deepEqual(ids({ 'package.json': '{}', 'pyproject.toml': '' }), ['node', 'python']);
+  assert.deepEqual(ids({}), []);
+  assert.deepEqual(detectCommands(makeRepo({ 'requirements.txt': '' })), { setup: null, verify: [] });
+});
+
+test('item da base de testes por stack', () => {
+  const node = renderItemBlock(testBaseItem({ empty: true, stack: findStack('node') }));
+  assert.match(node, /estrutura mínima de Node\/TypeScript com Vitest/);
+  assert.match(node, /`npm run typecheck` e `npm test` rodam e passam/);
+  assert.match(node, /`setup` igual a `npm ci` e `verify` com `typecheck` \(`npm run typecheck`\) e `test` \(`npm test`\)/);
+
+  const go = renderItemBlock(testBaseItem({ empty: true, stack: findStack('go') }));
+  assert.doesNotMatch(go, /`setup` igual/, 'Go não tem setup');
+  assert.match(go, /`verify` com `vet`/);
+
+  const existing = renderItemBlock(testBaseItem({ empty: false, stack: findStack('python') }));
+  assert.match(existing, /Configurar pytest/);
+  assert.match(existing, /Comando sugerido: `uv run pytest`/);
+
+  assert.match(renderItemBlock(testBaseItem({ empty: true, other: 'Elixir' })), /Stack: Elixir/);
+  for (const stack of STACKS) assert.ok(stack.template.verify.some((command) => command.name === 'test'));
+});
+
+test('init com --stack em projeto sem código grava setup e verify vazios', () => {
+  const root = makeRepo();
+  const result = mabel(root, 'init', '--stack', 'rust');
+  assert.equal(result.status, 0, result.stderr);
+  const config = JSON.parse(readFileSync(join(root, '.mabel', 'config.json'), 'utf8'));
+  assert.equal(config.setup, null);
+  assert.deepEqual(config.verify, []);
+  const backlog = readFileSync(join(root, '.mabel', 'backlog.md'), 'utf8');
+  assert.match(backlog, /estrutura mínima de Rust/);
+  assert.match(backlog, /`cargo clippy -- -D warnings` e `cargo test` rodam e passam/);
+});
+
+test('init com --stack inválido lista as stacks e falha', () => {
+  const result = mabel(makeRepo(), 'init', '--stack', 'cobol');
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Stack desconhecida: cobol\. Use uma destas: node, python, go, rust\./);
 });
 
 test('projeto vazio: só configuração e documentação', () => {
