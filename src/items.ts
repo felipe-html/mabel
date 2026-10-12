@@ -11,6 +11,7 @@ export const ITEM_STATES = [
   'backlog',
   'ready',
   'planning',
+  'planned',
   'executing',
   'verifying',
   'reviewing',
@@ -28,12 +29,13 @@ export type ItemStatus = (typeof ITEM_STATES)[number];
 export const TRANSITIONS: Record<ItemStatus, readonly ItemStatus[]> = {
   backlog: ['ready', 'blocked', 'cancelled'],
   ready: ['planning', 'backlog', 'blocked', 'cancelled'],
-  planning: ['executing', 'needs_human', 'failed', 'blocked'],
+  planning: ['planned', 'needs_human', 'failed', 'blocked'],
+  planned: ['executing', 'blocked', 'cancelled'],
   executing: ['verifying', 'needs_human', 'failed', 'blocked'],
   verifying: ['reviewing', 'executing', 'needs_human', 'failed'],
   reviewing: ['awaiting_merge', 'executing', 'needs_human', 'failed'],
   awaiting_merge: ['done', 'executing'],
-  needs_human: ['planning', 'executing', 'cancelled'],
+  needs_human: ['planning', 'planned', 'executing', 'cancelled'],
   blocked: ['backlog', 'cancelled'],
   failed: ['ready', 'cancelled'],
   done: [],
@@ -120,13 +122,22 @@ interface ItemRow {
   next_input: string | null;
 }
 
-/** Pendências gravadas antes das sugestões guardavam as perguntas como texto puro. */
+/**
+ * Pendências antigas: as gravadas antes das sugestões guardavam as perguntas como texto puro,
+ * e as anteriores à autonomia não tinham `regraCritica`.
+ */
 function readPending(json: string): Pending {
-  const pending = JSON.parse(json) as Omit<Pending, 'questions'> & { questions?: (Question | string)[] };
+  const pending = JSON.parse(json) as Omit<Pending, 'questions'> & {
+    questions?: (Partial<Question> | string)[];
+  };
   if (!pending.questions) return pending as Pending;
   return {
     ...pending,
-    questions: pending.questions.map((q) => (typeof q === 'string' ? { texto: q, sugestao: '' } : q)),
+    questions: pending.questions.map((q) =>
+      typeof q === 'string'
+        ? { texto: q, sugestao: '', regraCritica: false }
+        : { texto: q.texto ?? '', sugestao: q.sugestao ?? '', regraCritica: q.regraCritica ?? false },
+    ),
   };
 }
 

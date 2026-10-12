@@ -17,3 +17,4 @@
 - **Estimativa de consumo por modelo.** Hoje a média é por etapa. O escalonamento troca o modelo da execução e muda o consumo; separar por etapa e modelo quando houver amostras.
 - **Calibrar a política de saldo com dados reais.** Piso de 10%, margem de 10 pontos no ritmo e 30 min de idade máxima foram escolhidos sem histórico. Revisar depois de algumas semanas de uso, olhando quantas pausas houve e quantas etapas esgotaram o saldo no meio.
 - **Rodapé com o estado da fila.** O rodapé fixo pode mostrar também a etapa em andamento e os itens que aguardam você, no lugar de repetir isso na rolagem.
+- **ctrl+c na inbox aberta pelo `run` no meio do lote.** Hoje descarta só o item em andamento e a esteira segue para as execuções. Avaliar se o ctrl+c ali deveria encerrar o `run` (como fora da inbox) ou perguntar.

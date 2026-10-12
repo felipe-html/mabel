@@ -13,17 +13,18 @@ import { dataDir, openDb } from './db.ts';
 import { ToolLog, summaryLine } from './exec.ts';
 import { startFooter } from './footer.ts';
 import { formatCost, formatDuration } from './format.ts';
-import { inboxSession, pendingItems, terminalIO } from './inbox.ts';
+import { inboxSession, pendingItems, runInbox, terminalIO } from './inbox.ts';
 import { type Item, type ItemStatus, getItemById, listItems, syncBacklog, transition } from './items.ts';
+import { type Notify, notify as systemNotify } from './notify.ts';
 import { LockError, acquireLock } from './lock.ts';
-import { type AdvanceResult, advanceItem } from './pipeline.ts';
+import { type AdvanceResult, advanceItem, autonomousDecisions } from './pipeline.ts';
 import { type Project, ProjectError, mabelCommitted, resolveProject } from './project.ts';
 import { type RunHandle, type RunStage, startRun } from './runner.ts';
 import { probeRequest } from './status.ts';
 import { style } from './style.ts';
 import { isMerged, removeWorktree } from './worktree.ts';
 
-export const runUsage = 'mabel run [--item <n>] [--uma]';
+export const runUsage = 'mabel run [--item <n>] [--uma] [--sem-lote]';
 
 /** Relógio injetável: os testes avançam o tempo sem esperar de verdade. */
 export interface Clock {
@@ -52,8 +53,19 @@ export interface QueueOptions {
   itemNumber?: number;
   once?: boolean;
   clock?: Clock;
-  /** Perguntas no terminal (saldo); fora do TTY, a política decide sozinha. */
+  /** Perguntas no terminal (saldo, inbox); fora do TTY, a política decide sozinha. */
   interactive?: boolean;
+  /**
+   * Planeja todos os itens `ready` antes de executar o primeiro (padrão). `--item` e `--uma`
+   * implicam item a item.
+   */
+  batch?: boolean;
+  /** Pergunta sim/não no terminal; os testes trocam por respostas roteirizadas. */
+  confirm?: (question: string, defaultYes?: boolean) => Promise<boolean>;
+  /** Abre a inbox no fim da fase de planejamento; sem ela, a oferta não acontece. */
+  inbox?: () => Promise<void>;
+  /** Aviso do sistema quando a fila para ou espera o humano. */
+  notify?: Notify;
 }
 
 export type QueueEnd = 'empty' | 'once' | 'interrupted' | 'paused' | 'not_found';
@@ -65,10 +77,16 @@ export interface QueueResult {
   finalStates: Map<number, ItemStatus>;
   costUsd: number;
   elapsedMs: number;
+  /** Perguntas respondidas pela sugestão nesta execução (gate `autonomy`). */
+  autonomous: { number: number; decision: string }[];
 }
 
 const STAGE_LABELS: Record<RunStage, string> = { plan: 'planejar', execute: 'executar', review: 'revisar' };
 const IN_PROGRESS: ItemStatus[] = ['planning', 'executing', 'verifying', 'reviewing'];
+const PLANNING: ItemStatus[] = ['ready', 'planning'];
+const EXECUTING: ItemStatus[] = ['planned', 'executing', 'verifying', 'reviewing'];
+
+const countItems = (count: number) => (count === 1 ? '1 item' : `${count} itens`);
 const WINDOW_LABELS: Record<string, string> = { five_hour: '5h', seven_day: '7 dias' };
 
 /** Consome a fila do projeto. `interrupt` repassa o ctrl+c à run atual e encerra o laço. */
@@ -76,6 +94,15 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
   const { db, home, project } = options;
   const clock = options.clock ?? systemClock;
   const interactive = options.interactive ?? false;
+  const ask = options.confirm ?? confirm;
+  const batch = (options.batch ?? true) && options.itemNumber === undefined && !options.once;
+  const notify = options.notify ?? systemNotify;
+  const title = notifyTitle(project);
+  /** Pergunta no terminal: avisa antes, porque a fila fica parada até a resposta. */
+  const askHuman = (question: string, defaultYes?: boolean, notice = question.trim()) => {
+    notify(title, `aguardando você: ${notice}`);
+    return ask(question, defaultYes);
+  };
   const abort = new AbortController();
   const log = new ToolLog(project.root, '    ');
   let current: RunHandle | undefined;
@@ -135,7 +162,8 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
         const used = `${Math.round(decision.used * 100)}%`;
         const expected = `${Math.round(decision.expected * 100)}%`;
         log.write(style.bold(`  Janela de 7 dias acima do ritmo: ${used} usados depois da etapa, ritmo de ${expected}.`));
-        if (interactive && (await confirm('  Continuar mesmo assim?', false))) {
+        const notice = `7 dias acima do ritmo (${used} usados, ritmo de ${expected}); continuar mesmo assim?`;
+        if (interactive && (await askHuman('  Continuar mesmo assim?', false, notice))) {
           approvedUntil.set('pace', fiveHour.resetsAt.getTime());
           return true;
         }
@@ -153,7 +181,7 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
           ? 'abaixo de 30%'
           : `a etapa costuma usar ${Math.round(decision.estimate * 100)}% e o piso é 10%`;
       log.write(style.bold(`  Saldo da janela de ${label} em ${percent} (${why}).`));
-      if (interactive && (await confirm('  Continuar mesmo assim?', false))) {
+      if (interactive && (await askHuman('  Continuar mesmo assim?', false, `saldo de ${label} em ${percent}; continuar mesmo assim?`))) {
         approvedUntil.set(decision.window, resetsAt);
         return true;
       }
@@ -200,6 +228,54 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
 
   const startedAt = new Date();
   const finalStates = new Map<number, ItemStatus>();
+  let phase: 'plan' | 'execute' | undefined;
+  let inboxOffered = false;
+
+  /** Separador ao trocar de fase no lote: `── planejamento (3 itens) ──`. */
+  const enterPhase = (next: 'plan' | 'execute', items: Item[]) => {
+    if (phase === next) return;
+    phase = next;
+    const states = next === 'plan' ? PLANNING : EXECUTING;
+    const count = items.filter((item) => states.includes(item.status)).length;
+    log.write(style.dim(`── ${next === 'plan' ? 'planejamento' : 'execução'} (${countItems(count)}) ──`));
+  };
+
+  /** Fim da fase de planejamento: oferece a inbox uma vez, se há itens aguardando. */
+  const offerInbox = async (): Promise<boolean> => {
+    if (inboxOffered || !interactive || !options.inbox) return false;
+    const waiting = pendingItems(db, project.id).length;
+    if (waiting === 0) return false;
+    inboxOffered = true;
+    log.flush();
+    const label = waiting === 1 ? '1 item aguarda você' : `${waiting} itens aguardam você`;
+    if (!(await askHuman(`\n${label}. Abrir a inbox agora?`))) return false;
+    await options.inbox();
+    return true;
+  };
+
+  /** Próximo item da fila e se ele para em `planned`; `undefined` quando a fila acabou. */
+  const pick = async (items: Item[]): Promise<{ target: Item; until?: 'planned' } | { end: QueueEnd; message?: string }> => {
+    const inProgress = items.find((item) => IN_PROGRESS.includes(item.status));
+    if (options.itemNumber !== undefined && !inProgress) {
+      if (finalStates.has(options.itemNumber)) return { end: 'once' };
+      const target = items.find((item) => item.number === options.itemNumber);
+      if (!target) return { end: 'not_found', message: `Item #${options.itemNumber} não existe.` };
+      if (target.status !== 'ready' && target.status !== 'planned') {
+        return { end: 'not_found', message: `Item #${target.number} está em ${target.status}, não em ready nem em planned.` };
+      }
+      return { target };
+    }
+    if (!batch) {
+      // Item a item: o planejado (aprovado, por exemplo) antes do próximo `ready`.
+      const target = inProgress ?? items.find((item) => item.status === 'planned') ?? items.find((item) => item.status === 'ready');
+      return target ? { target } : { end: 'empty' };
+    }
+    const planning = inProgress ?? items.find((item) => item.status === 'ready');
+    if (planning) return PLANNING.includes(planning.status) ? { target: planning, until: 'planned' } : { target: planning };
+    if (await offerInbox()) return pick(listItems(db, project.id));
+    const planned = items.find((item) => item.status === 'planned');
+    return planned ? { target: planned } : { end: 'empty' };
+  };
 
   const loop = async (): Promise<{ end: QueueEnd; message?: string }> => {
     for (;;) {
@@ -217,24 +293,14 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
       for (const warning of syncBacklog(db, project).warnings) log.write(style.dim(warning));
 
       const items = listItems(db, project.id);
-      const inProgress = items.find((item) => IN_PROGRESS.includes(item.status));
-      let target: Item | undefined;
-      if (inProgress) {
-        target = inProgress;
-      } else if (options.itemNumber !== undefined) {
-        if (finalStates.has(options.itemNumber)) return { end: 'once' };
-        target = items.find((item) => item.number === options.itemNumber);
-        if (!target) return { end: 'not_found', message: `Item #${options.itemNumber} não existe.` };
-        if (target.status !== 'ready') {
-          return { end: 'not_found', message: `Item #${target.number} está em ${target.status}, não em ready.` };
-        }
-      } else {
-        target = items.find((item) => item.status === 'ready');
-      }
-      if (!target) return { end: 'empty' };
+      const next = await pick(items);
+      if ('end' in next) return next;
+      const { target, until } = next;
+      if (abort.signal.aborted) return { end: 'interrupted' };
+      if (batch) enterPhase(until ? 'plan' : 'execute', listItems(db, project.id));
 
       log.setCwd(target.worktree ?? project.root);
-      const result: AdvanceResult = await advanceItem(env, target.id);
+      const result: AdvanceResult = await advanceItem(env, target.id, { until });
       current = undefined;
       log.flush();
       finalStates.set(target.number, getItemById(db, target.id).status);
@@ -253,30 +319,59 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
     const cost = db
       .prepare('SELECT coalesce(sum(cost_usd), 0) AS total FROM runs WHERE started_at >= ?')
       .get(startedAt.toISOString()) as { total: number };
-    return { end, message, finalStates, costUsd: cost.total, elapsedMs: Date.now() - startedAt.getTime() };
+    if (end === 'empty' || end === 'once') notify(title, queueStatusLine(end, finalStates));
+    else if (end === 'paused') notify(title, message ?? 'fila pausada');
+    return {
+      end,
+      message,
+      finalStates,
+      costUsd: cost.total,
+      elapsedMs: Date.now() - startedAt.getTime(),
+      autonomous: autonomousDecisions(db, { projectId: project.id, since: startedAt }),
+    };
   });
   return { interrupt, done };
 }
 
-export function renderQueueSummary(result: QueueResult): string {
+export function notifyTitle(project: Project): string {
+  return `Mabel · ${project.name}`;
+}
+
+const ENDINGS: Record<QueueEnd, string> = {
+  empty: 'fila vazia',
+  once: 'concluído',
+  interrupted: 'interrompido',
+  paused: 'pausado',
+  not_found: 'nada a fazer',
+};
+
+/** Fim da fila e estados finais, sem custo e tempo: `fila vazia · awaiting_merge 3 · needs_human 1`. */
+export function queueStatusLine(end: QueueEnd, finalStates: Map<number, ItemStatus>): string {
   const counts = new Map<ItemStatus, number>();
-  for (const status of result.finalStates.values()) counts.set(status, (counts.get(status) ?? 0) + 1);
+  for (const status of finalStates.values()) counts.set(status, (counts.get(status) ?? 0) + 1);
   const states = [...counts].map(([status, count]) => `${status} ${count}`).join(' · ') || 'nenhum item processado';
-  const endings: Record<QueueEnd, string> = {
-    empty: 'fila vazia',
-    once: 'concluído',
-    interrupted: 'interrompido',
-    paused: 'pausado',
-    not_found: 'nada a fazer',
-  };
-  const head = `■ ${endings[result.end]} · ${states} · ${formatCost(result.costUsd)} · ${formatDuration(result.elapsedMs)}`;
-  return result.message ? `${head}\n${result.message}` : head;
+  return `${ENDINGS[end]} · ${states}`;
+}
+
+export function renderQueueSummary(result: QueueResult): string {
+  const lines = [
+    `■ ${queueStatusLine(result.end, result.finalStates)} · ${formatCost(result.costUsd)} · ${formatDuration(result.elapsedMs)}`,
+  ];
+  if (result.message) lines.push(result.message);
+  if (result.autonomous.length > 0) {
+    lines.push('', 'Decididas pela sugestão (revise no merge):');
+    for (const { number, decision } of result.autonomous) lines.push(`  #${number} ${decision}`);
+  }
+  return lines.join('\n');
 }
 
 export async function run(args: string[]): Promise<number> {
   let values;
   try {
-    ({ values } = parseArgs({ args, options: { item: { type: 'string' }, uma: { type: 'boolean' } } }));
+    ({ values } = parseArgs({
+      args,
+      options: { item: { type: 'string' }, uma: { type: 'boolean' }, 'sem-lote': { type: 'boolean' } },
+    }));
   } catch (error) {
     process.stderr.write(`${(error as Error).message}\nUso: ${runUsage}\n`);
     return 1;
@@ -308,7 +403,20 @@ export async function run(args: string[]): Promise<number> {
     if (interactive) stopFooter = startFooter();
     // run → inbox → run: com itens aguardando, o humano responde e a fila segue sem sair.
     for (;;) {
-      const queue = startQueue({ db, home, project, itemNumber, once: values.uma, interactive });
+      const queue = startQueue({
+        db,
+        home,
+        project,
+        itemNumber,
+        once: values.uma,
+        batch: !values['sem-lote'],
+        interactive,
+        inbox: async () => {
+          process.stdout.write('\n');
+          await runInbox(db, home, project, terminalIO);
+          process.stdout.write('\n');
+        },
+      });
       const onSigint = () => queue.interrupt();
       process.on('SIGINT', onSigint);
       let result: QueueResult;
@@ -323,9 +431,12 @@ export async function run(args: string[]): Promise<number> {
       const waiting = pendingItems(db, project.id).length;
       if (!interactive || waiting === 0) return 0;
       const label = waiting === 1 ? '1 item aguarda você' : `${waiting} itens aguardam você`;
-      if (!(await confirm(`\n${label}. Abrir a inbox agora?`))) return 0;
+      const question = `${label}. Abrir a inbox agora?`;
+      const waitingFor = (text: string) => systemNotify(notifyTitle(project), `aguardando você: ${text}`);
+      waitingFor(question);
+      if (!(await confirm(`\n${question}`))) return 0;
       process.stdout.write('\n');
-      if (!(await inboxSession(db, home, project, terminalIO))) return 0;
+      if (!(await inboxSession(db, home, project, terminalIO, waitingFor))) return 0;
       process.stdout.write('\n');
     }
   } catch (error) {

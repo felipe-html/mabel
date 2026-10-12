@@ -253,6 +253,7 @@ export function executePrompt(ctx: StageContext, input: ExecutePromptInput): str
     '',
     ...section('Plano', renderPlanMarkdown(ctx.item, input.plan).replace(/^# .*\n/, '')),
     ...section('Restrições', ctx.item.restrictions ?? ''),
+    ...criticalRules(readCriticalRules(ctx.project.root)),
     ...section('Comandos de verificação', verifyCommands(ctx.project)),
     ...section('Tentativas anteriores', input.attemptsSummary ?? ''),
     ...section('Falha da tentativa anterior', input.failure ?? ''),
@@ -290,6 +291,12 @@ export function reviewPrompt(ctx: StageContext, input: ReviewPromptInput): strin
 
 // Etapas tipadas, com artefatos ----------------------------------------------------------
 
+/** Grava o `plano.json` e o `plano.md` do item. */
+export function writePlan(home: string, item: Pick<Item, 'id' | 'number' | 'title'>, plan: PlanOutput): void {
+  writeArtifact(home, item.id, 'plano.json', plan);
+  writeArtifact(home, item.id, 'plano.md', renderPlanMarkdown(item, plan));
+}
+
 export async function runPlan(
   db: DatabaseSync,
   ctx: StageContext,
@@ -297,10 +304,7 @@ export async function runPlan(
   options: StageOptions = {},
 ): Promise<StageResult<PlanOutput>> {
   const result = await runStage<PlanOutput>(db, ctx, 'plan', planPrompt(ctx, input), options);
-  if (result.output) {
-    writeArtifact(ctx.home, ctx.item.id, 'plano.json', result.output);
-    writeArtifact(ctx.home, ctx.item.id, 'plano.md', renderPlanMarkdown(ctx.item, result.output));
-  }
+  if (result.output) writePlan(ctx.home, ctx.item, result.output);
   return result;
 }
 

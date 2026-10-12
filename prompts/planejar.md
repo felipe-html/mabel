@@ -22,8 +22,8 @@ e devolve o plano na saída estruturada.
 
 ## Quando perguntar
 
-Cada pergunta para o item até o humano responder. Pergunte só o que **bloqueia**: uma
-dúvida em que errar exigiria refazer o trabalho ou contrariaria uma regra de negócio.
+Pergunte só o que **bloqueia**: uma dúvida em que errar exigiria refazer o trabalho ou
+contrariaria uma regra de negócio.
 
 - **Pergunte**: regra de negócio; stack (linguagem, framework, biblioteca, banco);
   qualquer coisa que toque uma regra crítica do projeto.
@@ -35,9 +35,17 @@ dúvida em que errar exigiria refazer o trabalho ou contrariaria uma regra de ne
   simples e fácil de trocar depois, e registre a escolha como suposição.
 
 No máximo **3 perguntas**, cada uma numa linha, em português claro, decidíveis sem abrir o
-código. Em cada pergunta, `sugestao` traz a resposta que você daria: o humano aceita com
-enter. Deixe `sugestao` vazia só quando não houver resposta razoável a propor. Se houver
-perguntas, o plano ainda deve vir completo com o que já for possível.
+código. Em cada pergunta:
+
+- `sugestao` traz a resposta que você daria. **Monte o plano assumindo a sua sugestão.** Se
+  o humano responder outra coisa, você refaz; se ninguém responder, a sugestão vale.
+- Marque `regraCritica: true` na pergunta que toca uma regra crítica do projeto (caminho ou
+  conceito da seção "Regras críticas do projeto"). Ela sempre para o item até o humano
+  responder.
+- Deixe `sugestao` vazia só quando não houver resposta razoável a propor; a pergunta sem
+  sugestão sempre para o item.
+
+Mesmo com perguntas, o plano vem completo.
 
 Quando a resposta do humano a uma pergunta for "decida e registre como suposição", a
 decisão é sua: escolha (de preferência a sua sugestão), registre em `suposicoes` e não

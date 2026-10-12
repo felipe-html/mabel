@@ -28,9 +28,9 @@ imposta por código (runner, hook, gate, banco); se depende de o modelo obedecer
 ## Ciclo de vida do item
 
 ```
-backlog → ready → planning → executing → verifying → reviewing → awaiting_merge → done
-                                  ↑            │            │
-                                  └────────────┴────────────┘  (falha de gate ou revisão)
+backlog → ready → planning → planned → executing → verifying → reviewing → awaiting_merge → done
+                                            ↑            │            │
+                                            └────────────┴────────────┘  (falha de gate ou revisão)
 
 Desvios a partir de qualquer etapa: needs_human · blocked · failed
 ```
@@ -40,7 +40,7 @@ Desvios a partir de qualquer etapa: needs_human · blocked · failed
 | # | Garantia | Mecanismo |
 |---|---|---|
 | G1 | **Toda run é auditada.** Item, etapa, modelo, início, fim, custo, tokens, chamadas de ferramenta e transcript bruto copiado. Se o registro não puder ser gravado, a run não inicia. | Runner lendo o stream-json, hooks, SQLite, cópia do transcript. |
-| G2 | **Nenhum item entra em execução sem critério de início.** Critérios de aceite verificáveis, escopo de arquivos declarado e, se tocar regra crítica, aprovação humana registrada. | Gate entre `planning` e `executing`. |
+| G2 | **Nenhum item entra em execução sem critério de início.** Critérios de aceite verificáveis, escopo de arquivos declarado e, se tocar regra crítica, aprovação humana registrada. | Gate entre `planning` e `planned`. |
 | G3 | **"Done" é calculado pelo Mabel, nunca declarado pelo agente.** Gates mecânicos verdes, cada critério de aceite do item ligado a pelo menos um teste (ou a uma rota de validação humana declarada), revisão aprovada. A exigência vale para o que o item muda, não para a cobertura do projeto inteiro. | Gate de verificação executado pelo runner, fora do agente. |
 | G4 | **O agente não sai do escopo.** Escrita fora dos caminhos declarados e comandos da lista de bloqueio são barrados. O agente nunca faz merge nem push na branch principal. | Hook `PreToolUse` e `--disallowedTools`. |
 | G5 | **Cada item trabalha isolado.** | Worktree e branch próprias por item. |
@@ -124,6 +124,9 @@ mostrar crítico, ele sobe para garantia.
 - O revisor parte da hipótese de que o código não atende aos critérios.
 - Commits pequenos, com mensagem descritiva.
 - Relatórios e perguntas da inbox em português claro, decidíveis sem abrir o código.
+- Pergunta do agente que não toca regra crítica e traz sugestão é respondida pela própria
+  sugestão e registrada como suposição, salvo se o projeto configurar
+  `autonomia: "perguntar"`.
 
 ## Decisões do humano
 

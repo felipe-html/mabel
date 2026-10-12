@@ -9,6 +9,9 @@ import { commitMabelDir } from '../src/init.ts';
 import { openDb } from '../src/db.ts';
 import { resolveProject } from '../src/project.ts';
 
+// Sem avisos do sistema nos testes, no processo atual e nos filhos.
+process.env.MABEL_NOTIFICAR = '0';
+
 export const CLI = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 export const FAKE_CLAUDE = fileURLToPath(new URL('./fixtures/fake-claude.mjs', import.meta.url));
 
@@ -39,7 +42,7 @@ export function setupProject(backlog?: string) {
   const root = makeRepo({ 'src/index.js': '', 'package.json': JSON.stringify({ scripts: { test: 'node --test' } }) });
   const home = mkdtempSync(join(tmpdir(), 'mabel-home-'));
   // O ambiente é lido a cada chamada: cenários do `claude` falso valem também para o CLI.
-  const env = () => ({ ...process.env, MABEL_HOME: home, NO_COLOR: '1' });
+  const env = () => ({ ...process.env, MABEL_HOME: home, NO_COLOR: '1', MABEL_NOTIFICAR: '0' });
   const cli = (...args: string[]) =>
     spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, ...args], {
       cwd: root,

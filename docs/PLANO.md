@@ -56,10 +56,10 @@ achados do teste orientam a especificação dos passos seguintes.
       planejador calibrado para perguntar só o que bloqueia.
 - [x] Inbox: `/inbox` com perguntas uma a uma, sugestão de resposta, "decide você" e
       retomada da esteira (`docs/specs/inbox.md`).
-- [ ] Jornadas longas (`docs/specs/jornadas.md`):
-  - [ ] J.1 Autonomia nas perguntas: pergunta não crítica com sugestão não para o item.
-  - [ ] J.2 Estado `planned` e planejamento em lote no `run` (muda o ciclo de vida do contrato).
-  - [ ] J.3 Aviso do sistema quando a esteira para ou espera você.
+- [x] Jornadas longas (`docs/specs/jornadas.md`):
+  - [x] J.1 Autonomia nas perguntas: pergunta não crítica com sugestão não para o item.
+  - [x] J.2 Estado `planned` e planejamento em lote no `run` (muda o ciclo de vida do contrato).
+  - [x] J.3 Aviso do sistema quando a esteira para ou espera você.
 - [x] Saldo eficiente e sempre visível (`docs/specs/saldo.md`): leitura antiga (30 min),
       consumo medido por etapa, projeção contra piso de 10%, ritmo da janela de 7 dias e
       rodapé fixo. Muda a política de saldo do contrato (autorizado).
@@ -96,4 +96,8 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-12 | Achados do teste com o `ferias-planner`: os 3 itens pararam em `needs_human` no planejamento. Correções: `init` commita o `.mabel/`, `run` exige o `.mabel/` na branch base, worktree parado no planejamento avança até a base, prompts com critério do que perguntar e do que decidir. Spec da inbox (`docs/specs/inbox.md`). |
 | 2026-10-12 | Inbox (`docs/specs/inbox.md`): `/inbox` percorre os itens em `needs_human` pergunta por pergunta, com sugestão do agente (enter aceita), "decide você" (fora de `critical_approval`) e pular; cada item vira uma decisão só, gravada como `humano: inbox …`. O `run` num TTY oferece a inbox quando a fila termina com pendências e retoma a esteira em seguida. Perguntas passam a `{ texto, sugestao }`; pendências antigas continuam legíveis. Verificado num pseudo-terminal com o `claude` falso: run → inbox → run até `awaiting_merge`. |
 | 2026-10-12 | Spec das jornadas longas (`docs/specs/jornadas.md`): autonomia ligada por padrão, planejamento em lote como padrão do `run`, estado `planned` (mudança no ciclo de vida autorizada) e aviso do sistema. |
+| 2026-10-12 | J.1 (`docs/specs/jornadas.md`): pergunta com `regraCritica` no esquema; com `autonomia: "sugestoes"` (padrão, gravado pelo `init`), perguntas não críticas e com sugestão viram suposições `(autônomo)` no plano ou na execução, com gate `autonomy`; o item não para. Resumo do `run`, `mabel item` e a aprovação de item crítico na inbox mostram as decisões. O prompt do executor passa a receber as regras críticas do projeto. |
+| 2026-10-12 | J.2: estado `planned` entre `planning` e `executing` (contrato atualizado: ciclo de vida e pedido de autonomia). O `run` planeja todos os itens `ready` antes de executar, oferece a inbox uma vez no fim do planejamento (só no TTY) e replaneja os respondidos antes das execuções; `--sem-lote`, `--item` e `--uma` seguem item a item. `aprovar` leva a `planned`; quadro e `mabel status` mostram `planned`. Verificado num pseudo-terminal com o `claude` falso: 3 itens, um com pergunta no planejamento; 3 planejamentos, inbox, replanejamento pela mesma sessão e 3 execuções até `awaiting_merge`. |
+| 2026-10-12 | J.3: `src/notify.ts` com `osascript` (texto por `argv`, processo desacoplado, desligável com `MABEL_NOTIFICAR=0`). Avisos no fim da fila, na pausa e antes de cada pergunta no terminal (saldo, oferta da inbox, retomada). Jornadas longas concluídas. |
+| 2026-10-12 | Contrato: o mecanismo do G2 passa a ser o gate entre `planning` e `planned`, alinhado ao ciclo de vida do J.2 (autorizado pelo usuário). |
 | 2026-10-12 | Saldo (`docs/specs/saldo.md`): leitura com mais de 30 min é atualizada antes da etapa; consumo de cada etapa medido pelas leituras das runs (média das 10 últimas, mínimo 3); com estimativa, a política compara o saldo depois da etapa com o piso de 10%, sem ela vale o limiar de 30%; janela de 7 dias acima do ritmo pergunta e, sem autorização, espera o ritmo alcançar. Rodapé fixo com as duas janelas no modo Mabel e no `mabel run`, no lugar do cabeçalho de abertura. Política de saldo do contrato atualizada. Verificado num pseudo-terminal. |

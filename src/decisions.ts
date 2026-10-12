@@ -88,12 +88,12 @@ export function respond(
   }
 }
 
-/** Aprova os critérios de um item crítico: segue para a execução com o plano atual. */
+/** Aprova os critérios de um item crítico: vai a `planned` e executa com o plano atual. */
 export function approve(db: DatabaseSync, project: Project, item: Item, options: DecisionOptions = {}): void {
   if (item.status !== 'needs_human' || item.pendingKind !== 'critical_approval') {
     throw new DecisionError(`#${item.number} não está aguardando aprovação de critérios (estado: ${item.status}).`);
   }
-  decide(db, project, item, 'executing', via('critérios aprovados', options), {
+  decide(db, project, item, 'planned', via('critérios aprovados', options), {
     approvedAt: new Date().toISOString(),
     attempts: 0,
     escalatedCycle: false,

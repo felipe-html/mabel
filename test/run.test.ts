@@ -36,9 +36,11 @@ function queueProject(backlog: string, responses: unknown[]) {
 
 test('fila de três itens: dois em awaiting_merge, um em needs_human; responder e novo run concluem', () => {
   const q = queueProject('\n## A\nprimeiro\n\n## B\nsegundo\n\n## C\nterceiro\n', [
-    PLAN_OK, EXEC, REVIEW,
-    { structured_output: { ...PLAN, perguntas: [{ texto: 'Qual banco usar?', sugestao: 'SQLite' }] }, session_id: 'plan-b' },
-    PLAN_OK, EXEC, REVIEW,
+    PLAN_OK,
+    { structured_output: { ...PLAN, perguntas: [{ texto: 'Qual banco usar?', sugestao: 'SQLite', regraCritica: true }] }, session_id: 'plan-b' },
+    PLAN_OK,
+    EXEC, REVIEW,
+    EXEC, REVIEW,
     PLAN_OK, EXEC, REVIEW,
   ]);
   const first = q.cli('run');
@@ -193,7 +195,7 @@ test('saldo de 7 dias abaixo de 30% fora do TTY pausa a fila com o motivo', asyn
 test('aprovar e cancelar pela linha de comando', () => {
   const q = queueProject('\n## A\nprimeiro\n\n## B\nsegundo\n', [
     { structured_output: { ...PLAN, conceitosCriticos: ['Desconto'] } },
-    { structured_output: { ...PLAN, perguntas: [{ texto: '?', sugestao: '' }] } },
+    { structured_output: { ...PLAN, perguntas: [{ texto: '?', sugestao: '', regraCritica: false }] } },
   ]);
   q.cli('run');
   assert.deepEqual(q.states(), [[1, 'needs_human'], [2, 'needs_human']]);
@@ -201,7 +203,7 @@ test('aprovar e cancelar pela linha de comando', () => {
   assert.equal(q.cli('aprovar', '1').status, 0);
   assert.equal(q.cli('aprovar', '2').status, 1);
   assert.equal(q.cli('cancelar', '2').status, 0);
-  assert.deepEqual(q.states(), [[1, 'executing'], [2, 'cancelled']]);
+  assert.deepEqual(q.states(), [[1, 'planned'], [2, 'cancelled']]);
   assert.equal(q.cli('responder', '9', 'x').status, 1);
 });
 

@@ -12,9 +12,9 @@ import {
   transition,
   updateItem,
 } from './items.ts';
-import { type CriticalRules, type Project, readCriticalRules } from './project.ts';
+import { type CriticalRules, type Project, type ProjectConfig, readCriticalRules } from './project.ts';
 import { type RunHandle, type RunObserver, type RunOutcome, type RunStage, isUsageLimit } from './runner.ts';
-import type { ExecuteOutput, PlanOutput, Question } from './schemas/stages.ts';
+import type { Assumption, ExecuteOutput, PlanOutput, Question } from './schemas/stages.ts';
 import {
   type StageContext,
   itemDir,
@@ -22,6 +22,8 @@ import {
   runExecute,
   runPlan,
   runReview,
+  writeArtifact,
+  writePlan,
 } from './stages.ts';
 import { commitAll, commitMessage, prepareWorktree, shell } from './worktree.ts';
 
@@ -120,6 +122,53 @@ export function criteriaWithoutTests(plan: PlanOutput, execution: ExecuteOutput,
     }
   }
   return missing;
+}
+
+// Autonomia ------------------------------------------------------------------------------
+
+/**
+ * Suposições que respondem às perguntas pela sugestão do agente, ou `undefined` quando o
+ * item precisa parar: autonomia desligada, alguma pergunta crítica ou alguma sem sugestão.
+ */
+export function autonomousAnswers(config: ProjectConfig, questions: Question[]): Assumption[] | undefined {
+  if (questions.length === 0 || config.autonomia !== 'sugestoes') return undefined;
+  if (questions.some((q) => q.regraCritica || !q.sugestao.trim())) return undefined;
+  return questions.map((q) => ({ texto: `P: ${q.texto} → R: ${q.sugestao} (autônomo)`, regraCritica: false }));
+}
+
+/** Pares `pergunta → sugestão` gravados no gate `autonomy`. */
+export const AUTONOMY_SEPARATOR = ' | ';
+
+function recordAutonomy(env: PipelineEnv, item: Item, attempt: number, questions: Question[]): void {
+  const pairs = questions.map((q) => `${q.texto} → ${q.sugestao}`).join(AUTONOMY_SEPARATOR);
+  recordGate(env.db, item.id, attempt, 'autonomy', true, pairs);
+  const count = questions.length === 1 ? '1 pergunta respondida' : `${questions.length} perguntas respondidas`;
+  env.log?.(`#${item.number} ${item.title}: ${count} pela sugestão (autônomo)`);
+}
+
+/** Decisões autônomas gravadas no gate `autonomy`, uma linha `pergunta → sugestão` cada. */
+export function autonomousDecisions(
+  db: DatabaseSync,
+  filter: { itemId: string } | { projectId: string; since: Date },
+): { number: number; decision: string }[] {
+  const rows = (
+    'itemId' in filter
+      ? db
+          .prepare(
+            `SELECT i.number, g.detail FROM gate_results g JOIN items i ON i.id = g.item_id
+             WHERE g.gate = 'autonomy' AND g.item_id = ? ORDER BY g.id`,
+          )
+          .all(filter.itemId)
+      : db
+          .prepare(
+            `SELECT i.number, g.detail FROM gate_results g JOIN items i ON i.id = g.item_id
+             WHERE g.gate = 'autonomy' AND i.project_id = ? AND g.at >= ? ORDER BY g.id`,
+          )
+          .all(filter.projectId, filter.since.toISOString())
+  ) as { number: number; detail: string | null }[];
+  return rows.flatMap((row) =>
+    (row.detail ?? '').split(AUTONOMY_SEPARATOR).filter(Boolean).map((decision) => ({ number: row.number, decision })),
+  );
 }
 
 // Registro -------------------------------------------------------------------------------
@@ -235,6 +284,14 @@ async function planStep(env: PipelineEnv, item: Item): Promise<Step> {
   if (problem) return problem;
 
   const { runId, sessionId } = result.outcome;
+  const assumed = result.output && autonomousAnswers(env.project.config, result.output.perguntas);
+  if (result.output && assumed) {
+    const questions = result.output.perguntas;
+    result.output.suposicoes.push(...assumed);
+    result.output.perguntas = [];
+    writePlan(env.home, item, result.output);
+    recordAutonomy(env, item, 0, questions);
+  }
   const verdict = startGate(
     result.output,
     result.invalid,
@@ -285,7 +342,7 @@ async function planStep(env: PipelineEnv, item: Item): Promise<Step> {
     case 'pass':
       recordGate(env.db, item.id, 0, 'start', true, null);
       updateItem(env.db, item.id, { planRetries: 0, attempts: 0, nextInput: null });
-      move(env, item, 'executing', 'plano aprovado pelo gate de início', runId);
+      move(env, item, 'planned', 'plano aprovado pelo gate de início', runId);
       return undefined;
   }
 }
@@ -362,8 +419,17 @@ async function executeStep(env: PipelineEnv, item: Item): Promise<Step> {
     return attemptFailed(env, item, cycleAttempt, `A saída da execução foi rejeitada: ${result.invalid}`);
   }
 
-  // G7: perguntas ou suposições sobre regra crítica param antes do commit.
+  // G7: perguntas ou suposições sobre regra crítica param antes do commit. Com suposição
+  // crítica o item para de qualquer jeito, e as perguntas vão junto para o humano.
   const critical = result.output.suposicoes.filter((s) => s.regraCritica).map((s) => s.texto);
+  const assumed = critical.length === 0 ? autonomousAnswers(env.project.config, result.output.perguntas) : undefined;
+  if (assumed) {
+    const questions = result.output.perguntas;
+    result.output.suposicoes.push(...assumed);
+    result.output.perguntas = [];
+    writeArtifact(env.home, item.id, `execucao-${attemptNo}.json`, result.output);
+    recordAutonomy(env, item, attemptNo, questions);
+  }
   if (result.output.perguntas.length > 0 || critical.length > 0) {
     const parts = [
       ...result.output.perguntas.map((q) => `pergunta: ${q.texto}`),
@@ -478,8 +544,13 @@ async function reviewStep(env: PipelineEnv, item: Item): Promise<Step> {
   return { kind: 'stopped', status: 'awaiting_merge' };
 }
 
+export interface AdvanceOptions {
+  /** `planned`: para quando o item chega a `planned` (planejamento em lote). */
+  until?: 'planned';
+}
+
 /** Leva o item pelas etapas até um estado de parada, interrupção ou pausa. */
-export async function advanceItem(env: PipelineEnv, itemId: string): Promise<AdvanceResult> {
+export async function advanceItem(env: PipelineEnv, itemId: string, options: AdvanceOptions = {}): Promise<AdvanceResult> {
   for (;;) {
     const item = getItemById(env.db, itemId);
     let step: Step;
@@ -491,6 +562,10 @@ export async function advanceItem(env: PipelineEnv, itemId: string): Promise<Adv
       case 'planning':
         step = await planStep(env, item);
         break;
+      case 'planned':
+        if (options.until === 'planned') return { kind: 'stopped', status: 'planned' };
+        move(env, item, 'executing', 'início da execução');
+        continue;
       case 'executing':
         step = await executeStep(env, item);
         break;

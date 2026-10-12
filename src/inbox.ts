@@ -165,6 +165,11 @@ async function criticalFlow(
     io.write(`${INDENT}critérios:`);
     for (const c of plan.criterios) io.write(`${INDENT}  ${c.id} (${c.verificacao}) ${c.texto}`);
     io.write(`${INDENT}escopo: ${plan.escopo.join(', ')}`);
+    // Inclui as respostas autônomas: aqui o humano revê o que o agente decidiu sozinho.
+    if (plan.suposicoes.length > 0) {
+      io.write(`${INDENT}suposições:`);
+      for (const s of plan.suposicoes) io.write(`${INDENT}  - ${s.texto}${s.regraCritica ? ' (regra crítica)' : ''}`);
+    }
   }
   for (;;) {
     const input = await choose<string>(io, 'a aprova · texto ajusta os critérios · c cancela · p pula', (text) => {
@@ -174,7 +179,7 @@ async function criticalFlow(
     if (input === 'p') return SKIP;
     if (input === 'a') {
       approve(db, project, item, VIA);
-      return 'executing';
+      return 'planned';
     }
     if (input === 'c') {
       if (!(await confirmCancel(io, item))) continue;
@@ -264,11 +269,21 @@ export async function runInbox(db: DatabaseSync, home: string, project: Project,
   return result;
 }
 
-/** Inbox seguida da pergunta de retomada. Devolve `true` quando a fila deve seguir. */
-export async function inboxSession(db: DatabaseSync, home: string, project: Project, io: InboxIO): Promise<boolean> {
+/**
+ * Inbox seguida da pergunta de retomada. Devolve `true` quando a fila deve seguir.
+ * `waiting` é avisado antes da pergunta de retomada (aviso do sistema no `run`).
+ */
+export async function inboxSession(
+  db: DatabaseSync,
+  home: string,
+  project: Project,
+  io: InboxIO,
+  waiting?: (question: string) => void,
+): Promise<boolean> {
   const result = await runInbox(db, home, project, io);
   if (result.interrupted || result.answered === 0) return false;
   try {
+    waiting?.('Retomar a esteira agora?');
     const answer = (await io.ask('Retomar a esteira agora? [S/n] ')).toLowerCase();
     return !answer || answer.startsWith('s') || answer.startsWith('y');
   } catch (error) {

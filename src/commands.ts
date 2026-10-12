@@ -47,7 +47,7 @@ export const commands: Command[] = [
   },
   {
     name: 'run',
-    description: 'Consome a fila do backlog, item a item',
+    description: 'Consome a fila: planeja os itens prontos, depois executa',
     usage: runUsage,
     run,
   },

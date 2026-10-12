@@ -16,6 +16,12 @@ export interface StageLimits {
   maxBudgetUsd: number;
 }
 
+/**
+ * O que fazer com a pergunta do agente que não toca regra crítica e traz sugestão:
+ * `sugestoes` adota a sugestão e registra como suposição; `perguntar` para o item.
+ */
+export type Autonomy = 'sugestoes' | 'perguntar';
+
 export interface ProjectConfig {
   projectId: string;
   baseBranch: string;
@@ -23,6 +29,7 @@ export interface ProjectConfig {
   verify: VerifyCommand[];
   models: Record<Stage, string>;
   limits: Record<Stage, StageLimits>;
+  autonomia: Autonomy;
 }
 
 export interface Project {
@@ -96,6 +103,7 @@ export function readConfig(root: string): ProjectConfig | undefined {
       execute: { ...DEFAULT_LIMITS.execute, ...raw.limits?.execute },
       review: { ...DEFAULT_LIMITS.review, ...raw.limits?.review },
     },
+    autonomia: raw.autonomia === 'perguntar' ? 'perguntar' : 'sugestoes',
   };
 }
 
