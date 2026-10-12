@@ -269,11 +269,21 @@ export async function runInbox(db: DatabaseSync, home: string, project: Project,
   return result;
 }
 
-/** Inbox seguida da pergunta de retomada. Devolve `true` quando a fila deve seguir. */
-export async function inboxSession(db: DatabaseSync, home: string, project: Project, io: InboxIO): Promise<boolean> {
+/**
+ * Inbox seguida da pergunta de retomada. Devolve `true` quando a fila deve seguir.
+ * `waiting` é avisado antes da pergunta de retomada (aviso do sistema no `run`).
+ */
+export async function inboxSession(
+  db: DatabaseSync,
+  home: string,
+  project: Project,
+  io: InboxIO,
+  waiting?: (question: string) => void,
+): Promise<boolean> {
   const result = await runInbox(db, home, project, io);
   if (result.interrupted || result.answered === 0) return false;
   try {
+    waiting?.('Retomar a esteira agora?');
     const answer = (await io.ask('Retomar a esteira agora? [S/n] ')).toLowerCase();
     return !answer || answer.startsWith('s') || answer.startsWith('y');
   } catch (error) {
