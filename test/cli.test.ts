@@ -27,16 +27,24 @@ test('comando desconhecido falha com o menu', () => {
 });
 
 test('comando planejado avisa o passo em que será implementado', () => {
-  const result = mabel('run');
+  const result = mabel('inbox');
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /passo 4/);
+  assert.match(result.stderr, /passo 5/);
 });
 
 test('completion zsh gera script com compdef e todos os comandos', () => {
   const result = mabel('completion', 'zsh');
   assert.equal(result.status, 0);
   assert.match(result.stdout, /compdef _mabel mabel/);
-  for (const name of ['init', 'add', 'run', 'status', 'inbox', 'completion']) {
+  for (const name of ['init', 'add', 'exec', 'run', 'status', 'inbox', 'completion']) {
     assert.match(result.stdout, new RegExp(`'${name}:`));
+  }
+});
+
+test('comandos implementados aparecem sem aviso de passo no autocompletar', () => {
+  const { stdout } = mabel('completion', 'zsh');
+  for (const name of ['init', 'add', 'exec', 'status', 'run', 'item', 'aprovar', 'responder', 'cancelar']) {
+    assert.match(stdout, new RegExp(`'${name}:[^']*'`));
+    assert.doesNotMatch(stdout, new RegExp(`'${name}:[^']*\\(passo`));
   }
 });

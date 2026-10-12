@@ -1,0 +1,181 @@
+import assert from 'node:assert/strict';
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { getItem, listItems, syncBacklog } from '../src/items.ts';
+import { lockPath } from '../src/lock.ts';
+import { writeConfig } from '../src/project.ts';
+import { type Clock, startQueue } from '../src/run.ts';
+import { CLI, EXECUTION, EXECUTION_FILES, PLAN, REVIEW_OK, setupProject, useScenario } from './helpers.ts';
+
+const EXEC = { structured_output: EXECUTION, files: EXECUTION_FILES };
+const PLAN_OK = { structured_output: PLAN };
+const REVIEW = { structured_output: REVIEW_OK };
+
+function queueProject(backlog: string, responses: unknown[]) {
+  const ctx = setupProject(backlog);
+  ctx.project.config.setup = null;
+  ctx.project.config.verify = [{ name: 'existe', command: 'test -f src/soma.js' }];
+  writeConfig(ctx.root, ctx.project.config);
+  const scenario = useScenario(ctx.root, responses);
+  const states = () => listItems(ctx.db, ctx.project.id).map((item) => [item.number, item.status]);
+  const calls = () =>
+    scenario.log().map((call) => ({
+      resume: call.argv.includes('--resume') ? call.argv[call.argv.indexOf('--resume') + 1] : undefined,
+      prompt: call.argv.at(-1) as string,
+      schema: call.argv.includes('--json-schema'),
+    }));
+  const merge = (number: number) => {
+    const branch = getItem(ctx.db, ctx.project.id, number)?.branch as string;
+    const result = spawnSync('git', ['merge', '-q', '--no-edit', branch], { cwd: ctx.root, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+  };
+  return { ...ctx, states, calls, merge };
+}
+
+test('fila de três itens: dois em awaiting_merge, um em needs_human; responder e novo run concluem', () => {
+  const q = queueProject('\n## A\nprimeiro\n\n## B\nsegundo\n\n## C\nterceiro\n', [
+    PLAN_OK, EXEC, REVIEW,
+    { structured_output: { ...PLAN, perguntas: ['Qual banco usar?'] }, session_id: 'plan-b' },
+    PLAN_OK, EXEC, REVIEW,
+    PLAN_OK, EXEC, REVIEW,
+  ]);
+  const first = q.cli('run');
+  assert.equal(first.status, 0, first.stderr);
+  assert.deepEqual(q.states(), [[1, 'awaiting_merge'], [2, 'needs_human'], [3, 'awaiting_merge']]);
+  assert.match(first.stdout, /#2 B: planning → needs_human · perguntas do planejamento: Qual banco usar\?/);
+  assert.match(first.stdout, /■ fila vazia · awaiting_merge 2 · needs_human 1 · US\$ /);
+  assert.match(first.stdout, / {4}→ Write/);
+
+  const detail = q.cli('item', '2');
+  assert.match(detail.stdout, /\? Qual banco usar\?/);
+  assert.match(detail.stdout, /mabel responder 2 "<resposta>"/);
+
+  assert.equal(q.cli('responder', '2', 'Use o SQLite.').status, 0);
+  const second = q.cli('run');
+  assert.equal(second.status, 0, second.stderr);
+  assert.deepEqual(q.states(), [[1, 'awaiting_merge'], [2, 'awaiting_merge'], [3, 'awaiting_merge']]);
+  const resumed = q.calls().filter((c) => c.schema)[7];
+  assert.equal(resumed?.resume, 'plan-b');
+  assert.match(resumed?.prompt ?? '', /Use o SQLite\./);
+  const reasons = q.db.prepare("SELECT reason FROM item_transitions WHERE reason LIKE 'humano:%'").all() as { reason: string }[];
+  assert.deepEqual(reasons.map((r) => r.reason), ['humano: responder: Use o SQLite.']);
+});
+
+test('merge manual da branch na base leva o item a done no próximo run', () => {
+  const q = queueProject('\n## A\nprimeiro\n', [PLAN_OK, EXEC, REVIEW]);
+  assert.equal(q.cli('run').status, 0);
+  const worktree = getItem(q.db, q.project.id, 1)?.worktree as string;
+  assert.ok(existsSync(worktree));
+  q.merge(1);
+  const result = q.cli('run');
+  assert.match(result.stdout, /#1 A: awaiting_merge → done/);
+  assert.deepEqual(q.states(), [[1, 'done']]);
+  assert.equal(existsSync(worktree), false);
+  assert.match(q.cli('status').stdout, /concluídos 1/);
+});
+
+test('item com dependência só inicia depois que a dependência fica done', () => {
+  const execD = { ...EXEC, files: { ...EXECUTION_FILES, 'src/soma.js': 'export const soma = (a, b) => b + a;\n' } };
+  const q = queueProject('\n## A\nprimeiro\n\n## D\ndepende\nDepende de: 1\n', [PLAN_OK, EXEC, REVIEW, PLAN_OK, execD, REVIEW]);
+  q.cli('run');
+  assert.deepEqual(q.states(), [[1, 'awaiting_merge'], [2, 'backlog']]);
+  q.merge(1);
+  const out = q.cli('run');
+  assert.deepEqual(q.states(), [[1, 'done'], [2, 'awaiting_merge']], out.stdout + out.stderr);
+});
+
+test('ctrl+c no meio de uma etapa; novo run retoma pela mesma sessão; trava enquanto roda', async () => {
+  const q = queueProject('\n## A\nprimeiro\n', [
+    PLAN_OK,
+    { hang: true, session_id: 'exec-h' },
+    EXEC,
+    REVIEW,
+  ]);
+  const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'run'], {
+    cwd: q.root,
+    env: q.env(),
+  });
+  let stdout = '';
+  await new Promise<void>((resolve) => {
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString('utf8');
+      if (stdout.includes('▸ executar')) resolve();
+    });
+  });
+
+  const second = q.cli('run');
+  assert.equal(second.status, 1);
+  assert.match(second.stderr, /Já há um `mabel run` neste projeto \(pid \d+\)/);
+
+  child.kill('SIGINT');
+  const code = await new Promise<number | null>((resolve) => child.on('close', resolve));
+  assert.equal(code, 130);
+  assert.match(stdout, /■ interrompido/);
+  assert.deepEqual(q.states(), [[1, 'executing']]);
+  assert.equal(existsSync(lockPath(q.home, q.project.id)), false);
+
+  const again = q.cli('run');
+  assert.equal(again.status, 0, again.stderr);
+  assert.deepEqual(q.states(), [[1, 'awaiting_merge']]);
+  const resumed = q.calls().filter((c) => c.schema)[2];
+  assert.equal(resumed?.resume, 'exec-h');
+  assert.match(resumed?.prompt ?? '', /foi interrompida antes de terminar/);
+});
+
+test('saldo de 5h abaixo de 30% fora do TTY espera o reset e retoma sozinho', async () => {
+  const q = queueProject('\n## A\nprimeiro\n', [PLAN_OK, EXEC, REVIEW]);
+  syncBacklog(q.db, q.project);
+  // Relógio duas horas atrás: a leitura de 5h ainda vale para ele e reseta em 30 min.
+  let now = Date.now() - 2 * 3600_000;
+  const clock: Clock = {
+    now: () => new Date(now),
+    sleep: async (ms) => {
+      now += ms;
+    },
+  };
+  const insert = q.db.prepare(
+    'INSERT INTO rate_limits (observed_at, window, utilization, resets_at, status) VALUES (?, ?, ?, ?, ?)',
+  );
+  insert.run(new Date(now).toISOString(), 'five_hour', 0.8, new Date(now + 30 * 60_000).toISOString(), 'allowed');
+  insert.run(new Date(now).toISOString(), 'seven_day', 0.1, new Date(now + 5 * 86400_000).toISOString(), 'allowed');
+  const start = now;
+
+  const result = await startQueue({ db: q.db, home: q.home, project: q.project, clock, interactive: false }).done;
+  assert.equal(result.end, 'empty');
+  assert.deepEqual([...result.finalStates], [[1, 'awaiting_merge']]);
+  assert.ok(now - start >= 30 * 60_000, 'esperou o reset');
+  const probes = q.db.prepare("SELECT count(*) AS n FROM runs WHERE kind = 'probe'").get() as { n: number };
+  assert.equal(probes.n, 1);
+});
+
+test('saldo de 7 dias abaixo de 30% fora do TTY pausa a fila com o motivo', async () => {
+  const q = queueProject('\n## A\nprimeiro\n', [PLAN_OK]);
+  syncBacklog(q.db, q.project);
+  const insert = q.db.prepare(
+    'INSERT INTO rate_limits (observed_at, window, utilization, resets_at, status) VALUES (?, ?, ?, ?, ?)',
+  );
+  const now = Date.now();
+  insert.run(new Date(now).toISOString(), 'five_hour', 0.1, new Date(now + 3600_000).toISOString(), 'allowed');
+  insert.run(new Date(now).toISOString(), 'seven_day', 0.85, new Date(now + 86400_000).toISOString(), 'allowed');
+  const result = await startQueue({ db: q.db, home: q.home, project: q.project, interactive: false }).done;
+  assert.equal(result.end, 'paused');
+  assert.match(result.message ?? '', /janela de 7 dias em 15%/);
+  assert.deepEqual(q.states(), [[1, 'planning']]);
+});
+
+test('aprovar e cancelar pela linha de comando', () => {
+  const q = queueProject('\n## A\nprimeiro\n\n## B\nsegundo\n', [
+    { structured_output: { ...PLAN, conceitosCriticos: ['Desconto'] } },
+    { structured_output: { ...PLAN, perguntas: ['?'] } },
+  ]);
+  q.cli('run');
+  assert.deepEqual(q.states(), [[1, 'needs_human'], [2, 'needs_human']]);
+  assert.match(q.cli('item', '1').stdout, /mabel aprovar 1/);
+  assert.equal(q.cli('aprovar', '1').status, 0);
+  assert.equal(q.cli('aprovar', '2').status, 1);
+  assert.equal(q.cli('cancelar', '2').status, 0);
+  assert.deepEqual(q.states(), [[1, 'executing'], [2, 'cancelled']]);
+  assert.equal(q.cli('responder', '9', 'x').status, 1);
+});

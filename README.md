@@ -24,6 +24,13 @@ várias vezes.
 | `--force` | Substitui um `mabel` já existente em `~/.local/bin`. |
 | `--no-shell` | Não altera o `~/.zshrc`. |
 
+## Uso
+
+`mabel` sem argumentos abre o menu interativo: setas (ou `j`/`k`) para navegar, número
+para escolher direto, `enter` para executar, `q` ou `esc` para sair. Fora de um terminal
+interativo, o menu é impresso como lista. Cada comando também roda direto:
+`mabel <comando>`.
+
 ## Desenvolvimento
 
 ```bash

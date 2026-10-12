@@ -14,44 +14,48 @@ primeiro item não marcado.
 - [x] Autocompletar zsh (`mabel completion zsh`).
 - [x] Testes com `node:test`.
 - [x] `scripts/setup.sh`: preflight, instalação e verificação do ambiente.
+- [x] Menu interativo ao rodar `mabel` sem argumentos (setas, números, enter, q).
 
-## Passo 2 — Runner e auditoria
+## Passo 2 — Runner, auditoria e saldo
 
-- [ ] Schema SQLite (`node:sqlite`): `runs`, `events`, `rate_limits`. Banco em `~/.mabel/mabel.db`.
-- [ ] Runner: inicia `claude -p` com `--output-format stream-json --verbose`, lê linha a linha e grava cada evento.
-- [ ] Registro da run: item, etapa, modelo, início, fim, custo, tokens, `session_id`. Se o banco não estiver gravável, a run não inicia (G1).
-- [ ] Cópia do transcript bruto da run para o armazenamento do Mabel.
-- [ ] Leitura do `rate_limit_event` e persistência da última leitura de saldo.
-- [ ] Chamada mínima para obter leitura de saldo quando não houver leitura recente.
-- [ ] `mabel status` com o cabeçalho das janelas de 5 horas e 7 dias (saldo, reset, idade da leitura).
-- [ ] Comando de diagnóstico para disparar uma run avulsa (ex.: `mabel exec "<prompt>"`), útil até a fila existir.
+Especificação: `docs/specs/passo-2.md`.
 
-## Passo 3 — Backlog, fila e quadro
+- [x] 2.1 Banco SQLite, runner e `mabel exec` (G1).
+- [x] 2.2 Leitura de saldo, `checkBalance`, probe e `mabel status`.
 
-- [ ] `mabel init`: cria `.mabel/` no projeto-alvo (`backlog.md`, `config`, `regras-criticas.yaml`) e põe `quadro.md` no `.gitignore`.
-- [ ] Formato do `backlog.md` e o parser.
-- [ ] `mabel add "<título>"`.
-- [ ] Máquina de estados do item (ciclo de vida do contrato) no banco.
-- [ ] Geração do `quadro.md` a cada transição.
-- [ ] Detecção de projeto sem testes e criação do item de base de testes.
+## Passo 3 — Projeto, backlog, fila e quadro ✅
 
-## Passo 4 — Etapas e gates
+Especificação: `docs/specs/passo-3.md`.
 
-- [ ] Worktree e branch por item.
-- [ ] Etapas planejar → executar → verificar → revisar, cada uma em sessão nova, com artefatos em disco.
-- [ ] Tabela de roteamento de modelo por etapa.
-- [ ] Gate de início (G2) e gate de verificação (G3), executados pelo runner.
-- [ ] Política de saldo antes de cada etapa e retomada por `--resume` após interrupção.
-- [ ] Retentativas: 2 falhas escalam o modelo só na próxima tentativa; nova falha leva a `needs_human`.
-- [ ] `mabel run` consumindo a fila em sequência.
+- [x] 3.1 Projeto e `mabel init` (detecção de comandos, projeto sem testes).
+- [x] 3.2 Backlog: formato, parser, sincronização e `mabel add`.
+- [x] 3.3 Máquina de estados, auditoria de transições e `quadro.md`.
 
-## Passo 5 — Travas e inbox
+## Passo 4 — Etapas, gates e `mabel run` ✅
 
-- [ ] Plugin do Mabel (hooks, agentes, skills) injetado em cada run com contexto hermético (G8).
-- [ ] Hook `PreToolUse` de escopo: caminhos declarados e lista de bloqueio (G4).
-- [ ] Leitura de `regras-criticas.yaml`: caminhos por hook, conceitos pelo planejador.
-- [ ] Saída estruturada com `suposicoes` (G7).
-- [ ] `mabel inbox` com decisões em lote e retomada da sessão pausada.
+Especificação: `docs/specs/passo-4.md`.
+
+- [x] 4.1 Runner para etapas e worktree por item.
+- [x] 4.2 Etapas com agente (planejar, executar, revisar) e saída estruturada.
+- [x] 4.3 Gates G2 e G3, retentativas e escalonamento.
+- [x] 4.4 `mabel run`, política de saldo e comandos de decisão.
+
+## 🧪 Marco — Teste com aplicação real
+
+Primeiro uso do Mabel num projeto descartável, com backlog escrito pelo usuário. Os
+achados do teste orientam a especificação dos passos seguintes.
+
+## Depois do teste
+
+- [x] 2.4 Modo Mabel: prompt com comandos `/`, lista de autocompletar e histórico
+      (`docs/specs/interface.md`). Substitui o menu como painel.
+- [x] 3.4 `mabel init` por stack: catálogo Node/Python/Go/Rust e item da base de testes
+      concreto (`docs/specs/interface.md`).
+- [ ] Gravar no banco as pausas da fila (saldo de 7 dias, falta de leitura) e as respostas
+      do humano às perguntas da política de saldo. Hoje só aparecem na saída (auditoria).
+- [ ] 2.3 `mabel runs` com lista e detalhe da run (`docs/specs/passo-2.md`).
+- [ ] Passo 5 — Travas e inbox: plugin com hooks e contexto hermético (G8), hook de escopo
+      (G4), inbox em lote. A especificar com os achados do teste.
 
 ## Histórico
 
@@ -60,3 +64,20 @@ primeiro item não marcado.
 | 2026-10-11 | Contrato v0 fechado (`docs/CONTRATO.md`). |
 | 2026-10-11 | Passo 1 concluído. |
 | 2026-10-11 | Script de setup do ambiente (`scripts/setup.sh`). |
+| 2026-10-11 | Menu interativo na tela inicial. |
+| 2026-10-11 | Especificação do passo 2 (`docs/specs/passo-2.md`). |
+| 2026-10-11 | Especificações dos passos 3 e 4; ordem revista para antecipar o teste com aplicação real. |
+| 2026-10-11 | Incremento 2.1: banco SQLite, runner e `mabel exec`, validado com run real em haiku. |
+| 2026-10-11 | Incremento 2.2: saldo, `checkBalance`, probe e `mabel status`; probe validado com o `claude` real. |
+| 2026-10-11 | Incremento 3.1: projeto, `mabel init` com detecção de comandos e item de base de testes. |
+| 2026-10-11 | Incremento 3.2: parser e sincronização do backlog, `mabel add`. A função `transition()` e a tabela `item_transitions` entraram aqui, porque a sincronização já muda estados. |
+| 2026-10-11 | Incremento 3.3: tabela de transições testada, quadro completo e `mabel status` com resumo do projeto. Passo 3 concluído. |
+| 2026-10-11 | Incremento 4.1: flags de etapa no runner, `structured_output`, worktree e branch por item, commits do Mabel e trava por projeto (testada entre processos; o teste pelo `mabel run` entra no 4.4). |
+| 2026-10-11 | Incremento 4.2: prompts de sistema, esquemas e validador próprio, montagem das etapas, artefatos e `claude` falso por cenário. O esquema do plano foi validado com o `claude` real. |
+| 2026-10-11 | Incremento 4.3: pipeline do item com G2, G7 na execução, G3, revisão, retentativas com escalonamento e as decisões `responder`/`aprovar`/`cancelar` como funções (os comandos entram no 4.4). |
+| 2026-10-11 | Incremento 4.4: `mabel run` com política de saldo, retomada após ctrl+c, `item`/`aprovar`/`responder`/`cancelar`. Teste real: item simples em `awaiting_merge` por US$ 0,35. Passo 4 concluído; próximo marco é o teste com aplicação real. |
+| 2026-10-11 | Revisão da interface e do `init` (`docs/specs/interface.md`): modo Mabel com comandos `/` substitui o menu como painel; `init` passa a usar um catálogo de stacks. |
+| 2026-10-11 | Incremento 2.4: modo Mabel com editor de linha próprio, lista de autocompletar, histórico em `<dados>/historico` e ctrl+c que volta ao prompt. Verificado num pseudo-terminal: `/init`, `/item` interrompido, `/exec` e `/run` interrompidos, `/status`. |
+| 2026-10-11 | Incremento 3.4: catálogo de stacks (`src/stacks.ts`) com a detecção existente, `init` com confirmação `[S/n/editar]`, menu de stack e `--stack`. Verificado num pseudo-terminal: repositório vazio com Node e projeto Node existente sem testes. |
+| 2026-10-11 | Correção: `init` depois de apagar o `.mabel/` reaproveita o id registrado para a raiz, mantendo o histórico. |
+| 2026-10-11 | Correção: `init` registra o projeto antes de gravar, grava o `config.json` por último e desfaz os arquivos criados se a gravação falhar. |

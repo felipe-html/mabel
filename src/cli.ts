@@ -1,37 +1,66 @@
 #!/usr/bin/env -S node --disable-warning=ExperimentalWarning
 import { readFileSync } from 'node:fs';
+import { latestReadings, renderBalanceHeader } from './balance.ts';
 import { banner } from './banner.ts';
-import { commands, findCommand } from './commands.ts';
+import { type Command, commands, findCommand } from './commands.ts';
+import { Interrupted } from './ask.ts';
+import { openDb } from './db.ts';
+import { repl } from './repl.ts';
+import { paint, style } from './style.ts';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
   version: string;
 };
 
-const color = process.stdout.isTTY && !process.env.NO_COLOR;
-const dim = (text: string) => (color ? `\x1b[2m${text}\x1b[0m` : text);
-const bold = (text: string) => (color ? `\x1b[1m${text}\x1b[0m` : text);
+const interactive = process.stdin.isTTY && process.stdout.isTTY;
+
+function plannedNote(command: Command): string {
+  return `ainda não implementado (passo ${command.plannedStep} do plano)`;
+}
 
 function menu(): string {
   const width = Math.max(...commands.map((command) => command.name.length));
   const lines = commands.map((command) => {
     const line = `  ${command.name.padEnd(width)}  ${command.description}`;
-    return command.plannedStep ? dim(`${line}  (passo ${command.plannedStep})`) : line;
+    return command.plannedStep ? style.dim(`${line}  (passo ${command.plannedStep})`) : line;
   });
-  return [bold('Comandos'), ...lines, '', dim('Use `mabel <comando> --help` para ver o uso.')].join(
-    '\n',
-  );
+  return [
+    style.bold('Comandos'),
+    ...lines,
+    '',
+    style.dim('Use `mabel <comando> --help` para ver o uso.'),
+  ].join('\n');
 }
 
-function home(): number {
+function balanceHeader(): string[] {
+  try {
+    const db = openDb();
+    try {
+      return renderBalanceHeader(latestReadings(db), new Date(), paint);
+    } finally {
+      db.close();
+    }
+  } catch (error) {
+    return [style.dim(` saldo indisponível: ${(error as Error).message}`)];
+  }
+}
+
+async function home(): Promise<number> {
   if (process.env.MABEL_BANNER !== '0') {
     process.stdout.write(`\n${banner(process.stdout.columns ?? 80)}\n\n`);
   }
-  process.stdout.write(`${dim(`v${pkg.version} · harness para frotas de agentes`)}\n\n`);
-  process.stdout.write(`${menu()}\n`);
-  return 0;
+  process.stdout.write(`${style.dim(`v${pkg.version} · harness para frotas de agentes`)}\n\n`);
+
+  if (!interactive) {
+    process.stdout.write(`${menu()}\n`);
+    return 0;
+  }
+
+  process.stdout.write(`${balanceHeader().join('\n')}\n\n`);
+  return repl();
 }
 
-function main(argv: string[]): number {
+async function main(argv: string[]): Promise<number> {
   const [name, ...args] = argv;
 
   if (name === undefined) return home();
@@ -54,12 +83,15 @@ function main(argv: string[]): number {
     return 0;
   }
   if (!command.run) {
-    process.stderr.write(
-      `\`mabel ${command.name}\` ainda não foi implementado (passo ${command.plannedStep} do plano).\n`,
-    );
+    process.stderr.write(`\`mabel ${command.name}\` ${plannedNote(command)}.\n`);
     return 1;
   }
-  return command.run(args);
+  try {
+    return await command.run(args);
+  } catch (error) {
+    if (error instanceof Interrupted) return 130;
+    throw error;
+  }
 }
 
-process.exitCode = main(process.argv.slice(2));
+process.exitCode = await main(process.argv.slice(2));
