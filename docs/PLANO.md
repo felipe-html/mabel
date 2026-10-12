@@ -60,6 +60,9 @@ achados do teste orientam a especificação dos passos seguintes.
   - [x] J.1 Autonomia nas perguntas: pergunta não crítica com sugestão não para o item.
   - [x] J.2 Estado `planned` e planejamento em lote no `run` (muda o ciclo de vida do contrato).
   - [x] J.3 Aviso do sistema quando a esteira para ou espera você.
+- [x] Saldo eficiente e sempre visível (`docs/specs/saldo.md`): leitura antiga (30 min),
+      consumo medido por etapa, projeção contra piso de 10%, ritmo da janela de 7 dias e
+      rodapé fixo. Muda a política de saldo do contrato (autorizado).
 - [ ] Gravar no banco as pausas da fila (saldo de 7 dias, falta de leitura) e as respostas
       do humano às perguntas da política de saldo. Hoje só aparecem na saída (auditoria).
 - [ ] 2.3 `mabel runs` com lista e detalhe da run (`docs/specs/passo-2.md`).
@@ -97,3 +100,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-12 | J.2: estado `planned` entre `planning` e `executing` (contrato atualizado: ciclo de vida e pedido de autonomia). O `run` planeja todos os itens `ready` antes de executar, oferece a inbox uma vez no fim do planejamento (só no TTY) e replaneja os respondidos antes das execuções; `--sem-lote`, `--item` e `--uma` seguem item a item. `aprovar` leva a `planned`; quadro e `mabel status` mostram `planned`. Verificado num pseudo-terminal com o `claude` falso: 3 itens, um com pergunta no planejamento; 3 planejamentos, inbox, replanejamento pela mesma sessão e 3 execuções até `awaiting_merge`. |
 | 2026-10-12 | J.3: `src/notify.ts` com `osascript` (texto por `argv`, processo desacoplado, desligável com `MABEL_NOTIFICAR=0`). Avisos no fim da fila, na pausa e antes de cada pergunta no terminal (saldo, oferta da inbox, retomada). Jornadas longas concluídas. |
 | 2026-10-12 | Contrato: o mecanismo do G2 passa a ser o gate entre `planning` e `planned`, alinhado ao ciclo de vida do J.2 (autorizado pelo usuário). |
+| 2026-10-12 | Saldo (`docs/specs/saldo.md`): leitura com mais de 30 min é atualizada antes da etapa; consumo de cada etapa medido pelas leituras das runs (média das 10 últimas, mínimo 3); com estimativa, a política compara o saldo depois da etapa com o piso de 10%, sem ela vale o limiar de 30%; janela de 7 dias acima do ritmo pergunta e, sem autorização, espera o ritmo alcançar. Rodapé fixo com as duas janelas no modo Mabel e no `mabel run`, no lugar do cabeçalho de abertura. Política de saldo do contrato atualizada. Verificado num pseudo-terminal. |

@@ -1,4 +1,5 @@
 import { emitKeypressEvents } from 'node:readline';
+import { redrawFooter } from './footer.ts';
 
 export interface MenuOption {
   label: string;
@@ -85,6 +86,7 @@ export function select(options: MenuOption[], style: Style): Promise<number | nu
     const lines = renderMenu(options, state, style);
     if (drawn > 0) stdout.write(`\x1b[${drawn}A`);
     stdout.write(`\x1b[0J${lines.join('\n')}\n`);
+    redrawFooter();
     drawn = lines.length;
   };
 

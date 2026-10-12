@@ -4,6 +4,7 @@ import { emitKeypressEvents } from 'node:readline';
 import { Interrupted } from './ask.ts';
 import { type Command, commands } from './commands.ts';
 import { dataDir } from './db.ts';
+import { redrawFooter, startFooter } from './footer.ts';
 import {
   ArgsError,
   type LineContext,
@@ -144,6 +145,7 @@ function readLine(prompt: string, context: LineContext): Promise<ReadResult> {
     if (endRow > cursorRow) out += `\x1b[${endRow - cursorRow}A`;
     out += `\x1b[${(target % columns) + 1}G`;
     stdout.write(out);
+    redrawFooter();
     return textRows;
   };
 
@@ -205,6 +207,7 @@ export async function repl(): Promise<number> {
   let failed = false;
   let lastNotice: string | undefined;
   process.on('exit', restoreTerminal);
+  const stopFooter = startFooter();
   process.stdout.write(`${style.dim('Digite / para ver os comandos · exit para sair')}\n\n`);
 
   try {
@@ -231,6 +234,7 @@ export async function repl(): Promise<number> {
       process.stdout.write('\n');
     }
   } finally {
+    stopFooter();
     process.off('exit', restoreTerminal);
     restoreTerminal();
   }

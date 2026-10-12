@@ -51,18 +51,30 @@ Desvios a partir de qualquer etapa: needs_human · blocked · failed
 
 ## Política de saldo
 
-O limiar de 30% existe para evitar iniciar etapas que seriam interrompidas por falta de
-saldo. Ele é checado apenas antes de cada etapa; uma etapa em andamento pode ultrapassá-lo.
+A política existe para evitar iniciar etapas que seriam interrompidas por falta de saldo.
+Ela é checada apenas antes de cada etapa; uma etapa em andamento pode ultrapassar os
+limites.
+
+O Mabel mede quanto cada etapa (planejar, executar, revisar) costuma consumir de cada
+janela, pela diferença entre a primeira e a última leitura das runs auditadas. Com pelo
+menos 3 amostras, a política olha o saldo **depois** da etapa contra um piso de 10%. Sem
+amostras suficientes, vale o limiar de 30% sobre o saldo atual.
+
+O ritmo da janela de 7 dias é a fração dela já decorrida. O uso está **acima do ritmo**
+quando, somado ao consumo estimado da etapa, passa do ritmo em mais de 10 pontos.
 
 | Situação | Ação |
 |---|---|
-| Saldo da janela de 5 horas abaixo de 30% | A fila pausa e pergunta ao humano se continua. Sem autorização, aguarda o reset da janela e retoma sozinha. |
-| Saldo da janela de 7 dias abaixo de 30% | Alerta ao humano. A fila pausa até a resposta. |
+| Saldo da janela de 7 dias abaixo do piso (ou de 30%, sem estimativa) | Alerta ao humano. A fila pausa até a resposta. |
+| Uso da janela de 7 dias acima do ritmo | A fila pausa e pergunta ao humano se continua; a autorização vale até o reset da janela de 5 horas em curso. Sem autorização, aguarda o ritmo alcançar o uso e retoma sozinha. |
+| Saldo da janela de 5 horas abaixo do piso (ou de 30%, sem estimativa) | A fila pausa e pergunta ao humano se continua. Sem autorização, aguarda o reset da janela e retoma sozinha. |
 | Saldo esgotado durante uma etapa | A run é interrompida. A etapa é retomada pela mesma sessão (`--resume`) quando houver saldo. |
-| Leitura de saldo ausente ou antiga | Antes da primeira etapa de um `mabel run`, o Mabel faz uma chamada mínima para obter a leitura. Sem leitura, a fila pausa e registra o motivo. |
+| Leitura de saldo ausente, vencida ou com mais de 30 minutos | Antes da etapa, o Mabel faz uma chamada mínima para obter a leitura. Sem leitura, a fila pausa e registra o motivo. |
 
-A leitura vem do `rate_limit_event` da run mais recente. A interface principal do Mabel
-exibe sempre as duas janelas: saldo, horário de reset e idade da leitura.
+As situações são avaliadas nessa ordem. A leitura vem do `rate_limit_event` da run mais
+recente. A interface do Mabel (modo Mabel e `mabel run` num terminal) mantém um rodapé
+fixo com as duas janelas: saldo, horário de reset, ritmo da janela de 7 dias e idade da
+leitura.
 
 ## Backlog e quadro
 

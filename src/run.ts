@@ -1,9 +1,17 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
 import { confirm, interactive as isInteractive } from './ask.ts';
-import { type BalanceReading, balanceOf, checkBalance, formatReset, latestReadings } from './balance.ts';
+import {
+  type BalanceReading,
+  balanceOf,
+  checkBalance,
+  formatReset,
+  latestReadings,
+  stageEstimate,
+} from './balance.ts';
 import { dataDir, openDb } from './db.ts';
 import { ToolLog, summaryLine } from './exec.ts';
+import { startFooter } from './footer.ts';
 import { formatCost, formatDuration } from './format.ts';
 import { inboxSession, pendingItems, runInbox, terminalIO } from './inbox.ts';
 import { type Item, type ItemStatus, getItemById, listItems, syncBacklog, transition } from './items.ts';
@@ -130,12 +138,13 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
   };
 
   /** Política de saldo do contrato, antes de cada etapa com agente. */
-  const ensureBalance = async (): Promise<boolean> => {
+  const ensureBalance = async (stage: RunStage): Promise<boolean> => {
     let probed = false;
+    const estimate = stageEstimate(db, stage);
     for (;;) {
       if (abort.signal.aborted) return false;
       const readings = latestReadings(db);
-      const decision = checkBalance(readings, clock.now());
+      const decision = checkBalance(readings, clock.now(), estimate);
       if (decision.action === 'proceed') return true;
       if (decision.action === 'refresh') {
         if (probed) {
@@ -146,12 +155,32 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
         if (!(await probe())) return false;
         continue;
       }
+      const fiveHour = readings.find((r) => r.window === 'five_hour') as BalanceReading;
+      if (decision.action === 'pace') {
+        // A autorização para seguir acima do ritmo vale até o reset da janela de 5h em curso.
+        if ((approvedUntil.get('pace') ?? 0) >= fiveHour.resetsAt.getTime()) return true;
+        const used = `${Math.round(decision.used * 100)}%`;
+        const expected = `${Math.round(decision.expected * 100)}%`;
+        log.write(style.bold(`  Janela de 7 dias acima do ritmo: ${used} usados depois da etapa, ritmo de ${expected}.`));
+        const notice = `7 dias acima do ritmo (${used} usados, ritmo de ${expected}); continuar mesmo assim?`;
+        if (interactive && (await askHuman('  Continuar mesmo assim?', false, notice))) {
+          approvedUntil.set('pace', fiveHour.resetsAt.getTime());
+          return true;
+        }
+        await waitUntil(decision.caughtUpAt, 'o ritmo da janela de 7 dias');
+        probed = false;
+        continue;
+      }
       const reading = readings.find((r) => r.window === decision.window) as BalanceReading;
       const resetsAt = reading.resetsAt.getTime();
       if ((approvedUntil.get(decision.window) ?? 0) >= resetsAt) return true;
       const percent = `${Math.round(decision.balance * 100)}%`;
       const label = WINDOW_LABELS[decision.window];
-      log.write(style.bold(`  Saldo da janela de ${label} em ${percent} (abaixo de 30%).`));
+      const why =
+        decision.estimate === undefined
+          ? 'abaixo de 30%'
+          : `a etapa costuma usar ${Math.round(decision.estimate * 100)}% e o piso é 10%`;
+      log.write(style.bold(`  Saldo da janela de ${label} em ${percent} (${why}).`));
       if (interactive && (await askHuman('  Continuar mesmo assim?', false, `saldo de ${label} em ${percent}; continuar mesmo assim?`))) {
         approvedUntil.set(decision.window, resetsAt);
         return true;
@@ -181,7 +210,7 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
     project,
     log: (line: string) => log.write(line),
     beforeAgentStage: async (stage: RunStage, item: Item) => {
-      if (!(await ensureBalance())) return false;
+      if (!(await ensureBalance(stage))) return false;
       currentStage = stage;
       if (item.worktree) log.setCwd(item.worktree);
       return true;
@@ -359,6 +388,7 @@ export async function run(args: string[]): Promise<number> {
   const home = dataDir();
   const db = openDb(home);
   let release: (() => void) | undefined;
+  let stopFooter: (() => void) | undefined;
   try {
     const project = resolveProject(db);
     if (!mabelCommitted(project.root, project.config.baseBranch)) {
@@ -370,6 +400,7 @@ export async function run(args: string[]): Promise<number> {
     }
     release = acquireLock(home, project.id);
     const interactive = isInteractive();
+    if (interactive) stopFooter = startFooter();
     // run → inbox → run: com itens aguardando, o humano responde e a fila segue sem sair.
     for (;;) {
       const queue = startQueue({
@@ -415,6 +446,7 @@ export async function run(args: string[]): Promise<number> {
     }
     throw error;
   } finally {
+    stopFooter?.();
     release?.();
     db.close();
   }
