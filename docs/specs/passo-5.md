@@ -4,7 +4,14 @@ Garantias do contrato cobertas: **G8** (contexto hermético) e **G4** (o agente 
 escopo). Hoje G8 não existe e G4 é só uma lista de comandos proibidos. Ao fim deste passo,
 o aviso de "use só em projeto descartável" sai do README.
 
-Leia `docs/CONTRATO.md` antes desta especificação. Incrementos, cada um com
+Leia `docs/CONTRATO.md` antes desta especificação.
+
+Decisões do usuário (2026-10-12):
+
+- Mudança dos mecanismos de G4 e G8 no contrato: **autorizada** (aplicada no 5.4).
+- Escopo **rígido**: escrita fora do escopo do plano é negada; ampliação não crítica é
+  automática via `escopoAdicional`.
+- Sem sandbox disponível, o `run` **não inicia**, salvo `"sandbox": false` no config. Incrementos, cada um com
 `npm run check` verde, critérios atendidos, `docs/PLANO.md` atualizado e commit:
 
 - 5.1 Contexto hermético (G8)
@@ -241,7 +248,7 @@ a execução termina com `escopoAdicional` não vazio:
 
 ### Critérios de aceite
 
-- [ ] Contrato atualizado só depois da autorização registrada no histórico do plano.
+- [ ] Contrato atualizado conforme a autorização registrada no histórico do plano.
 - [ ] Preflight falha com mensagem clara sem as flags ou sem sandbox.
 
 ## Fora deste passo
