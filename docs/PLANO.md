@@ -58,7 +58,7 @@ achados do teste orientam a especificação dos passos seguintes.
       retomada da esteira (`docs/specs/inbox.md`).
 - [ ] Jornadas longas (`docs/specs/jornadas.md`):
   - [x] J.1 Autonomia nas perguntas: pergunta não crítica com sugestão não para o item.
-  - [ ] J.2 Estado `planned` e planejamento em lote no `run` (muda o ciclo de vida do contrato).
+  - [x] J.2 Estado `planned` e planejamento em lote no `run` (muda o ciclo de vida do contrato).
   - [ ] J.3 Aviso do sistema quando a esteira para ou espera você.
 - [ ] Gravar no banco as pausas da fila (saldo de 7 dias, falta de leitura) e as respostas
       do humano às perguntas da política de saldo. Hoje só aparecem na saída (auditoria).
@@ -94,3 +94,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-12 | Inbox (`docs/specs/inbox.md`): `/inbox` percorre os itens em `needs_human` pergunta por pergunta, com sugestão do agente (enter aceita), "decide você" (fora de `critical_approval`) e pular; cada item vira uma decisão só, gravada como `humano: inbox …`. O `run` num TTY oferece a inbox quando a fila termina com pendências e retoma a esteira em seguida. Perguntas passam a `{ texto, sugestao }`; pendências antigas continuam legíveis. Verificado num pseudo-terminal com o `claude` falso: run → inbox → run até `awaiting_merge`. |
 | 2026-10-12 | Spec das jornadas longas (`docs/specs/jornadas.md`): autonomia ligada por padrão, planejamento em lote como padrão do `run`, estado `planned` (mudança no ciclo de vida autorizada) e aviso do sistema. |
 | 2026-10-12 | J.1 (`docs/specs/jornadas.md`): pergunta com `regraCritica` no esquema; com `autonomia: "sugestoes"` (padrão, gravado pelo `init`), perguntas não críticas e com sugestão viram suposições `(autônomo)` no plano ou na execução, com gate `autonomy`; o item não para. Resumo do `run`, `mabel item` e a aprovação de item crítico na inbox mostram as decisões. O prompt do executor passa a receber as regras críticas do projeto. |
+| 2026-10-12 | J.2: estado `planned` entre `planning` e `executing` (contrato atualizado: ciclo de vida e pedido de autonomia). O `run` planeja todos os itens `ready` antes de executar, oferece a inbox uma vez no fim do planejamento (só no TTY) e replaneja os respondidos antes das execuções; `--sem-lote`, `--item` e `--uma` seguem item a item. `aprovar` leva a `planned`; quadro e `mabel status` mostram `planned`. Verificado num pseudo-terminal com o `claude` falso: 3 itens, um com pergunta no planejamento; 3 planejamentos, inbox, replanejamento pela mesma sessão e 3 execuções até `awaiting_merge`. |

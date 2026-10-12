@@ -139,9 +139,9 @@ test('resumo do run e mabel item listam as decisões autônomas', () => {
   writeConfig(ctx.root, ctx.project.config);
   useScenario(ctx.root, [
     { structured_output: { ...PLAN, perguntas: [ROOMS] } },
+    { structured_output: PLAN },
     EXEC,
     REVIEW,
-    { structured_output: PLAN },
     { structured_output: { ...EXECUTION, perguntas: [COLOR] }, files: EXECUTION_FILES },
     REVIEW,
   ]);

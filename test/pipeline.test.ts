@@ -108,7 +108,8 @@ test('fluxo feliz: planejar, executar, verificar, revisar e awaiting_merge com c
   assert.ok(existsSync(join(p.ctx.home, 'items', p.item().id, 'verificacao-1', 'existe.log')));
   assert.deepEqual(p.lines.map((line) => line.split(': ')[1]?.split(' · ')[0]), [
     'ready → planning',
-    'planning → executing',
+    'planning → planned',
+    'planned → executing',
     'executing → verifying',
     'verifying → reviewing',
     'reviewing → awaiting_merge',
@@ -298,7 +299,7 @@ test('responder em cada pending_kind leva ao estado e à sessão da tabela', asy
   assert.throws(() => respond(executeQuestion.ctx.db, executeQuestion.ctx.project, executeQuestion.item(), 'r'), /não está aguardando resposta/);
 });
 
-test('aprovar libera o item crítico para a execução com o plano atual', async () => {
+test('aprovar leva o item crítico a planned, e ele executa com o plano atual', async () => {
   const p = pipeline([
     { structured_output: plan({ conceitosCriticos: ['Desconto'] }) },
     exec(1),
@@ -306,7 +307,7 @@ test('aprovar libera o item crítico para a execução com o plano atual', async
   ]);
   await p.advance();
   approve(p.ctx.db, p.ctx.project, p.item());
-  assert.equal(p.item().status, 'executing');
+  assert.equal(p.item().status, 'planned');
   assert.ok(p.item().approvedAt);
   assert.deepEqual(await p.advance(), { kind: 'stopped', status: 'awaiting_merge' });
 });

@@ -342,7 +342,7 @@ async function planStep(env: PipelineEnv, item: Item): Promise<Step> {
     case 'pass':
       recordGate(env.db, item.id, 0, 'start', true, null);
       updateItem(env.db, item.id, { planRetries: 0, attempts: 0, nextInput: null });
-      move(env, item, 'executing', 'plano aprovado pelo gate de início', runId);
+      move(env, item, 'planned', 'plano aprovado pelo gate de início', runId);
       return undefined;
   }
 }
@@ -544,8 +544,13 @@ async function reviewStep(env: PipelineEnv, item: Item): Promise<Step> {
   return { kind: 'stopped', status: 'awaiting_merge' };
 }
 
+export interface AdvanceOptions {
+  /** `planned`: para quando o item chega a `planned` (planejamento em lote). */
+  until?: 'planned';
+}
+
 /** Leva o item pelas etapas até um estado de parada, interrupção ou pausa. */
-export async function advanceItem(env: PipelineEnv, itemId: string): Promise<AdvanceResult> {
+export async function advanceItem(env: PipelineEnv, itemId: string, options: AdvanceOptions = {}): Promise<AdvanceResult> {
   for (;;) {
     const item = getItemById(env.db, itemId);
     let step: Step;
@@ -557,6 +562,10 @@ export async function advanceItem(env: PipelineEnv, itemId: string): Promise<Adv
       case 'planning':
         step = await planStep(env, item);
         break;
+      case 'planned':
+        if (options.until === 'planned') return { kind: 'stopped', status: 'planned' };
+        move(env, item, 'executing', 'início da execução');
+        continue;
       case 'executing':
         step = await executeStep(env, item);
         break;

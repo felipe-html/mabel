@@ -5,7 +5,7 @@ import { type BalanceReading, balanceOf, checkBalance, formatReset, latestReadin
 import { dataDir, openDb } from './db.ts';
 import { ToolLog, summaryLine } from './exec.ts';
 import { formatCost, formatDuration } from './format.ts';
-import { inboxSession, pendingItems, terminalIO } from './inbox.ts';
+import { inboxSession, pendingItems, runInbox, terminalIO } from './inbox.ts';
 import { type Item, type ItemStatus, getItemById, listItems, syncBacklog, transition } from './items.ts';
 import { LockError, acquireLock } from './lock.ts';
 import { type AdvanceResult, advanceItem, autonomousDecisions } from './pipeline.ts';
@@ -15,7 +15,7 @@ import { probeRequest } from './status.ts';
 import { style } from './style.ts';
 import { isMerged, removeWorktree } from './worktree.ts';
 
-export const runUsage = 'mabel run [--item <n>] [--uma]';
+export const runUsage = 'mabel run [--item <n>] [--uma] [--sem-lote]';
 
 /** Relógio injetável: os testes avançam o tempo sem esperar de verdade. */
 export interface Clock {
@@ -44,8 +44,17 @@ export interface QueueOptions {
   itemNumber?: number;
   once?: boolean;
   clock?: Clock;
-  /** Perguntas no terminal (saldo); fora do TTY, a política decide sozinha. */
+  /** Perguntas no terminal (saldo, inbox); fora do TTY, a política decide sozinha. */
   interactive?: boolean;
+  /**
+   * Planeja todos os itens `ready` antes de executar o primeiro (padrão). `--item` e `--uma`
+   * implicam item a item.
+   */
+  batch?: boolean;
+  /** Pergunta sim/não no terminal; os testes trocam por respostas roteirizadas. */
+  confirm?: (question: string, defaultYes?: boolean) => Promise<boolean>;
+  /** Abre a inbox no fim da fase de planejamento; sem ela, a oferta não acontece. */
+  inbox?: () => Promise<void>;
 }
 
 export type QueueEnd = 'empty' | 'once' | 'interrupted' | 'paused' | 'not_found';
@@ -63,6 +72,10 @@ export interface QueueResult {
 
 const STAGE_LABELS: Record<RunStage, string> = { plan: 'planejar', execute: 'executar', review: 'revisar' };
 const IN_PROGRESS: ItemStatus[] = ['planning', 'executing', 'verifying', 'reviewing'];
+const PLANNING: ItemStatus[] = ['ready', 'planning'];
+const EXECUTING: ItemStatus[] = ['planned', 'executing', 'verifying', 'reviewing'];
+
+const countItems = (count: number) => (count === 1 ? '1 item' : `${count} itens`);
 const WINDOW_LABELS: Record<string, string> = { five_hour: '5h', seven_day: '7 dias' };
 
 /** Consome a fila do projeto. `interrupt` repassa o ctrl+c à run atual e encerra o laço. */
@@ -70,6 +83,8 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
   const { db, home, project } = options;
   const clock = options.clock ?? systemClock;
   const interactive = options.interactive ?? false;
+  const ask = options.confirm ?? confirm;
+  const batch = (options.batch ?? true) && options.itemNumber === undefined && !options.once;
   const abort = new AbortController();
   const log = new ToolLog(project.root, '    ');
   let current: RunHandle | undefined;
@@ -127,7 +142,7 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
       const percent = `${Math.round(decision.balance * 100)}%`;
       const label = WINDOW_LABELS[decision.window];
       log.write(style.bold(`  Saldo da janela de ${label} em ${percent} (abaixo de 30%).`));
-      if (interactive && (await confirm('  Continuar mesmo assim?', false))) {
+      if (interactive && (await ask('  Continuar mesmo assim?', false))) {
         approvedUntil.set(decision.window, resetsAt);
         return true;
       }
@@ -174,6 +189,54 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
 
   const startedAt = new Date();
   const finalStates = new Map<number, ItemStatus>();
+  let phase: 'plan' | 'execute' | undefined;
+  let inboxOffered = false;
+
+  /** Separador ao trocar de fase no lote: `── planejamento (3 itens) ──`. */
+  const enterPhase = (next: 'plan' | 'execute', items: Item[]) => {
+    if (phase === next) return;
+    phase = next;
+    const states = next === 'plan' ? PLANNING : EXECUTING;
+    const count = items.filter((item) => states.includes(item.status)).length;
+    log.write(style.dim(`── ${next === 'plan' ? 'planejamento' : 'execução'} (${countItems(count)}) ──`));
+  };
+
+  /** Fim da fase de planejamento: oferece a inbox uma vez, se há itens aguardando. */
+  const offerInbox = async (): Promise<boolean> => {
+    if (inboxOffered || !interactive || !options.inbox) return false;
+    const waiting = pendingItems(db, project.id).length;
+    if (waiting === 0) return false;
+    inboxOffered = true;
+    log.flush();
+    const label = waiting === 1 ? '1 item aguarda você' : `${waiting} itens aguardam você`;
+    if (!(await ask(`\n${label}. Abrir a inbox agora?`))) return false;
+    await options.inbox();
+    return true;
+  };
+
+  /** Próximo item da fila e se ele para em `planned`; `undefined` quando a fila acabou. */
+  const pick = async (items: Item[]): Promise<{ target: Item; until?: 'planned' } | { end: QueueEnd; message?: string }> => {
+    const inProgress = items.find((item) => IN_PROGRESS.includes(item.status));
+    if (options.itemNumber !== undefined && !inProgress) {
+      if (finalStates.has(options.itemNumber)) return { end: 'once' };
+      const target = items.find((item) => item.number === options.itemNumber);
+      if (!target) return { end: 'not_found', message: `Item #${options.itemNumber} não existe.` };
+      if (target.status !== 'ready' && target.status !== 'planned') {
+        return { end: 'not_found', message: `Item #${target.number} está em ${target.status}, não em ready nem em planned.` };
+      }
+      return { target };
+    }
+    if (!batch) {
+      // Item a item: o planejado (aprovado, por exemplo) antes do próximo `ready`.
+      const target = inProgress ?? items.find((item) => item.status === 'planned') ?? items.find((item) => item.status === 'ready');
+      return target ? { target } : { end: 'empty' };
+    }
+    const planning = inProgress ?? items.find((item) => item.status === 'ready');
+    if (planning) return PLANNING.includes(planning.status) ? { target: planning, until: 'planned' } : { target: planning };
+    if (await offerInbox()) return pick(listItems(db, project.id));
+    const planned = items.find((item) => item.status === 'planned');
+    return planned ? { target: planned } : { end: 'empty' };
+  };
 
   const loop = async (): Promise<{ end: QueueEnd; message?: string }> => {
     for (;;) {
@@ -191,24 +254,14 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
       for (const warning of syncBacklog(db, project).warnings) log.write(style.dim(warning));
 
       const items = listItems(db, project.id);
-      const inProgress = items.find((item) => IN_PROGRESS.includes(item.status));
-      let target: Item | undefined;
-      if (inProgress) {
-        target = inProgress;
-      } else if (options.itemNumber !== undefined) {
-        if (finalStates.has(options.itemNumber)) return { end: 'once' };
-        target = items.find((item) => item.number === options.itemNumber);
-        if (!target) return { end: 'not_found', message: `Item #${options.itemNumber} não existe.` };
-        if (target.status !== 'ready') {
-          return { end: 'not_found', message: `Item #${target.number} está em ${target.status}, não em ready.` };
-        }
-      } else {
-        target = items.find((item) => item.status === 'ready');
-      }
-      if (!target) return { end: 'empty' };
+      const next = await pick(items);
+      if ('end' in next) return next;
+      const { target, until } = next;
+      if (abort.signal.aborted) return { end: 'interrupted' };
+      if (batch) enterPhase(until ? 'plan' : 'execute', listItems(db, project.id));
 
       log.setCwd(target.worktree ?? project.root);
-      const result: AdvanceResult = await advanceItem(env, target.id);
+      const result: AdvanceResult = await advanceItem(env, target.id, { until });
       current = undefined;
       log.flush();
       finalStates.set(target.number, getItemById(db, target.id).status);
@@ -262,7 +315,10 @@ export function renderQueueSummary(result: QueueResult): string {
 export async function run(args: string[]): Promise<number> {
   let values;
   try {
-    ({ values } = parseArgs({ args, options: { item: { type: 'string' }, uma: { type: 'boolean' } } }));
+    ({ values } = parseArgs({
+      args,
+      options: { item: { type: 'string' }, uma: { type: 'boolean' }, 'sem-lote': { type: 'boolean' } },
+    }));
   } catch (error) {
     process.stderr.write(`${(error as Error).message}\nUso: ${runUsage}\n`);
     return 1;
@@ -292,7 +348,20 @@ export async function run(args: string[]): Promise<number> {
     const interactive = isInteractive();
     // run → inbox → run: com itens aguardando, o humano responde e a fila segue sem sair.
     for (;;) {
-      const queue = startQueue({ db, home, project, itemNumber, once: values.uma, interactive });
+      const queue = startQueue({
+        db,
+        home,
+        project,
+        itemNumber,
+        once: values.uma,
+        batch: !values['sem-lote'],
+        interactive,
+        inbox: async () => {
+          process.stdout.write('\n');
+          await runInbox(db, home, project, terminalIO);
+          process.stdout.write('\n');
+        },
+      });
       const onSigint = () => queue.interrupt();
       process.on('SIGINT', onSigint);
       let result: QueueResult;

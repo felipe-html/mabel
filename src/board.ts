@@ -19,7 +19,7 @@ export interface BoardItem {
 export const BOARD_SECTIONS = [
   { title: 'Aguardando você', states: ['needs_human', 'awaiting_merge'] },
   { title: 'Em andamento', states: ['planning', 'executing', 'verifying', 'reviewing'] },
-  { title: 'Na fila', states: ['ready', 'backlog'] },
+  { title: 'Na fila', states: ['planned', 'ready', 'backlog'] },
   { title: 'Bloqueados e falhos', states: ['blocked', 'failed'] },
   { title: 'Concluídos', states: ['done'] },
 ] as const;
@@ -89,7 +89,8 @@ export function renderBoardSummary(projectName: string, items: BoardItem[]): str
     const states: readonly string[] = section.states;
     const inSection = items.filter((item) => states.includes(item.status));
     if (inSection.length === 0) continue;
-    counts.push(`${section.title.toLowerCase()} ${inSection.length}`);
+    const planned = inSection.filter((item) => item.status === 'planned').length;
+    counts.push(`${section.title.toLowerCase()} ${inSection.length}${planned > 0 ? ` (planned ${planned})` : ''}`);
     if (section.title === 'Aguardando você' || section.title === 'Em andamento') {
       detail.push('', section.title, ...inSection.map(itemLine));
     }

@@ -75,7 +75,7 @@ test('perguntas do planejamento: enter aceita, texto responde, d delega; uma res
   assert.match(p.reasons(1)[0] ?? '', /^humano: inbox responder: P1: Quais cômodos aparecem\? R1: Sala e Cozinha/);
 });
 
-test('item crítico: sem "decide você"; a aprova e segue para a execução', async () => {
+test('item crítico: sem "decide você"; a aprova e o item vai a planned', async () => {
   const p = inboxProject('\n## Desconto\naplica desconto\n', [CRITICAL]);
   const { io, out } = scripted(['d', 'a']);
   await runInbox(p.db, p.home, p.project, io);
@@ -83,7 +83,7 @@ test('item crítico: sem "decide você"; a aprova e segue para a execução', as
   assert.ok(out.some((line) => line.includes('C1 (teste) soma(2, 3) devolve 5')));
   assert.ok(out.some((line) => line.includes('a aprovação é sua')));
   assert.ok(!out.some((line) => line.includes('d decide você')));
-  assert.equal(p.item(1).status, 'executing');
+  assert.equal(p.item(1).status, 'planned');
   assert.deepEqual(p.reasons(1), ['humano: inbox critérios aprovados']);
 });
 

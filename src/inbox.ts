@@ -179,7 +179,7 @@ async function criticalFlow(
     if (input === 'p') return SKIP;
     if (input === 'a') {
       approve(db, project, item, VIA);
-      return 'executing';
+      return 'planned';
     }
     if (input === 'c') {
       if (!(await confirmCancel(io, item))) continue;

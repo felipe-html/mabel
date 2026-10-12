@@ -28,9 +28,9 @@ imposta por código (runner, hook, gate, banco); se depende de o modelo obedecer
 ## Ciclo de vida do item
 
 ```
-backlog → ready → planning → executing → verifying → reviewing → awaiting_merge → done
-                                  ↑            │            │
-                                  └────────────┴────────────┘  (falha de gate ou revisão)
+backlog → ready → planning → planned → executing → verifying → reviewing → awaiting_merge → done
+                                            ↑            │            │
+                                            └────────────┴────────────┘  (falha de gate ou revisão)
 
 Desvios a partir de qualquer etapa: needs_human · blocked · failed
 ```
@@ -112,6 +112,9 @@ mostrar crítico, ele sobe para garantia.
 - O revisor parte da hipótese de que o código não atende aos critérios.
 - Commits pequenos, com mensagem descritiva.
 - Relatórios e perguntas da inbox em português claro, decidíveis sem abrir o código.
+- Pergunta do agente que não toca regra crítica e traz sugestão é respondida pela própria
+  sugestão e registrada como suposição, salvo se o projeto configurar
+  `autonomia: "perguntar"`.
 
 ## Decisões do humano
 

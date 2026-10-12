@@ -44,12 +44,12 @@ test('toda transição da tabela é aceita, auditada e regenera o quadro', () =>
       count++;
     }
   }
-  assert.equal(count, 32);
+  assert.equal(count, 36);
 });
 
 test('transição fora da tabela lança e não grava nada', () => {
   const ctx = setupProject();
-  for (const [from, to] of [['backlog', 'done'], ['done', 'executing'], ['cancelled', 'backlog'], ['planning', 'reviewing']] as const) {
+  for (const [from, to] of [['backlog', 'done'], ['done', 'executing'], ['cancelled', 'backlog'], ['planning', 'reviewing'], ['planning', 'executing'], ['planned', 'verifying']] as const) {
     const itemId = insertItem(ctx, from);
     assert.throws(() => transition(ctx.db, ctx.project, itemId, to, null), TransitionError);
     assert.deepEqual(transitionsOf(ctx, itemId), []);
