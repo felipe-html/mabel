@@ -55,7 +55,8 @@ test('cada etapa monta ferramentas, modo, modelo, limites, esquema e sessão', (
 test('prompts de sistema têm o conteúdo mínimo obrigatório', () => {
   assert.match(systemPrompt('plan'), /menor plano/);
   assert.match(systemPrompt('plan'), /escopo/);
-  assert.match(systemPrompt('plan'), /Pergunte em vez de supor/);
+  assert.match(systemPrompt('plan'), /Pergunte só o que \*\*bloqueia/);
+  assert.match(systemPrompt('plan'), /No máximo \*\*3 perguntas/);
   assert.match(systemPrompt('execute'), /só o plano/);
   assert.match(systemPrompt('execute'), /testes de caracterização/);
   assert.match(systemPrompt('execute'), /Não use git/);

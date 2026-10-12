@@ -51,6 +51,11 @@ achados do teste orientam a especificação dos passos seguintes.
       (`docs/specs/interface.md`). Substitui o menu como painel.
 - [x] 3.4 `mabel init` por stack: catálogo Node/Python/Go/Rust e item da base de testes
       concreto (`docs/specs/interface.md`).
+- [x] `init` commita o `.mabel/` (os worktrees nasciam sem config e backlog), `run` recusa
+      começar sem ele na branch base, worktree sem commits próprios avança até a base, e
+      planejador calibrado para perguntar só o que bloqueia.
+- [ ] Inbox: `/inbox` com perguntas uma a uma, sugestão de resposta, "decide você" e
+      retomada da esteira (`docs/specs/inbox.md`).
 - [ ] Gravar no banco as pausas da fila (saldo de 7 dias, falta de leitura) e as respostas
       do humano às perguntas da política de saldo. Hoje só aparecem na saída (auditoria).
 - [ ] 2.3 `mabel runs` com lista e detalhe da run (`docs/specs/passo-2.md`).
@@ -81,3 +86,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-11 | Incremento 3.4: catálogo de stacks (`src/stacks.ts`) com a detecção existente, `init` com confirmação `[S/n/editar]`, menu de stack e `--stack`. Verificado num pseudo-terminal: repositório vazio com Node e projeto Node existente sem testes. |
 | 2026-10-11 | Correção: `init` depois de apagar o `.mabel/` reaproveita o id registrado para a raiz, mantendo o histórico. |
 | 2026-10-11 | Correção: `init` registra o projeto antes de gravar, grava o `config.json` por último e desfaz os arquivos criados se a gravação falhar. |
+| 2026-10-12 | Achados do teste com o `ferias-planner`: os 3 itens pararam em `needs_human` no planejamento. Correções: `init` commita o `.mabel/`, `run` exige o `.mabel/` na branch base, worktree parado no planejamento avança até a base, prompts com critério do que perguntar e do que decidir. Spec da inbox (`docs/specs/inbox.md`). |

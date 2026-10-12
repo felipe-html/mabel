@@ -179,3 +179,13 @@ test('aprovar e cancelar pela linha de comando', () => {
   assert.deepEqual(q.states(), [[1, 'executing'], [2, 'cancelled']]);
   assert.equal(q.cli('responder', '9', 'x').status, 1);
 });
+
+test('run recusa começar com o .mabel/ fora da branch base', () => {
+  const ctx = setupProject('\n## Item\nfazer algo\n');
+  spawnSync('git', ['rm', '-q', '-r', '--cached', '.mabel'], { cwd: ctx.root });
+  spawnSync('git', ['commit', '-q', '-m', 'tira o .mabel'], { cwd: ctx.root });
+  const result = ctx.cli('run');
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /não está commitado na branch main/);
+  assert.equal(existsSync(lockPath(ctx.home, ctx.project.id)), false);
+});

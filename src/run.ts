@@ -8,7 +8,7 @@ import { formatCost, formatDuration } from './format.ts';
 import { type Item, type ItemStatus, getItemById, listItems, syncBacklog, transition } from './items.ts';
 import { LockError, acquireLock } from './lock.ts';
 import { type AdvanceResult, advanceItem } from './pipeline.ts';
-import { type Project, ProjectError, resolveProject } from './project.ts';
+import { type Project, ProjectError, mabelCommitted, resolveProject } from './project.ts';
 import { type RunHandle, type RunStage, startRun } from './runner.ts';
 import { probeRequest } from './status.ts';
 import { style } from './style.ts';
@@ -266,6 +266,13 @@ export async function run(args: string[]): Promise<number> {
   let release: (() => void) | undefined;
   try {
     const project = resolveProject(db);
+    if (!mabelCommitted(project.root, project.config.baseBranch)) {
+      process.stderr.write(
+        `O .mabel/ não está commitado na branch ${project.config.baseBranch}; os worktrees dos itens nasceriam sem ele.\n` +
+          'Rode `mabel init` para commitar, ou `git add .mabel && git commit -m "mabel init" -- .mabel`.\n',
+      );
+      return 1;
+    }
     release = acquireLock(home, project.id);
     const queue = startQueue({ db, home, project, itemNumber, once: values.uma, interactive: isInteractive() });
     const onSigint = () => queue.interrupt();

@@ -58,6 +58,16 @@ export function hasCommits(root: string): boolean {
   return tryGit(root, 'rev-parse', '--verify', '--quiet', 'HEAD') !== undefined;
 }
 
+/** O `.mabel/config.json` está commitado na branch base: os worktrees dos itens nascem dela. */
+export function mabelCommitted(root: string, baseBranch: string): boolean {
+  return tryGit(root, 'cat-file', '-e', `${baseBranch}:${MABEL_DIR}/config.json`) !== undefined;
+}
+
+/** Arquivos do `.mabel/` não commitados (novos ou alterados), fora os ignorados. */
+export function mabelUncommitted(root: string): boolean {
+  return (tryGit(root, 'status', '--porcelain', '--', MABEL_DIR) ?? '') !== '';
+}
+
 /** Branch atual; funciona também em repositório sem commits. */
 export function currentBranch(root: string): string {
   return tryGit(root, 'symbolic-ref', '--short', 'HEAD') ?? 'main';

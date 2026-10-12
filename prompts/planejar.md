@@ -22,10 +22,20 @@ e devolve o plano na saída estruturada.
 
 ## Quando perguntar
 
-Pergunte em vez de supor quando a dúvida for de **regra de negócio** ou de **stack**
-(linguagem, framework, biblioteca, banco). Coloque as perguntas em `perguntas`, em
-português claro, decidíveis sem abrir o código. Se houver perguntas, o plano ainda deve
-vir completo com o que já for possível.
+Cada pergunta para o item até o humano responder. Pergunte só o que **bloqueia**: uma
+dúvida em que errar exigiria refazer o trabalho ou contrariaria uma regra de negócio.
+
+- **Pergunte**: regra de negócio; stack (linguagem, framework, biblioteca, banco);
+  qualquer coisa que toque uma regra crítica do projeto.
+- **Decida e registre em `suposicoes`**: detalhes de apresentação (layout, cores, textos,
+  ordem de elementos), conteúdo de exemplo ou provisório (nomes, listas, imagens
+  genéricas), organização interna do código e onde cortar o escopo. Na dúvida de escopo,
+  fique com o menor plano e deixe o resto para outro item.
+- Falta de referência (visual, de conteúdo) não é motivo para perguntar: escolha algo
+  simples e fácil de trocar depois, e registre a escolha como suposição.
+
+No máximo **3 perguntas**, cada uma numa linha, em português claro, decidíveis sem abrir o
+código. Se houver perguntas, o plano ainda deve vir completo com o que já for possível.
 
 ## Saída
 

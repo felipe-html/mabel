@@ -129,6 +129,30 @@ test('worktree criado da branch base, reutilizado na retomada e removido no fim'
   assert.match(broken.setupError ?? '', /saiu com 3: quebrou/);
 });
 
+test('worktree reutilizado sem commits próprios avança até a branch base', () => {
+  const ctx = setupProject('\n## Primeiro item\nfazer algo\n');
+  syncBacklog(ctx.db, ctx.project);
+  const first = prepareWorktree(ctx.db, ctx.home, ctx.project, getItem(ctx.db, ctx.project.id, 1)!);
+  const git = (cwd: string, ...args: string[]) => spawnSync('git', args, { cwd, encoding: 'utf8' }).stdout.trim();
+  writeFileSync(join(first.path, 'rascunho.txt'), 'não rastreado');
+
+  writeFileSync(join(ctx.root, 'depois.txt'), 'x');
+  git(ctx.root, 'add', 'depois.txt');
+  git(ctx.root, 'commit', '-q', '-m', 'depois do worktree');
+  prepareWorktree(ctx.db, ctx.home, ctx.project, getItem(ctx.db, ctx.project.id, 1)!);
+  assert.equal(git(first.path, 'rev-parse', 'HEAD'), git(ctx.root, 'rev-parse', 'main'));
+
+  // Com commit próprio, o worktree não é tocado.
+  writeFileSync(join(first.path, 'novo.txt'), 'y');
+  commitAll(first.path, 'próprio');
+  const own = git(first.path, 'rev-parse', 'HEAD');
+  writeFileSync(join(ctx.root, 'mais.txt'), 'z');
+  git(ctx.root, 'add', 'mais.txt');
+  git(ctx.root, 'commit', '-q', '-m', 'mais um');
+  prepareWorktree(ctx.db, ctx.home, ctx.project, getItem(ctx.db, ctx.project.id, 1)!);
+  assert.equal(git(first.path, 'rev-parse', 'HEAD'), own);
+});
+
 test('trava: segundo processo no mesmo projeto falha com mensagem clara; lock órfão é descartado', async () => {
   const home = mkdtempSync(join(tmpdir(), 'mabel-lock-'));
   const holder = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)']);

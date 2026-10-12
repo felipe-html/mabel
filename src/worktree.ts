@@ -59,6 +59,8 @@ export function prepareWorktree(db: DatabaseSync, home: string, project: Project
     if (branchExists) git(project.root, 'worktree', 'add', path, branch);
     else git(project.root, 'worktree', 'add', '-b', branch, path, project.config.baseBranch);
     created = true;
+  } else {
+    catchUp(path, project.config.baseBranch);
   }
   db.prepare('UPDATE items SET branch = ?, worktree = ?, updated_at = ? WHERE id = ?').run(
     branch,
@@ -76,6 +78,16 @@ export function prepareWorktree(db: DatabaseSync, home: string, project: Project
     }
   }
   return { path, branch, created };
+}
+
+/**
+ * Worktree reutilizado sem commits próprios e sem alterações (ex.: item parado no
+ * planejamento) avança até a branch base, para enxergar o que foi commitado depois.
+ */
+function catchUp(path: string, baseBranch: string): void {
+  if (tryGit(path, 'merge-base', '--is-ancestor', 'HEAD', baseBranch) === undefined) return;
+  if (tryGit(path, 'status', '--porcelain', '--untracked-files=no') !== '') return;
+  tryGit(path, 'merge', '-q', '--ff-only', baseBranch);
 }
 
 /** Remove o worktree do item (a branch fica). */

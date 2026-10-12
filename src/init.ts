@@ -15,10 +15,10 @@ import {
   type VerifyCommand,
   currentBranch,
   gitRoot,
-  hasCommits,
   hasTestCommand,
   isEmptyProject,
   mabelPath,
+  mabelUncommitted,
   newProjectId,
   readConfig,
   registerProject,
@@ -203,6 +203,7 @@ export async function init(args: string[]): Promise<number> {
           '',
         ].join('\n'),
       );
+      await offerCommit(root);
       return 0;
     }
 
@@ -275,22 +276,31 @@ export async function init(args: string[]): Promise<number> {
     if (noTests) notes.push(`Projeto sem testes: "${TEST_BASE_TITLE}" é o primeiro item do backlog.`);
     process.stdout.write(`${notes.join('\n')}\n`);
 
-    if (!hasCommits(root)) {
-      process.stdout.write('O repositório não tem commits; os worktrees do Mabel precisam de um commit inicial.\n');
-      if (interactive() && (await confirm('Criar o commit inicial com os arquivos do .mabel/?'))) {
-        createInitialCommit(root);
-        process.stdout.write('Commit inicial criado.\n');
-      } else {
-        process.stdout.write('Crie-o com `git add .mabel && git commit -m "mabel init"`.\n');
-      }
-    }
+    await offerCommit(root);
     return 0;
   } finally {
     db.close();
   }
 }
 
-export function createInitialCommit(root: string): void {
+/**
+ * Os worktrees dos itens nascem da branch base: sem o `.mabel/` commitado, o agente não vê
+ * o config nem o backlog. Oferece o commit sempre que houver arquivos do `.mabel/` pendentes.
+ */
+async function offerCommit(root: string): Promise<void> {
+  if (!mabelUncommitted(root)) return;
+  const branch = currentBranch(root);
+  process.stdout.write(`O .mabel/ tem arquivos fora do git; os worktrees dos itens nascem da branch ${branch}.\n`);
+  if (interactive() && (await confirm(`Commitar o .mabel/ na branch ${branch}?`))) {
+    commitMabelDir(root);
+    process.stdout.write('Commit criado.\n');
+  } else {
+    process.stdout.write('Commite com `git add .mabel && git commit -m "mabel init" -- .mabel` antes do `mabel run`.\n');
+  }
+}
+
+/** Commita só o `.mabel/`, sem levar o que o usuário tiver no índice. */
+export function commitMabelDir(root: string): void {
   git(root, 'add', MABEL_DIR);
-  git(root, 'commit', '-m', 'mabel init');
+  git(root, 'commit', '-q', '-m', 'mabel init', '--', MABEL_DIR);
 }

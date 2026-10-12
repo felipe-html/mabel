@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BACKLOG_TEMPLATE } from '../src/backlog.ts';
+import { commitMabelDir } from '../src/init.ts';
 import { openDb } from '../src/db.ts';
 import { resolveProject } from '../src/project.ts';
 
@@ -48,6 +49,7 @@ export function setupProject(backlog?: string) {
   assert.equal(cli('init').status, 0);
   const path = join(root, '.mabel', 'backlog.md');
   if (backlog !== undefined) writeFileSync(path, BACKLOG_TEMPLATE + backlog);
+  commitMabelDir(root);
   const db = openDb(home);
   const project = resolveProject(db, root);
   return { root, home, env, cli, path, db, project };

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { createInitialCommit, createProjectFiles, testBaseItem } from '../src/init.ts';
+import { commitMabelDir, createProjectFiles, testBaseItem } from '../src/init.ts';
 import { makeRepo } from './helpers.ts';
 import { hasCommits, isEmptyProject, parseCriticalRules } from '../src/project.ts';
 import { STACKS, detectCommands as detect, findStack } from '../src/stacks.ts';
@@ -199,18 +199,33 @@ test('init fora de repositório git falha com dica', () => {
   assert.match(result.stderr, /git init/);
 });
 
-test('init em repositório sem commits avisa e explica como criar o commit inicial', () => {
+test('init em repositório sem commits explica como commitar o .mabel/', () => {
   const root = makeRepo({ 'src/app.py': '' }, { commit: false });
   const result = mabel(root, 'init');
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /não tem commits/);
+  assert.match(result.stdout, /fora do git/);
   assert.match(result.stdout, /git add \.mabel && git commit/);
   assert.equal(hasCommits(root), false);
 
-  createInitialCommit(root);
+  commitMabelDir(root);
   assert.equal(hasCommits(root), true);
   const tracked = spawnSync('git', ['ls-files'], { cwd: root, encoding: 'utf8' }).stdout.trim().split('\n');
   assert.deepEqual(tracked.sort(), ['.mabel/.gitignore', '.mabel/backlog.md', '.mabel/config.json', '.mabel/regras-criticas.md']);
+});
+
+test('commit do .mabel/ não leva o que o usuário deixou no índice; init repetido avisa enquanto falta commitar', () => {
+  const root = makeRepo({ 'src/app.py': '' });
+  assert.match(mabel(root, 'init').stdout, /fora do git/);
+  assert.match(mabel(root, 'init').stdout, /fora do git/);
+  writeFileSync(join(root, 'src', 'app.py'), 'print(1)\n');
+  spawnSync('git', ['add', 'src/app.py'], { cwd: root });
+
+  commitMabelDir(root);
+  const files = spawnSync('git', ['show', '--name-only', '--format=', 'HEAD'], { cwd: root, encoding: 'utf8' }).stdout;
+  assert.doesNotMatch(files, /app\.py/);
+  const staged = spawnSync('git', ['diff', '--cached', '--name-only'], { cwd: root, encoding: 'utf8' }).stdout.trim();
+  assert.equal(staged, 'src/app.py');
+  assert.doesNotMatch(mabel(root, 'init').stdout, /fora do git/);
 });
 
 test('init cria os arquivos, ignora o quadro e não altera nada quando repetido', () => {
