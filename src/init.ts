@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { ask, confirm, interactive } from './ask.ts';
@@ -147,8 +147,27 @@ async function editCommands(setup: string | null, verify: VerifyCommand[]) {
   return { setup: newSetup, verify: newVerify };
 }
 
-function writeIfMissing(path: string, content: string): void {
-  if (!existsSync(path)) writeFileSync(path, content);
+/**
+ * Cria no `.mabel/` os arquivos que ainda não existem (os do usuário são preservados).
+ * Se uma gravação falhar, remove o que esta chamada criou e relança o erro.
+ */
+export function createProjectFiles(root: string, files: [string, string][]): void {
+  const dir = join(root, MABEL_DIR);
+  const created: string[] = [];
+  const createdDir = !existsSync(dir);
+  try {
+    mkdirSync(dir, { recursive: true });
+    for (const [name, content] of files) {
+      const path = mabelPath(root, name);
+      if (existsSync(path)) continue;
+      writeFileSync(path, content);
+      created.push(path);
+    }
+  } catch (error) {
+    for (const path of created) rmSync(path, { force: true });
+    if (createdDir) rmSync(dir, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 export async function init(args: string[]): Promise<number> {
@@ -230,13 +249,20 @@ export async function init(args: string[]): Promise<number> {
     const noTests = !hasTestCommand(verify);
     if (noTests) backlog = appendBlocks(backlog, [renderItemBlock(testBaseItem({ empty, stack, other }))]);
 
-    mkdirSync(join(root, MABEL_DIR), { recursive: true });
-    writeIfMissing(mabelPath(root, 'regras-criticas.md'), CRITICAL_RULES_TEMPLATE);
-    writeIfMissing(mabelPath(root, 'backlog.md'), backlog);
-    writeIfMissing(mabelPath(root, '.gitignore'), 'quadro.md\n');
-    writeFileSync(mabelPath(root, 'config.json'), `${JSON.stringify(config, null, 2)}\n`);
-
+    // Registrar antes de gravar: se a gravação falhar, um novo `init` reaproveita o id.
     registerProject(db, root, config.projectId);
+    try {
+      createProjectFiles(root, [
+        ['regras-criticas.md', CRITICAL_RULES_TEMPLATE],
+        ['backlog.md', backlog],
+        ['.gitignore', 'quadro.md\n'],
+        // Por último: é o config que marca a pasta como projeto Mabel.
+        ['config.json', `${JSON.stringify(config, null, 2)}\n`],
+      ]);
+    } catch (error) {
+      process.stderr.write(`Não foi possível criar o .mabel/: ${(error as Error).message}\nNenhum arquivo foi criado.\n`);
+      return 1;
+    }
     syncBacklog(db, { id: config.projectId, root, name: basename(root), config });
 
     const notes = [`${style.bold('.mabel/ criado')} em ${root} · branch base ${config.baseBranch}`];

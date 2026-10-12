@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { createInitialCommit, testBaseItem } from '../src/init.ts';
+import { createInitialCommit, createProjectFiles, testBaseItem } from '../src/init.ts';
 import { makeRepo } from './helpers.ts';
 import { hasCommits, isEmptyProject, parseCriticalRules } from '../src/project.ts';
 import { STACKS, detectCommands as detect, findStack } from '../src/stacks.ts';
@@ -144,6 +144,42 @@ test('init depois de apagar o .mabel/ reaproveita o id registrado', () => {
   assert.equal(again.status, 0, again.stderr);
   assert.match(again.stdout, /histórico anterior foi mantido/);
   assert.equal(JSON.parse(readFileSync(configPath, 'utf8')).projectId, projectId);
+});
+
+test('falha ao gravar o .mabel/ desfaz o que foi criado e preserva os arquivos do usuário', () => {
+  const root = makeRepo();
+  mkdirSync(join(root, '.mabel'));
+  writeFileSync(join(root, '.mabel', 'regras-criticas.md'), 'minhas regras\n');
+  // O último arquivo falha: o diretório `sub/x` não existe.
+  assert.throws(() =>
+    createProjectFiles(root, [
+      ['regras-criticas.md', 'modelo'],
+      ['backlog.md', 'backlog'],
+      ['sub/x/y.md', 'falha'],
+    ]),
+  );
+  assert.equal(readFileSync(join(root, '.mabel', 'regras-criticas.md'), 'utf8'), 'minhas regras\n');
+  assert.equal(existsSync(join(root, '.mabel', 'backlog.md')), false);
+
+  const fresh = makeRepo();
+  assert.throws(() => createProjectFiles(fresh, [['backlog.md', 'b'], ['nao/existe.md', 'x']]));
+  assert.equal(existsSync(join(fresh, '.mabel')), false);
+});
+
+test('init que falha ao gravar pode ser repetido', () => {
+  const home = mkdtempSync(join(tmpdir(), 'mabel-home-'));
+  const root = makeRepo({ 'package.json': PKG({ test: 'node --test' }) });
+  mkdirSync(join(root, '.mabel'));
+  chmodSync(join(root, '.mabel'), 0o555);
+  const failed = mabelIn(home, root, 'init');
+  chmodSync(join(root, '.mabel'), 0o755);
+  assert.equal(failed.status, 1);
+  assert.match(failed.stderr, /Não foi possível criar o \.mabel\/.*\nNenhum arquivo foi criado/);
+  assert.equal(existsSync(join(root, '.mabel', 'config.json')), false);
+
+  const again = mabelIn(home, root, 'init');
+  assert.equal(again.status, 0, again.stderr);
+  assert.match(again.stdout, /histórico anterior foi mantido/);
 });
 
 test('init com --stack inválido lista as stacks e falha', () => {
