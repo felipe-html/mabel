@@ -71,6 +71,12 @@ achados do teste orientam a especificação dos passos seguintes.
   - [ ] 5.2 Sandbox e ferramentas por etapa (G4, terminal e rede).
   - [ ] 5.3 Hook de escopo (G4, arquivos).
   - [ ] 5.4 Contrato, preflight e documentação.
+- [ ] Prova e integração (`docs/specs/prova-e-integracao.md`):
+  - [ ] P.1 Veredito calculado (revisor não declara aprovação).
+  - [ ] P.2 Prova mecânica: vermelho na base, verde no item.
+  - [ ] P.3 Limpeza de worktrees e branches.
+  - [ ] P.4 Branch de integração.
+  - [ ] P.5 Relatório da integração e `mabel rejeitar`.
 
 ## Histórico
 
@@ -106,3 +112,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-12 | Saldo (`docs/specs/saldo.md`): leitura com mais de 30 min é atualizada antes da etapa; consumo de cada etapa medido pelas leituras das runs (média das 10 últimas, mínimo 3); com estimativa, a política compara o saldo depois da etapa com o piso de 10%, sem ela vale o limiar de 30%; janela de 7 dias acima do ritmo pergunta e, sem autorização, espera o ritmo alcançar. Rodapé fixo com as duas janelas no modo Mabel e no `mabel run`, no lugar do cabeçalho de abertura. Política de saldo do contrato atualizada. Verificado num pseudo-terminal. |
 | 2026-10-12 | Spec do passo 5 (`docs/specs/passo-5.md`), com experimentos no Claude Code real: `--restricted` isola o contexto mas não carrega o `CLAUDE.md`; hook por `--settings` nega ações; o sandbox confina o terminal e a rede. |
 | 2026-10-12 | Decisões do passo 5 (usuário): autorizada a mudança dos mecanismos de G4 e G8 no contrato; escopo rígido com ampliação automática não crítica; `run` não inicia sem sandbox, salvo `"sandbox": false`. |
+| 2026-10-13 | Spec de prova e integração (`docs/specs/prova-e-integracao.md`), a partir do relatório do cepa: veredito calculado, prova mecânica (vermelho na base, verde no item), branch de integração com relatório e `rejeitar`. Decisões do usuário: integração ligada por padrão, dependência integrada libera o dependente, critério sem prova não bloqueia, mudanças no G3, G5, G10 e ciclo de vida autorizadas, entra depois do passo 5. Prova com agente especificada como fase 2 e registrada no `BACKLOG.md`. |
