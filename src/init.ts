@@ -10,6 +10,7 @@ import {
   CRITICAL_RULES_TEMPLATE,
   DEFAULT_LIMITS,
   DEFAULT_MODELS,
+  DEFAULT_TEST_GLOBS,
   MABEL_DIR,
   type ProjectConfig,
   type VerifyCommand,
@@ -245,6 +246,9 @@ export async function init(args: string[]): Promise<number> {
       models: { ...DEFAULT_MODELS },
       limits: structuredClone(DEFAULT_LIMITS),
       autonomia: 'sugestoes',
+      // Sem stack do catálogo, a prova roda o comando de teste inteiro (modo por item).
+      testeUnico: stack?.proof(root, empty).testeUnico ?? null,
+      arquivosDeTeste: stack?.proof(root, empty).arquivosDeTeste ?? [...DEFAULT_TEST_GLOBS],
     };
 
     let backlog = BACKLOG_TEMPLATE;

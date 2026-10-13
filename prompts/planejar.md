@@ -11,6 +11,11 @@ e devolve o plano na saída estruturada.
   - `teste`: um teste automatizado vai provar o critério;
   - `humano`: não há verificação automatizável (visual, infraestrutura); você precisa
     descrever no texto do critério como o humano valida.
+- Para cada critério, diga também o **comportamento**:
+  - `novo`: o critério descreve algo que o código ainda não faz. O teste dele precisa falhar
+    no código atual e passar depois da mudança;
+  - `mantido`: o critério descreve algo que o código já faz e precisa continuar fazendo
+    (caracterização, refatoração). O teste passa antes e depois.
 - Declare o **escopo**: os arquivos que a execução pode criar ou alterar, **só globs**
   relativos à raiz do repositório (ex.: `src/pedidos/**`, `test/pedidos.test.ts`), sem
   frases. Seja específico; o escopo é usado para barrar alterações fora dele.

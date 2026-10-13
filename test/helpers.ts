@@ -52,6 +52,10 @@ export function setupProject(backlog?: string) {
   assert.equal(cli('init').status, 0);
   const path = join(root, '.mabel', 'backlog.md');
   if (backlog !== undefined) writeFileSync(path, BACKLOG_TEMPLATE + backlog);
+  // Os testes do pipeline usam arquivos de teste falsos: a prova roda no modo por item e,
+  // sem comando de teste no `verify`, deixa os critérios sem prova. `proof.test.ts` a liga.
+  const configPath = join(root, '.mabel', 'config.json');
+  writeFileSync(configPath, JSON.stringify({ ...JSON.parse(readFileSync(configPath, 'utf8')), testeUnico: null }, null, 2));
   commitMabelDir(root);
   const db = openDb(home);
   const project = resolveProject(db, root);
@@ -82,7 +86,7 @@ export function useScenario(dir: string, responses: unknown[]): { log: () => { a
 
 export const PLAN = {
   resumo: 'Criar a função soma.',
-  criterios: [{ id: 'C1', texto: 'soma(2, 3) devolve 5', verificacao: 'teste' }],
+  criterios: [{ id: 'C1', texto: 'soma(2, 3) devolve 5', verificacao: 'teste', comportamento: 'novo' }],
   escopo: ['src/**', 'test/**'],
   passos: ['Criar src/soma.js', 'Criar test/soma.test.js'],
   suposicoes: [],

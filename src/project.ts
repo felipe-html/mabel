@@ -30,6 +30,13 @@ export interface ProjectConfig {
   models: Record<Stage, string>;
   limits: Record<Stage, StageLimits>;
   autonomia: Autonomy;
+  /**
+   * Comando que roda um teste só, para a prova (`{arquivo}`, `{pasta}`, `{nome}`, `{padrao}`).
+   * `null`: a prova roda o comando de teste do `verify` uma vez (modo por item).
+   */
+  testeUnico: string | null;
+  /** Globs dos arquivos que são só de teste; ficam com a versão do item quando a prova roda a base. */
+  arquivosDeTeste: string[];
 }
 
 export interface Project {
@@ -52,6 +59,20 @@ export const DEFAULT_LIMITS: Record<Stage, StageLimits> = {
   execute: { maxTurns: 120, maxBudgetUsd: 8 },
   review: { maxTurns: 40, maxBudgetUsd: 3 },
 };
+
+/** Arquivos de teste de todas as stacks do catálogo: vale para config sem `arquivosDeTeste`. */
+export const DEFAULT_TEST_GLOBS = [
+  '**/*.test.*',
+  '**/*.spec.*',
+  '**/__tests__/**',
+  'test/**',
+  'tests/**',
+  '**/test_*.py',
+  '**/*_test.py',
+  '**/conftest.py',
+  '**/*_test.go',
+  '**/testdata/**',
+];
 
 export class ProjectError extends Error {}
 
@@ -104,6 +125,8 @@ export function readConfig(root: string): ProjectConfig | undefined {
       review: { ...DEFAULT_LIMITS.review, ...raw.limits?.review },
     },
     autonomia: raw.autonomia === 'perguntar' ? 'perguntar' : 'sugestoes',
+    testeUnico: typeof raw.testeUnico === 'string' && raw.testeUnico.trim() ? raw.testeUnico : null,
+    arquivosDeTeste: Array.isArray(raw.arquivosDeTeste) ? raw.arquivosDeTeste : [...DEFAULT_TEST_GLOBS],
   };
 }
 

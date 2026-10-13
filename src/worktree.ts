@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { git, tryGit } from './git.ts';
 import type { Item } from './items.ts';
-import type { Project } from './project.ts';
+import type { Project, ProjectConfig } from './project.ts';
 
 /** Título em minúsculas, sem acentos, só `[a-z0-9-]`, até 40 caracteres. */
 export function slugify(title: string): string {
@@ -15,6 +15,11 @@ export function slugify(title: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
   return slug.slice(0, 40).replace(/-+$/, '') || 'item';
+}
+
+/** Branch de onde os itens nascem e contra a qual a prova calcula a base. */
+export function originBranch(config: Pick<ProjectConfig, 'baseBranch'>): string {
+  return config.baseBranch;
 }
 
 export function branchName(item: Pick<Item, 'number' | 'title'>): string {
@@ -39,7 +44,9 @@ function lastLines(text: string, count: number): string {
 
 /** Roda um comando de shell no diretório dado, com stdout e stderr juntos. */
 export function shell(command: string, cwd: string): { code: number; output: string } {
-  const result = spawnSync('sh', ['-c', `${command} 2>&1`], { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  // Sem NODE_TEST_CONTEXT: um `node --test` do projeto não se reporta ao runner que roda o Mabel.
+  const { NODE_TEST_CONTEXT: _, ...env } = process.env;
+  const result = spawnSync('sh', ['-c', `${command} 2>&1`], { cwd, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   return { code: result.status ?? 1, output: result.stdout ?? '' };
 }
 

@@ -139,6 +139,7 @@ test('fluxo feliz: planejar, executar, verificar, revisar e awaiting_merge com c
     { attempt: 0, gate: 'start', passed: 1 },
     { attempt: 1, gate: 'existe', passed: 1 },
     { attempt: 1, gate: 'criteria_tests', passed: 1 },
+    { attempt: 1, gate: 'proof', passed: 1 },
     { attempt: 1, gate: 'review', passed: 1 },
   ]);
   assert.ok(existsSync(join(p.ctx.home, 'items', p.item().id, 'verificacao-1', 'existe.log')));

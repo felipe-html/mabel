@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { globsOverlap } from './glob.ts';
 import {
@@ -25,7 +25,9 @@ import {
   writeArtifact,
   writePlan,
 } from './stages.ts';
-import { commitAll, commitMessage, prepareWorktree, shell } from './worktree.ts';
+import { git } from './git.ts';
+import { foundTests, proofDetail, runProof } from './proof.ts';
+import { commitAll, commitMessage, originBranch, prepareWorktree, shell } from './worktree.ts';
 
 export interface PipelineEnv {
   db: DatabaseSync;
@@ -104,16 +106,7 @@ export function criteriaWithoutTests(plan: PlanOutput, execution: ExecuteOutput,
   for (const criterion of plan.criterios) {
     if (criterion.verificacao !== 'teste') continue;
     const declared = execution.criterios.find((c) => c.id === criterion.id)?.testes ?? [];
-    const found = declared.some((t) => {
-      const path = resolve(worktree, t.arquivo);
-      if (relative(worktree, path).startsWith('..') || !existsSync(path)) return false;
-      try {
-        return readFileSync(path, 'utf8').includes(t.nome);
-      } catch {
-        return false;
-      }
-    });
-    if (!found) {
+    if (foundTests(worktree, declared).length === 0) {
       missing.push(
         declared.length === 0
           ? `${criterion.id}: nenhum teste declarado`
@@ -521,6 +514,36 @@ function verifyStep(env: PipelineEnv, item: Item): Step {
   recordGate(env.db, item.id, attemptNo, 'criteria_tests', missing.length === 0, missing.join('; ') || null);
   if (missing.length > 0) {
     return attemptFailed(env, item, item.attempts, `Critérios sem teste encontrado:\n${missing.map((m) => `- ${m}`).join('\n')}`);
+  }
+  return proofStep(env, item, plan, execution);
+}
+
+/**
+ * Prova mecânica (G3): cada teste de critério roda no item e no código base. Lacuna volta à
+ * execução; critério sem prova segue para o relatório; worktree não restaurado vai a `failed`.
+ */
+function proofStep(env: PipelineEnv, item: Item, plan: PlanOutput, execution: ExecuteOutput): Step {
+  const attemptNo = item.attemptNo;
+  const worktree = item.worktree as string;
+  const logDir = join(itemDir(env.home, item.id), `prova-${attemptNo}`);
+  const base = git(worktree, 'merge-base', 'HEAD', originBranch(env.project.config));
+  const result = runProof({ worktree, base, config: env.project.config, plan, execution, logDir });
+  writeArtifact(env.home, item.id, `prova-${attemptNo}.json`, result);
+  if (!result.restored || result.error) {
+    const reason = result.restored ? `prova interrompida: ${result.error}` : 'worktree não restaurado após a prova';
+    recordGate(env.db, item.id, attemptNo, 'proof', false, reason, logDir);
+    move(env, item, 'failed', reason);
+    return { kind: 'stopped', status: 'failed' };
+  }
+  const gaps = result.criteria.filter((c) => c.status === 'nao_provado');
+  recordGate(env.db, item.id, attemptNo, 'proof', gaps.length === 0, proofDetail(result) || null, logDir);
+  if (gaps.length > 0) {
+    return attemptFailed(
+      env,
+      item,
+      item.attempts,
+      `A prova reprovou testes que não protegem os critérios:\n${gaps.map((c) => `- ${c.id}: ${c.reason}`).join('\n')}`,
+    );
   }
   move(env, item, 'reviewing', `verificação ${attemptNo} aprovada`);
   return undefined;

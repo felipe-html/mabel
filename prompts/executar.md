@@ -14,6 +14,13 @@ só edita arquivos.
 
 - Escreva **um teste por critério** com `verificacao: "teste"`. Cada teste precisa ter um
   nome que apareça literalmente no arquivo do teste.
+- O Mabel roda cada teste de critério `novo` no código anterior à sua mudança: ele precisa
+  falhar ali. Teste que passaria sem a sua implementação devolve o item. O de critério
+  `mantido` precisa passar antes e depois.
+- O teste roda sozinho, pelo nome declarado. Declare o nome exato que o runner filtra: em
+  Node e Python, o nome do teste; em Go, o nome da função (`TestX`); em Rust, o nome da
+  função de teste. Prefira testes em arquivos só de teste, separados do código de
+  produção: teste dentro do código alterado fica sem prova.
 - Antes de alterar código que não tem testes, escreva **testes de caracterização** do
   comportamento atual e confirme que passam antes da mudança.
 - Rode os **comandos de verificação** do projeto antes de terminar e corrija o que falhar.

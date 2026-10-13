@@ -32,10 +32,15 @@ const questions: Schema = {
   items: object({ texto: str, sugestao: str, regraCritica: { type: 'boolean' } }),
 };
 
+/**
+ * `comportamento` diz o que a prova espera do teste no código base: `novo` falha nele,
+ * `mantido` passa. Obrigatório no esquema; planos anteriores à prova não têm o campo.
+ */
 export interface PlanCriterion {
   id: string;
   texto: string;
   verificacao: 'teste' | 'humano';
+  comportamento?: 'novo' | 'mantido';
 }
 
 export interface Assumption {
@@ -70,7 +75,12 @@ export const planSchema: Schema = object({
   resumo: str,
   criterios: {
     type: 'array',
-    items: object({ id: str, texto: str, verificacao: { type: 'string', enum: ['teste', 'humano'] } }),
+    items: object({
+      id: str,
+      texto: str,
+      verificacao: { type: 'string', enum: ['teste', 'humano'] },
+      comportamento: { type: 'string', enum: ['novo', 'mantido'] },
+    }),
   },
   escopo: strings,
   passos: strings,

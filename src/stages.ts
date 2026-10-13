@@ -137,7 +137,10 @@ export function readArtifact<T>(home: string, itemId: string, name: string): T |
 /** Versão legível do plano, usada nos prompts das etapas seguintes. */
 export function renderPlanMarkdown(item: Pick<Item, 'number' | 'title'>, plan: PlanOutput): string {
   const lines = [`# Plano do item #${item.number}: ${item.title}`, '', plan.resumo, '', '## Critérios de aceite'];
-  for (const criterion of plan.criterios) lines.push(`- **${criterion.id}** (${criterion.verificacao}): ${criterion.texto}`);
+  for (const criterion of plan.criterios) {
+    const kind = [criterion.verificacao, criterion.comportamento].filter(Boolean).join(', ');
+    lines.push(`- **${criterion.id}** (${kind}): ${criterion.texto}`);
+  }
   lines.push('', '## Escopo', ...plan.escopo.map((glob) => `- \`${glob}\``));
   lines.push('', '## Passos', ...plan.passos.map((step, i) => `${i + 1}. ${step}`));
   if (plan.suposicoes.length > 0) {

@@ -75,7 +75,7 @@ achados do teste orientam a especificação dos passos seguintes.
   - [ ] 5.4 Contrato, preflight e documentação.
 - [ ] Prova e integração (`docs/specs/prova-e-integracao.md`):
   - [x] P.1 Veredito calculado (revisor não declara aprovação).
-  - [ ] P.2 Prova mecânica: vermelho na base, verde no item.
+  - [x] P.2 Prova mecânica: vermelho na base, verde no item.
   - [ ] P.3 Limpeza de worktrees e branches.
   - [ ] P.4 Branch de integração.
   - [ ] P.5 Relatório da integração e `mabel rejeitar`.
@@ -117,3 +117,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-13 | Spec de prova e integração (`docs/specs/prova-e-integracao.md`), a partir do relatório do cepa: veredito calculado, prova mecânica (vermelho na base, verde no item), branch de integração com relatório e `rejeitar`. Decisões do usuário: integração ligada por padrão, dependência integrada libera o dependente, critério sem prova não bloqueia, mudanças no G3, G5, G10 e ciclo de vida autorizadas, entra depois do passo 5. Prova com agente especificada como fase 2 e registrada no `BACKLOG.md`. |
 | 2026-10-13 | Spec da gestão de projetos (`docs/specs/projetos.md`), decidida com o usuário: tudo pelo terminal, remoção apaga de verdade com registro em `removals`, alcança só os dados do Mabel, runs sem item ficam fora, toda tabela nova precisa ser classificada para a remoção. Contrato: remoção de dados só por comando do humano (autorizado). |
 | 2026-10-13 | P.1 (`docs/specs/prova-e-integracao.md`): `reviewSchema` sem `aprovado`; `reviewVerdict` aprova só com todo critério do plano avaliado e atendido e nenhum bloqueante (critério fora do plano é ignorado e registrado). Prompt do revisor atualizado; G3 do contrato ganha o parecer calculado. Esquema validado com o `claude` real (Haiku, US$ 0,0013). Implementado antes do passo 5, a pedido do usuário. |
+| 2026-10-13 | P.2: critério do plano com `comportamento` (`novo`/`mantido`); `testeUnico` e `arquivosDeTeste` no config, por stack no catálogo e gravados pelo `init` (Vitest detectado pelo `package.json`). Gate `proof` depois do `criteria_tests`: roda cada teste no item e no código base (só os arquivos restauráveis), restaura sempre e confere o `git status`; lacuna volta à execução, `sem_prova` segue. Modo por item sem `testeUnico`. Desvios da spec: placeholder `{padrao}` (nome escapado como regex, porque o `node --test` passa sem rodar nada quando o filtro não casa) e conjunto restaurável decidido só pelos globs (teste declarado fora deles conta como "mora no código"). Testado com node:test real. |
