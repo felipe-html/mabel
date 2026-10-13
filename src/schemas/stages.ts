@@ -60,8 +60,8 @@ export interface ExecuteOutput {
   perguntas: Question[];
 }
 
+/** O parecer não declara aprovação: o Mabel a calcula (`reviewVerdict`). */
 export interface ReviewOutput {
-  aprovado: boolean;
   criterios: { id: string; atendido: boolean; evidencia: string }[];
   problemas: { gravidade: 'bloqueante' | 'menor'; descricao: string; arquivo?: string }[];
 }
@@ -90,7 +90,6 @@ export const executeSchema: Schema = object({
 });
 
 export const reviewSchema: Schema = object({
-  aprovado: { type: 'boolean' },
   criterios: { type: 'array', items: object({ id: str, atendido: { type: 'boolean' }, evidencia: str }) },
   problemas: {
     type: 'array',

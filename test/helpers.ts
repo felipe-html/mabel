@@ -103,7 +103,6 @@ export const EXECUTION_FILES = {
 };
 
 export const REVIEW_OK = {
-  aprovado: true,
   criterios: [{ id: 'C1', atendido: true, evidencia: 'test/soma.test.js' }],
   problemas: [],
 };

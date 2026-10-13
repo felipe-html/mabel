@@ -14,7 +14,7 @@ import {
 } from './items.ts';
 import { type CriticalRules, type Project, type ProjectConfig, readCriticalRules } from './project.ts';
 import { type RunHandle, type RunObserver, type RunOutcome, type RunStage, isUsageLimit } from './runner.ts';
-import type { Assumption, ExecuteOutput, PlanOutput, Question } from './schemas/stages.ts';
+import type { Assumption, ExecuteOutput, PlanOutput, Question, ReviewOutput } from './schemas/stages.ts';
 import {
   type StageContext,
   itemDir,
@@ -122,6 +122,41 @@ export function criteriaWithoutTests(plan: PlanOutput, execution: ExecuteOutput,
     }
   }
   return missing;
+}
+
+// Veredito da revisão (G3) -------------------------------------------------------------
+
+export interface ReviewVerdict {
+  approved: boolean;
+  /** Motivos da reprovação ou critérios ignorados; `null` quando não há nada a registrar. */
+  detail: string | null;
+}
+
+/**
+ * Parecer calculado a partir dos critérios avaliados e dos problemas apontados: aprova só
+ * com todo critério do plano avaliado e atendido e nenhum problema bloqueante. Um
+ * `aprovado` gravado por pareceres antigos é ignorado.
+ */
+export function reviewVerdict(plan: PlanOutput, review: ReviewOutput): ReviewVerdict {
+  const planned = new Set(plan.criterios.map((c) => c.id));
+  const evaluated = new Set(review.criterios.map((c) => c.id));
+  const reasons = [
+    ...plan.criterios.filter((c) => !evaluated.has(c.id)).map((c) => `revisão não avaliou o critério ${c.id}`),
+    ...review.criterios
+      .filter((c) => planned.has(c.id) && !c.atendido)
+      .map((c) => `critério ${c.id} não atendido: ${c.evidencia}`),
+    ...review.problemas
+      .filter((p) => p.gravidade === 'bloqueante')
+      .map((p) => `bloqueante: ${p.descricao}${p.arquivo ? ` (${p.arquivo})` : ''}`),
+  ];
+  const unknown = review.criterios.filter((c) => !planned.has(c.id)).map((c) => c.id);
+  const ignored = unknown.length > 0 ? [`critérios fora do plano ignorados: ${unknown.join(', ')}`] : [];
+  const approved = reasons.length === 0;
+  const minor = approved
+    ? []
+    : review.problemas.filter((p) => p.gravidade === 'menor').map((p) => `menor: ${p.descricao}${p.arquivo ? ` (${p.arquivo})` : ''}`);
+  const detail = [...reasons, ...minor, ...ignored].join('; ');
+  return { approved, detail: detail || null };
 }
 
 // Autonomia ------------------------------------------------------------------------------
@@ -526,16 +561,7 @@ async function reviewStep(env: PipelineEnv, item: Item): Promise<Step> {
     recordGate(env.db, item.id, attemptNo, 'review', false, result.invalid ?? 'saída ausente');
     return attemptFailed(env, item, item.attempts, `A revisão não produziu um parecer válido: ${result.invalid}`);
   }
-  const review = result.output;
-  const blocking = review.problemas.filter((p) => p.gravidade === 'bloqueante');
-  const approved = review.aprovado && blocking.length === 0;
-  const unmet = review.criterios.filter((c) => !c.atendido);
-  const detail = approved
-    ? null
-    : [
-        ...unmet.map((c) => `critério ${c.id} não atendido: ${c.evidencia}`),
-        ...review.problemas.map((p) => `${p.gravidade}: ${p.descricao}${p.arquivo ? ` (${p.arquivo})` : ''}`),
-      ].join('; ') || 'revisão não aprovada';
+  const { approved, detail } = reviewVerdict(plan, result.output);
   recordGate(env.db, item.id, attemptNo, 'review', approved, detail);
   if (!approved) {
     return attemptFailed(env, item, item.attempts, `A revisão reprovou a tentativa:\n${detail}`);

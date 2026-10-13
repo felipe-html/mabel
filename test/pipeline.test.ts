@@ -5,7 +5,9 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { approve, respond } from '../src/decisions.ts';
 import { getItem, syncBacklog } from '../src/items.ts';
-import { type PipelineEnv, advanceItem, criteriaWithoutTests, escalate, startGate } from '../src/pipeline.ts';
+import { type PipelineEnv, advanceItem, criteriaWithoutTests, escalate, reviewVerdict, startGate } from '../src/pipeline.ts';
+import { reviewSchema } from '../src/schemas/stages.ts';
+import { validate } from '../src/schemas/validate.ts';
 import type { PlanOutput } from '../src/schemas/stages.ts';
 import { EXECUTION, EXECUTION_FILES, PLAN, REVIEW_OK, setupProject, useScenario } from './helpers.ts';
 
@@ -53,6 +55,40 @@ test('G2: regra crítica por caminho, conceito ou suposição; aprovação liber
     { kind: 'critical', reasons: ['suposição sobre regra crítica: frete grátis'] },
   );
   assert.deepEqual(startGate(plan({ escopo: ['src/**'] }), undefined, rules, true), { kind: 'pass' });
+});
+
+test('P.1: veredito da revisão calculado pelo Mabel', () => {
+  const two = plan({
+    criterios: [
+      { id: 'C1', texto: 'a', verificacao: 'teste' },
+      { id: 'C2', texto: 'b', verificacao: 'humano' },
+    ],
+  });
+  const met = (id: string) => ({ id, atendido: true, evidencia: 'ok' });
+  // 1. Todos atendidos, sem bloqueante: aprova, com ou sem `aprovado`.
+  assert.deepEqual(reviewVerdict(two, { criterios: [met('C1'), met('C2')], problemas: [] }), { approved: true, detail: null });
+  const legacy = { aprovado: false, criterios: [met('C1'), met('C2')], problemas: [{ gravidade: 'menor' as const, descricao: 'nome' }] };
+  assert.deepEqual(reviewVerdict(two, legacy), { approved: true, detail: null });
+  // 2. Critério do plano ausente no parecer reprova com o motivo.
+  assert.deepEqual(reviewVerdict(two, { criterios: [met('C1')], problemas: [] }), {
+    approved: false,
+    detail: 'revisão não avaliou o critério C2',
+  });
+  // 3. `aprovado: true` com critério não atendido reprova.
+  const declared = { aprovado: true, criterios: [met('C1'), { id: 'C2', atendido: false, evidencia: 'sem tela' }], problemas: [] };
+  assert.deepEqual(reviewVerdict(two, declared), { approved: false, detail: 'critério C2 não atendido: sem tela' });
+  // Bloqueante reprova; critério fora do plano é ignorado e registrado.
+  const blocking = reviewVerdict(two, {
+    criterios: [met('C1'), met('C2'), met('C9')],
+    problemas: [{ gravidade: 'bloqueante', descricao: 'bug', arquivo: 'src/a.ts' }],
+  });
+  assert.deepEqual(blocking, { approved: false, detail: 'bloqueante: bug (src/a.ts); critérios fora do plano ignorados: C9' });
+  assert.deepEqual(reviewVerdict(two, { criterios: [met('C1'), met('C2'), met('C9')], problemas: [] }), {
+    approved: true,
+    detail: 'critérios fora do plano ignorados: C9',
+  });
+  // O esquema não aceita mais `aprovado`.
+  assert.deepEqual(validate(reviewSchema, legacy), ['$.aprovado: campo não previsto']);
 });
 
 test('escada de modelos', () => {
@@ -312,11 +348,23 @@ test('aprovar leva o item crítico a planned, e ele executa com o plano atual', 
   assert.deepEqual(await p.advance(), { kind: 'stopped', status: 'awaiting_merge' });
 });
 
+test('P.1: revisão que declara aprovação sem avaliar todos os critérios volta à execução', async () => {
+  const p = pipeline([
+    { structured_output: PLAN },
+    exec(1),
+    { structured_output: { criterios: [], problemas: [] } },
+    exec(2),
+    { structured_output: REVIEW_OK },
+  ]);
+  assert.deepEqual(await p.advance(), { kind: 'stopped', status: 'awaiting_merge' });
+  assert.match(p.calls()[3]?.prompt ?? '', /revisão não avaliou o critério C1/);
+});
+
 test('revisão reprovada volta à execução com os problemas no prompt', async () => {
   const p = pipeline([
     { structured_output: PLAN },
     exec(1, { session_id: 'exec-1' }),
-    { structured_output: { aprovado: false, criterios: [], problemas: [{ gravidade: 'bloqueante', descricao: 'soma ignora negativos' }] } },
+    { structured_output: { criterios: [{ id: 'C1', atendido: true, evidencia: 'ok' }], problemas: [{ gravidade: 'bloqueante', descricao: 'soma ignora negativos' }] } },
     exec(2),
     { structured_output: REVIEW_OK },
   ]);

@@ -90,7 +90,7 @@ test('artefatos gravados por etapa e tentativa; execução altera o worktree', a
   const execution = await runExecute(stage.ctx.db, stage, { plan: PLAN as never, attempt: 1 });
   assert.deepEqual(execution.output, EXECUTION);
   const review = await runReview(stage.ctx.db, stage, { plan: PLAN as never, execution: EXECUTION, attempt: 1 });
-  assert.equal(review.output?.aprovado, true);
+  assert.deepEqual(review.output, REVIEW_OK);
 
   const dir = itemDir(stage.home, stage.item.id);
   assert.deepEqual(JSON.parse(readFileSync(join(dir, 'plano.json'), 'utf8')), PLAN);
