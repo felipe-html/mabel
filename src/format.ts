@@ -28,3 +28,13 @@ export function formatTokens(count: number): string {
 export function truncate(text: string, width: number): string {
   return text.length > width ? `${text.slice(0, width - 1)}…` : text;
 }
+
+function two(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+/** Data e hora no fuso local, `dd/mm hh:mm`. */
+export function formatWhen(iso: string): string {
+  const date = new Date(iso);
+  return `${two(date.getDate())}/${two(date.getMonth() + 1)} ${two(date.getHours())}:${two(date.getMinutes())}`;
+}

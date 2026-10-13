@@ -66,7 +66,7 @@ achados do teste orientam a especificação dos passos seguintes.
 - [ ] Gravar no banco as pausas da fila (saldo de 7 dias, falta de leitura) e as respostas
       do humano às perguntas da política de saldo. Hoje só aparecem na saída (auditoria).
 - [ ] 2.3 `mabel runs` com lista e detalhe da run (`docs/specs/passo-2.md`).
-- [ ] Gestão de projetos no banco (`docs/specs/projetos.md`): `mabel projetos`, auditoria
+- [x] Gestão de projetos no banco (`docs/specs/projetos.md`): `mabel projetos`, auditoria
       por projeto e `mabel projeto remover`.
 - [ ] Passo 5 — Travas (`docs/specs/passo-5.md`):
   - [ ] 5.1 Contexto hermético (G8).
@@ -77,7 +77,8 @@ achados do teste orientam a especificação dos passos seguintes.
   - [ ] P.1 Veredito calculado (revisor não declara aprovação).
   - [ ] P.2 Prova mecânica: vermelho na base, verde no item.
   - [ ] P.3 Limpeza de worktrees e branches.
-  - [ ] P.4 Branch de integração.
+  - [ ] P.4 Branch de integração (inclui, no resumo do `mabel projeto remover`, o aviso de
+        itens integrados que ainda não chegaram à base).
   - [ ] P.5 Relatório da integração e `mabel rejeitar`.
 
 ## Histórico
@@ -116,3 +117,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-12 | Decisões do passo 5 (usuário): autorizada a mudança dos mecanismos de G4 e G8 no contrato; escopo rígido com ampliação automática não crítica; `run` não inicia sem sandbox, salvo `"sandbox": false`. |
 | 2026-10-13 | Spec de prova e integração (`docs/specs/prova-e-integracao.md`), a partir do relatório do cepa: veredito calculado, prova mecânica (vermelho na base, verde no item), branch de integração com relatório e `rejeitar`. Decisões do usuário: integração ligada por padrão, dependência integrada libera o dependente, critério sem prova não bloqueia, mudanças no G3, G5, G10 e ciclo de vida autorizadas, entra depois do passo 5. Prova com agente especificada como fase 2 e registrada no `BACKLOG.md`. |
 | 2026-10-13 | Spec da gestão de projetos (`docs/specs/projetos.md`), decidida com o usuário: tudo pelo terminal, remoção apaga de verdade com registro em `removals`, alcança só os dados do Mabel, runs sem item ficam fora, toda tabela nova precisa ser classificada para a remoção. Contrato: remoção de dados só por comando do humano (autorizado). |
+| 2026-10-13 | Gestão de projetos (`docs/specs/projetos.md`): `mabel projetos` (tabela fora do TTY, menu no TTY, `--removidos`), `mabel projeto <nome>` com totais, custo por etapa e modelo, itens, gates reprovados, escalonamentos, decisões autônomas e últimas 20 transições, e `mabel projeto remover` com confirmação pelo nome (`--confirmar` fora do TTY), recusa por run em andamento, trava ativa ou worktree sujo, banco numa transação com registro em `removals` e diretórios depois. Classificação em `src/projects.ts` (`tableScope`, `dirScope`) com testes que falham para tabela ou entrada nova. Feito antes do 2.3, a pedido do usuário. O aviso de itens integrados fica para o P.4, que cria a branch de integração. Verificado num pseudo-terminal: menu e confirmação digitada. |
