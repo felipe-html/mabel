@@ -101,6 +101,7 @@ export const EXECUTION = {
   criterios: [{ id: 'C1', testes: [{ arquivo: 'test/soma.test.js', nome: 'soma de dois números' }] }],
   suposicoes: [],
   perguntas: [],
+  escopoAdicional: [],
 };
 
 export const EXECUTION_FILES = {

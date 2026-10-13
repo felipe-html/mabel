@@ -120,9 +120,9 @@ export function removeWorktree(db: DatabaseSync, project: Project, item: Item): 
   item.worktree = null;
 }
 
-/** Commit de tudo que mudou no worktree. Devolve `false` quando não há alteração. */
+/** Commit de tudo que mudou no worktree, fora o `.claude/` que o Claude Code cria. `false` sem alteração. */
 export function commitAll(path: string, message: string): boolean {
-  git(path, 'add', '-A');
+  git(path, 'add', '-A', '--', '.', ':!.claude');
   if (tryGit(path, 'diff', '--cached', '--quiet') !== undefined) return false;
   git(path, 'commit', '-q', '-m', message);
   return true;

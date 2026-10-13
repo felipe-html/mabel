@@ -160,6 +160,9 @@ const migrations: string[] = [
     removed_at  TEXT NOT NULL
   );
   `,
+  `
+  ALTER TABLE runs ADD COLUMN denials INTEGER;
+  `,
 ];
 
 function migrate(db: DatabaseSync): void {

@@ -19,6 +19,10 @@
 //   cost                total_cost_usd (padrão: 0.01)
 //   rate_limit          { five_hour, seven_day, status } (utilização 0–1)
 //   session_id          id da sessão nova (padrão: aleatório); com --resume, usa o retomado
+//   init                campos que substituem os do evento init (ex.: { "skills": ["x"] })
+//
+// O init do cenário imita o de uma run hermética: `tools` igual ao `--tools` pedido, sem MCP,
+// skills nem comandos, com os plugins e agentes internos.
 //
 // Em ambos: FAKE_CLAUDE_MARKER grava { pid, argv, cwd } da última chamada e FAKE_CLAUDE_LOG
 // acrescenta uma linha JSON por chamada com { argv, cwd, session_id, response }.
@@ -69,7 +73,24 @@ if (env.FAKE_CLAUDE_SCENARIO) {
   writeTranscript(sessionId);
 
   const emit = (event) => process.stdout.write(`${JSON.stringify(event)}\n`);
-  emit({ type: 'system', subtype: 'init', session_id: sessionId, model, cwd: process.cwd(), claude_code_version: 'fake' });
+  const toolsAt = argv.indexOf('--tools');
+  const tools = toolsAt >= 0 ? argv[toolsAt + 1].split(',').filter(Boolean) : ['Bash', 'Edit', 'Glob', 'Grep', 'Read', 'Write', 'WebFetch'];
+  if (stage) tools.push('StructuredOutput');
+  emit({
+    type: 'system',
+    subtype: 'init',
+    session_id: sessionId,
+    model,
+    cwd: process.cwd(),
+    claude_code_version: 'fake',
+    tools,
+    mcp_servers: [],
+    slash_commands: [],
+    skills: [],
+    plugins: [{ name: 'cc-plugin-telemetry', path: 'builtin', source: 'cc-plugin-telemetry@builtin' }],
+    agents: ['Explore', 'general-purpose', 'Plan'],
+    ...response.init,
+  });
   if (response.hang) {
     waitForSigint();
   } else {

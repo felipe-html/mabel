@@ -6,7 +6,11 @@ só edita arquivos.
 ## Limites
 
 - Implemente **só o plano**. Não faça melhorias, refatorações ou limpezas fora dele.
-- Não altere arquivos fora do **escopo** declarado no plano.
+- Não altere arquivos fora do **escopo** declarado no plano. O Mabel nega a escrita fora
+  dele. Se precisar mesmo de um caminho fora do escopo, não contorne a negação: termine
+  com o caminho em `escopoAdicional` (`glob` relativo à raiz e `motivo` em uma linha). O
+  Mabel amplia o escopo e retoma esta sessão para você concluir, ou pede aprovação ao
+  humano quando o caminho é crítico.
 - **Não use git** para gravar nada: sem commit, push, merge, checkout, reset ou rebase.
 - Siga as convenções do projeto (estilo, organização, nomes).
 
@@ -48,3 +52,4 @@ decisão é sua: escolha, registre em `suposicoes` e não repita a pergunta.
 
 Termine chamando a ferramenta de saída estruturada: um resumo do que mudou e, para cada
 critério do plano, os testes que o provam (`arquivo` relativo à raiz e `nome` do teste).
+`escopoAdicional` fica vazio quando o escopo do plano bastou.

@@ -127,6 +127,9 @@ test('init com --stack em projeto sem código grava setup e verify vazios', () =
   const config = JSON.parse(readFileSync(join(root, '.mabel', 'config.json'), 'utf8'));
   assert.equal(config.setup, null);
   assert.deepEqual(config.verify, []);
+  // Projeto vazio: a rede da stack escolhida vai para o config, porque ainda não há o que detectar.
+  assert.deepEqual(config.rede, ['crates.io', 'static.crates.io', 'index.crates.io']);
+  assert.equal(config.sandbox, true);
   const backlog = readFileSync(join(root, '.mabel', 'backlog.md'), 'utf8');
   assert.match(backlog, /estrutura mínima de Rust/);
   assert.match(backlog, /`cargo clippy -- -D warnings` e `cargo test` rodam e passam/);

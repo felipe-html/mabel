@@ -122,6 +122,7 @@ export function renderItemDetail(db: DatabaseSync, home: string, item: Item): st
     )
     .all(item.id) as unknown as RecentRun[];
   if (runs.length > 0) lines.push('', style.bold('Runs'), ...renderRecentRuns(runs));
+  lines.push(...renderDenials(db, item.id));
 
   const transitions = db
     .prepare('SELECT from_state, to_state, reason, at FROM item_transitions WHERE item_id = ? ORDER BY id DESC LIMIT 8')
@@ -132,6 +133,34 @@ export function renderItemDetail(db: DatabaseSync, home: string, item: Item): st
       const reason = t.reason ? ` · ${t.reason.replace(/\s+/g, ' ').slice(0, 100)}` : '';
       lines.push(`  ${t.from_state} → ${t.to_state}${reason}`);
     }
+  }
+  return lines;
+}
+
+/** Ações negadas em cada run do item: as do hook de escopo, com caminho e motivo, e o total. */
+export function renderDenials(db: DatabaseSync, itemId: string): string[] {
+  const runs = db
+    .prepare(
+      `SELECT id, coalesce(stage, kind) AS kind, denials FROM runs
+       WHERE item_id = ? AND (coalesce(denials, 0) > 0 OR EXISTS (
+         SELECT 1 FROM events e WHERE e.run_id = runs.id AND e.type = 'hook' AND e.subtype = 'deny'))
+       ORDER BY started_at, rowid`,
+    )
+    .all(itemId) as { id: string; kind: string; denials: number | null }[];
+  if (runs.length === 0) return [];
+  const lines = ['', style.bold('Negações')];
+  const events = db.prepare("SELECT payload FROM events WHERE run_id = ? AND type = 'hook' AND subtype = 'deny' ORDER BY seq");
+  for (const run of runs) {
+    const denied = (events.all(run.id) as { payload: string }[]).map((row) => {
+      try {
+        return JSON.parse(row.payload) as { tool?: string; path?: string; reason?: string };
+      } catch {
+        return {};
+      }
+    });
+    const total = run.denials ?? denied.length;
+    lines.push(`  ${run.kind} · run ${run.id.slice(0, 4)}: ${total === 1 ? '1 negação' : `${total} negações`}`);
+    for (const entry of denied) lines.push(`    ${entry.tool ?? '?'} ${entry.path ?? ''} — ${entry.reason ?? ''}`);
   }
   return lines;
 }
