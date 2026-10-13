@@ -17,9 +17,21 @@ export function slugify(title: string): string {
   return slug.slice(0, 40).replace(/-+$/, '') || 'item';
 }
 
-/** Branch de onde os itens nascem e contra a qual a prova calcula a base. */
-export function originBranch(config: Pick<ProjectConfig, 'baseBranch'>): string {
-  return config.baseBranch;
+/** Branch de onde os itens nascem: a integração, ou a base sem ela. */
+export function originBranch(config: Pick<ProjectConfig, 'baseBranch' | 'integracao'>): string {
+  return config.integracao ?? config.baseBranch;
+}
+
+export function branchExists(root: string, branch: string): boolean {
+  return tryGit(root, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`) !== undefined;
+}
+
+/** Cria a branch de integração a partir da base, se ainda não existe. */
+export function ensureIntegration(project: Project): void {
+  const integration = project.config.integracao;
+  if (integration && !branchExists(project.root, integration)) {
+    git(project.root, 'branch', integration, project.config.baseBranch);
+  }
 }
 
 export function branchName(item: Pick<Item, 'number' | 'title'>): string {
@@ -51,7 +63,7 @@ export function shell(command: string, cwd: string): { code: number; output: str
 }
 
 /**
- * Cria (ou reutiliza, na retomada) o worktree e a branch do item a partir da branch base,
+ * Cria (ou reutiliza, na retomada) o worktree e a branch do item a partir da origem,
  * grava os caminhos no item e roda o `setup` do projeto quando o worktree é novo.
  */
 export function prepareWorktree(db: DatabaseSync, home: string, project: Project, item: Item): PreparedWorktree {
@@ -59,15 +71,16 @@ export function prepareWorktree(db: DatabaseSync, home: string, project: Project
   const path = item.worktree ?? worktreePath(home, project.id, item);
   let created = false;
 
+  const origin = originBranch(project.config);
+  ensureIntegration(project);
   if (!existsSync(path)) {
     mkdirSync(dirname(path), { recursive: true });
     tryGit(project.root, 'worktree', 'prune');
-    const branchExists = tryGit(project.root, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`) !== undefined;
-    if (branchExists) git(project.root, 'worktree', 'add', path, branch);
-    else git(project.root, 'worktree', 'add', '-b', branch, path, project.config.baseBranch);
+    if (branchExists(project.root, branch)) git(project.root, 'worktree', 'add', path, branch);
+    else git(project.root, 'worktree', 'add', '-b', branch, path, origin);
     created = true;
   } else {
-    catchUp(path, project.config.baseBranch);
+    catchUp(path, origin);
   }
   db.prepare('UPDATE items SET branch = ?, worktree = ?, updated_at = ? WHERE id = ?').run(
     branch,
@@ -89,12 +102,12 @@ export function prepareWorktree(db: DatabaseSync, home: string, project: Project
 
 /**
  * Worktree reutilizado sem commits próprios e sem alterações (ex.: item parado no
- * planejamento) avança até a branch base, para enxergar o que foi commitado depois.
+ * planejamento) avança até a origem, para enxergar o que foi commitado depois.
  */
-function catchUp(path: string, baseBranch: string): void {
-  if (tryGit(path, 'merge-base', '--is-ancestor', 'HEAD', baseBranch) === undefined) return;
+function catchUp(path: string, origin: string): void {
+  if (tryGit(path, 'merge-base', '--is-ancestor', 'HEAD', origin) === undefined) return;
   if (tryGit(path, 'status', '--porcelain', '--untracked-files=no') !== '') return;
-  tryGit(path, 'merge', '-q', '--ff-only', baseBranch);
+  tryGit(path, 'merge', '-q', '--ff-only', origin);
 }
 
 /** Remove o worktree do item (a branch fica). */

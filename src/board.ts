@@ -11,8 +11,10 @@ export interface BoardItem {
   statusReason: string | null;
   attempts: number;
   branch: string | null;
+  /** Já está na branch de integração. */
+  integrated?: boolean;
   costUsd: number;
-  /** Dependências que ainda não estão `done`. */
+  /** Dependências que ainda não estão `done` (nem integradas, com integração). */
   pendingDeps: number[];
 }
 
@@ -45,6 +47,7 @@ function itemLine(item: BoardItem): string {
     case 'needs_human':
       return `${head}**needs_human**: ${item.statusReason ?? 'aguardando decisão'}`;
     case 'awaiting_merge':
+      if (item.integrated) return `${head}**awaiting_merge** · na integração`;
       return `${head}**awaiting_merge**${item.branch ? ` · branch \`${item.branch}\`` : ''}`;
     case 'blocked':
     case 'failed':

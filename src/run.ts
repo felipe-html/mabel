@@ -16,6 +16,7 @@ import { formatCost, formatDuration } from './format.ts';
 import { inboxSession, pendingItems, runInbox, terminalIO } from './inbox.ts';
 import { type Item, type ItemStatus, getItemById, listItems, syncBacklog, transition } from './items.ts';
 import { type Notify, notify as systemNotify } from './notify.ts';
+import { finishIntegrated, openIntegration } from './integration.ts';
 import { LockError, acquireLock } from './lock.ts';
 import { type AdvanceResult, advanceItem, autonomousDecisions } from './pipeline.ts';
 import { type Project, ProjectError, mabelCommitted, resolveProject } from './project.ts';
@@ -277,20 +278,32 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
     return planned ? { target: planned } : { end: 'empty' };
   };
 
-  /** Abertura do `run`: limpa os worktrees que sobraram de itens que já não precisam deles. */
-  const open = () => {
+  /**
+   * Abertura do `run`: prepara a integração (pode pausar a fila) e limpa os worktrees que
+   * sobraram de itens que já não precisam deles.
+   */
+  const open = (): string | undefined => {
+    const opened = openIntegration(home, project);
+    for (const note of opened.notes) log.write(style.dim(note));
+    if (opened.pause) return opened.pause;
     const cleaned = removeOrphanWorktrees(db, home, project, listItems(db, project.id));
     if (cleaned.length > 0) log.write(style.dim(`worktrees removidos: ${cleaned.map((n) => `#${n}`).join(', ')}`));
+    return undefined;
   };
 
   const loop = async (): Promise<{ end: QueueEnd; message?: string }> => {
-    open();
+    const paused = open();
+    if (paused) return { end: 'paused', message: paused };
     for (;;) {
       if (abort.signal.aborted) return { end: 'interrupted' };
 
-      // Itens cuja branch já entrou na base: concluídos.
+      // Itens cujo merge já entrou na base: concluídos.
+      for (const item of finishIntegrated(db, project, listItems(db, project.id))) {
+        log.write(`#${item.number} ${item.title}: awaiting_merge → done`);
+        finalStates.set(item.number, 'done');
+      }
       for (const item of listItems(db, project.id)) {
-        if (item.status === 'awaiting_merge' && item.branch && isMerged(project, item.branch)) {
+        if (item.status === 'awaiting_merge' && !item.integratedCommit && item.branch && isMerged(project, item.branch)) {
           transition(db, project, item.id, 'done', `merge de ${item.branch} na ${project.config.baseBranch}`);
           log.write(`#${item.number} ${item.title}: awaiting_merge → done`);
           removeWorktree(db, project, item);

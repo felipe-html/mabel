@@ -60,6 +60,11 @@ const SUGGESTIONS: Record<PendingKind, (n: number) => string[]> = {
     `mabel responder ${n} "<orientação>" --replanejar`,
     `mabel cancelar ${n}`,
   ],
+  integration_conflict: (n) => [
+    `mabel responder ${n} "<orientação>"   (o executor resolve os conflitos)`,
+    `mabel responder ${n} "<orientação>" --replanejar`,
+    `mabel cancelar ${n}`,
+  ],
 };
 
 /** Detalhe do item: estado, pendência, plano, custo, runs e transições recentes. */
@@ -75,6 +80,7 @@ export function renderItemDetail(db: DatabaseSync, home: string, item: Item): st
       if (question.sugestao) lines.push(`    sugestão: ${question.sugestao}`);
     }
     for (const assumption of pending.criticalAssumptions ?? []) lines.push(`  ! suposição crítica: ${assumption}`);
+    if (pending.files?.length) lines.push(`  arquivos em conflito: ${pending.files.join(', ')}`);
     if (pending.reason) lines.push(`  ${pending.reason}`);
     if (item.pendingKind === 'attempts_exhausted') {
       lines.push(...(pending.summary || attemptsSummary(db, item.id)).split('\n').map((line) => `  ${line}`));
@@ -87,6 +93,7 @@ export function renderItemDetail(db: DatabaseSync, home: string, item: Item): st
   lines.push(`  intenção: ${item.intent.replace(/\n+/g, ' ')}`);
   if (item.restrictions) lines.push(`  restrições: ${item.restrictions}`);
   if (item.branch) lines.push(`  branch: ${item.branch}`);
+  if (item.integratedCommit) lines.push(`  integrado em: ${item.integratedCommit.slice(0, 12)}`);
   if (item.worktree) lines.push(`  worktree: ${item.worktree}`);
   lines.push(`  tentativas no ciclo: ${item.attempts} · custo ${formatCost(itemCost(db, item.id))}`);
 

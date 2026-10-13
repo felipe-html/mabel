@@ -13,6 +13,7 @@ import {
   reviewSchema,
 } from './schemas/stages.ts';
 import { type Schema, validate } from './schemas/validate.ts';
+import { originBranch } from './worktree.ts';
 
 export const STAGE_TOOLS: Record<RunStage, string[]> = {
   plan: ['Read', 'Glob', 'Grep'],
@@ -275,7 +276,7 @@ export interface ReviewPromptInput {
 
 export function reviewPrompt(ctx: StageContext, input: ReviewPromptInput): string {
   if (input.resuming) return `${INTERRUPTED} Termine a revisão com a saída estruturada.`;
-  const base = ctx.project.config.baseBranch;
+  const base = originBranch(ctx.project.config);
   const tests = input.execution.criterios.map(
     (criterion) => `${criterion.id}: ${criterion.testes.map((t) => `\`${t.arquivo}\` › ${t.nome}`).join(', ') || '(nenhum)'}`,
   );

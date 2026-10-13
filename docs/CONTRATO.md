@@ -35,6 +35,10 @@ backlog → ready → planning → planned → executing → verifying → revie
 Desvios a partir de qualquer etapa: needs_human · blocked · failed
 ```
 
+Com a branch de integração, `awaiting_merge` significa "na integração, aguardando o merge
+do humano na branch principal". Dele o item vai a `done` (merge na principal) ou, quando o
+humano o rejeita, a `planning` ou `cancelled`.
+
 ## Garantias
 
 | # | Garantia | Mecanismo |
@@ -43,11 +47,12 @@ Desvios a partir de qualquer etapa: needs_human · blocked · failed
 | G2 | **Nenhum item entra em execução sem critério de início.** Critérios de aceite verificáveis, escopo de arquivos declarado e, se tocar regra crítica, aprovação humana registrada. | Gate entre `planning` e `planned`. |
 | G3 | **"Done" é calculado pelo Mabel, nunca declarado pelo agente.** Gates mecânicos verdes, cada critério de aceite do item ligado a pelo menos um teste (ou a uma rota de validação humana declarada), revisão aprovada. A exigência vale para o que o item muda, não para a cobertura do projeto inteiro. O teste de um critério de comportamento novo falha no código base e passa no item; o de comportamento mantido passa nos dois. O parecer da revisão é calculado a partir dos critérios avaliados e dos problemas apontados; o revisor não declara aprovação. | Gate de verificação e prova executados pelo runner, fora do agente. |
 | G4 | **O agente não sai do escopo.** Escrita fora dos caminhos declarados e comandos da lista de bloqueio são barrados. O agente nunca faz merge nem push na branch principal. | Hook `PreToolUse` e `--disallowedTools`. |
-| G5 | **Cada item trabalha isolado.** | Worktree e branch próprias por item. |
+| G5 | **Cada item trabalha isolado.** | Worktree e branch próprias por item, criadas a partir da branch de integração (ou da base, sem integração). |
 | G6 | **Nenhuma etapa inicia sem saldo.** Ver "Política de saldo". Cada run tem teto de custo e de turnos. | `rate_limit_event` do stream-json, `--max-budget-usd`, `--max-turns`. |
 | G7 | **Ambiguidade em regra crítica para o item.** Suposição declarada sobre regra crítica leva o item a `needs_human`. | Saída estruturada (`--json-schema`) com campo `suposicoes`, validada pelo runner. |
 | G8 | **Contexto hermético.** O agente recebe apenas as regras do Mabel (versionadas), a configuração do projeto-alvo e os artefatos da etapa anterior. Nada da configuração pessoal do usuário. | `--setting-sources project`, `--settings`, `--append-system-prompt-file`. |
 | G9 | **Estado sobrevive à sessão.** Interromper o Mabel a qualquer momento e reiniciá-lo retoma do último estado gravado. | Estado no banco e em arquivos; sessão nova por etapa. |
+| G10 | **A integração só recebe item com "done" calculado.** O Mabel faz o merge na branch de integração só depois do G3 e da revisão. A branch principal só recebe o merge feito pelo humano. | O runner cria o commit de merge; o agente continua sem git de escrita (G4). |
 
 ## Política de saldo
 
@@ -142,7 +147,7 @@ mostrar crítico, ele sobe para garantia.
 ## Fora da v0
 
 Múltiplos projetos, itens em paralelo, integração com herdr, servidor MCP da frota,
-dashboard, merge automático.
+dashboard, merge automático na branch principal.
 
 ## Perguntas em aberto
 

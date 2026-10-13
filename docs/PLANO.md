@@ -77,7 +77,7 @@ achados do teste orientam a especificação dos passos seguintes.
   - [x] P.1 Veredito calculado (revisor não declara aprovação).
   - [x] P.2 Prova mecânica: vermelho na base, verde no item.
   - [x] P.3 Limpeza de worktrees e branches.
-  - [ ] P.4 Branch de integração.
+  - [x] P.4 Branch de integração.
   - [ ] P.5 Relatório da integração e `mabel rejeitar`.
 
 ## Histórico
@@ -119,3 +119,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-13 | P.1 (`docs/specs/prova-e-integracao.md`): `reviewSchema` sem `aprovado`; `reviewVerdict` aprova só com todo critério do plano avaliado e atendido e nenhum bloqueante (critério fora do plano é ignorado e registrado). Prompt do revisor atualizado; G3 do contrato ganha o parecer calculado. Esquema validado com o `claude` real (Haiku, US$ 0,0013). Implementado antes do passo 5, a pedido do usuário. |
 | 2026-10-13 | P.2: critério do plano com `comportamento` (`novo`/`mantido`); `testeUnico` e `arquivosDeTeste` no config, por stack no catálogo e gravados pelo `init` (Vitest detectado pelo `package.json`). Gate `proof` depois do `criteria_tests`: roda cada teste no item e no código base (só os arquivos restauráveis), restaura sempre e confere o `git status`; lacuna volta à execução, `sem_prova` segue. Modo por item sem `testeUnico`. Desvios da spec: placeholder `{padrao}` (nome escapado como regex, porque o `node --test` passa sem rodar nada quando o filtro não casa) e conjunto restaurável decidido só pelos globs (teste declarado fora deles conta como "mora no código"). Testado com node:test real. |
 | 2026-10-13 | P.3: worktree removido ao chegar a `awaiting_merge` (retrabalho recria pela branch), branch apagada ao passar a `done` só se contida na base (senão, aviso), e o `run` remove na abertura os worktrees órfãos de itens em `awaiting_merge`, `done` ou `cancelled`. |
+| 2026-10-13 | P.4: `integracao` no config (padrão `mabel/integracao`, `null` desliga); itens nascem dela, o Mabel faz o merge dela no item antes da verificação (conflito → `integration_conflict`, que o `responder` devolve ao executor com os conflitos marcados) e, com a revisão aprovada, integra por `commit-tree` + `update-ref` e apaga worktree e branch. Abertura do `run` cria a integração, pausa se ela estiver aberta num checkout, avança ou faz o merge da base (conflito pausa) e leva a `done` os itens já na base. Dependência integrada libera o dependente. Coluna `items.integrated_commit`. Contrato: G5, G10, ciclo de vida e fora da v0. |

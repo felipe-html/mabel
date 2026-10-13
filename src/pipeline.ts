@@ -25,7 +25,8 @@ import {
   writeArtifact,
   writePlan,
 } from './stages.ts';
-import { git } from './git.ts';
+import { git, tryGit } from './git.ts';
+import { integrateItem, mergeInProgress, mergeOrigin, setIntegrated } from './integration.ts';
 import { foundTests, proofDetail, runProof } from './proof.ts';
 import { commitAll, commitMessage, originBranch, prepareWorktree, removeWorktree, shell } from './worktree.ts';
 
@@ -416,6 +417,10 @@ async function executeStep(env: PipelineEnv, item: Item): Promise<Step> {
   if (env.beforeAgentStage && !(await env.beforeAgentStage('execute', item))) return { kind: 'paused' };
 
   const next = item.nextInput ?? {};
+  const worktree = item.worktree as string;
+  const startHead = git(worktree, 'rev-parse', 'HEAD');
+  // Conflito com a integração: o Mabel refaz o merge e deixa os conflitos para o executor.
+  if (next.mergeOrigin && !mergeInProgress(worktree)) mergeOrigin(worktree, originBranch(env.project.config), false);
   const cycleAttempt = item.attempts + 1;
   const continuing = Boolean(next.interrupted || next.sameAttempt) && item.attemptNo > 0;
   const attemptNo = continuing ? item.attemptNo : item.attemptNo + 1;
@@ -473,7 +478,8 @@ async function executeStep(env: PipelineEnv, item: Item): Promise<Step> {
     );
   }
 
-  if (!commitAll(item.worktree as string, commitMessage(item, attemptNo))) {
+  const committed = commitAll(worktree, commitMessage(item, attemptNo));
+  if (!committed && git(worktree, 'rev-parse', 'HEAD') === startHead) {
     recordGate(env.db, item.id, attemptNo, 'changes', false, 'execução sem nenhuma alteração');
     return attemptFailed(env, item, cycleAttempt, 'A execução não alterou nenhum arquivo.');
   }
@@ -491,6 +497,15 @@ function verifyStep(env: PipelineEnv, item: Item): Step {
     return { kind: 'stopped', status: 'failed' };
   }
   const worktree = item.worktree as string;
+  // A origem andou desde o início do item: o que entra na integração é o que foi verificado.
+  if (env.project.config.integracao) {
+    const conflicts = mergeOrigin(worktree, originBranch(env.project.config));
+    if (conflicts) {
+      const reason = `conflito com a ${originBranch(env.project.config)} em: ${conflicts.join(', ')}`;
+      recordGate(env.db, item.id, attemptNo, 'integration', false, reason);
+      return stopForHuman(env, item, 'integration_conflict', { files: conflicts, reason }, reason);
+    }
+  }
   const logDir = join(itemDir(env.home, item.id), `verificacao-${attemptNo}`);
   mkdirSync(logDir, { recursive: true });
 
@@ -589,9 +604,27 @@ async function reviewStep(env: PipelineEnv, item: Item): Promise<Step> {
   if (!approved) {
     return attemptFailed(env, item, item.attempts, `A revisão reprovou a tentativa:\n${detail}`);
   }
+  if (env.project.config.integracao) return integrateStep(env, item, mergeNotes(plan, execution), result.outcome.runId);
   move(env, item, 'awaiting_merge', mergeNotes(plan, execution), result.outcome.runId);
   // A branch guarda tudo; um retrabalho recria o worktree a partir dela.
   removeWorktree(env.db, env.project, item);
+  return { kind: 'stopped', status: 'awaiting_merge' };
+}
+
+/** Item aprovado entra na integração (G10); worktree e branch do item são apagados. */
+function integrateStep(env: PipelineEnv, item: Item, notes: string | null, runId: string): Step {
+  const integrated = integrateItem(env.project, item);
+  if ('error' in integrated) {
+    recordGate(env.db, item.id, item.attemptNo, 'integration', false, integrated.error);
+    move(env, item, 'failed', integrated.error, runId);
+    return { kind: 'stopped', status: 'failed' };
+  }
+  setIntegrated(env.db, item, integrated.commit);
+  recordGate(env.db, item.id, item.attemptNo, 'integration', true, integrated.commit);
+  move(env, item, 'awaiting_merge', notes, runId);
+  const branch = item.branch;
+  removeWorktree(env.db, env.project, item);
+  if (branch) tryGit(env.project.root, 'branch', '-D', branch);
   return { kind: 'stopped', status: 'awaiting_merge' };
 }
 

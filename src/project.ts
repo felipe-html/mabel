@@ -37,7 +37,14 @@ export interface ProjectConfig {
   testeUnico: string | null;
   /** Globs dos arquivos que são só de teste; ficam com a versão do item quando a prova roda a base. */
   arquivosDeTeste: string[];
+  /**
+   * Branch de integração: item provado entra nela e os próximos nascem dela. `null`: uma
+   * branch por item, com merge do humano na base.
+   */
+  integracao: string | null;
 }
+
+export const DEFAULT_INTEGRATION = 'mabel/integracao';
 
 export interface Project {
   id: string;
@@ -127,6 +134,8 @@ export function readConfig(root: string): ProjectConfig | undefined {
     autonomia: raw.autonomia === 'perguntar' ? 'perguntar' : 'sugestoes',
     testeUnico: typeof raw.testeUnico === 'string' && raw.testeUnico.trim() ? raw.testeUnico : null,
     arquivosDeTeste: Array.isArray(raw.arquivosDeTeste) ? raw.arquivosDeTeste : [...DEFAULT_TEST_GLOBS],
+    // Config sem o campo vale ligada; `null` (ou vazio) desliga.
+    integracao: !('integracao' in raw) ? DEFAULT_INTEGRATION : typeof raw.integracao === 'string' && raw.integracao.trim() ? raw.integracao : null,
   };
 }
 

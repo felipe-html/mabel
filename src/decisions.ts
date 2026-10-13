@@ -74,6 +74,23 @@ export function respond(
         nextInput: { resumeSessionId: sessionId, answer, sameAttempt: true },
       });
       return 'executing';
+    case 'integration_conflict': {
+      if (replan) {
+        decide(db, project, item, 'planning', reason, replanFresh);
+        return 'planning';
+      }
+      // Sessão nova: o Mabel refaz o merge da origem e o executor resolve os conflitos.
+      const files = (item.pending?.files ?? []).map((file) => `- ${file}`).join('\n');
+      decide(db, project, item, 'executing', reason, {
+        attempts: 0,
+        nextInput: {
+          answer,
+          mergeOrigin: true,
+          failure: `O merge da branch de integração no item tem conflitos. Resolva-os nos arquivos marcados, mantendo o que já foi integrado e o objetivo do item:\n${files}`,
+        },
+      });
+      return 'executing';
+    }
     case 'attempts_exhausted':
       if (replan) {
         decide(db, project, item, 'planning', reason, replanFresh);
