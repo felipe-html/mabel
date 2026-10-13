@@ -295,8 +295,8 @@ a execução termina com `escopoAdicional` não vazio:
 
 ### Critérios de aceite
 
-- [ ] Contrato atualizado conforme a autorização registrada no histórico do plano.
-- [ ] Preflight falha com mensagem clara sem as flags ou sem sandbox.
+- [x] Contrato atualizado conforme a autorização registrada no histórico do plano.
+- [x] Preflight falha com mensagem clara sem as flags ou sem sandbox.
 
 ## Fora deste passo
 

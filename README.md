@@ -49,16 +49,39 @@ desvios: needs_human (pergunta para você) · blocked · failed · cancelled
   fixo mostra as duas janelas.
 - **Avisos:** no macOS, uma notificação do sistema avisa quando a fila termina ou espera você.
 
+### Travas
+
+O que o agente pode fazer em cada etapa é imposto pelo Mabel e pelo Claude Code, não
+pedido no prompt:
+
+- **Contexto hermético:** os agentes rodam sem a sua configuração pessoal (memória, MCP,
+  skills, plugins, `CLAUDE.md` global). Recebem só as regras do Mabel e o contexto do
+  projeto (`CLAUDE.md`, `AGENTS.md` e as regras críticas), com limite de tamanho. Uma run
+  que mostra qualquer outra coisa no início é interrompida.
+- **Ferramentas por etapa:** o planejador só lê; o revisor lê e roda `git diff`, `git log`
+  e `git show`; só o executor edita e usa o terminal.
+- **Escopo de arquivos:** um hook nega a escrita fora do escopo do plano, em `.git/`, em
+  `.mabel/` e em caminhos críticos sem a sua aprovação. Se o executor precisar de um
+  caminho a mais, ele o declara: o Mabel amplia o escopo sozinho, ou pede a sua aprovação
+  quando o caminho é crítico.
+- **Sandbox no terminal:** os comandos do executor só escrevem no worktree do item (e nos
+  caches de pacotes da stack), não conseguem fazer commit nem mover branches, e a rede só
+  alcança o registro de pacotes da stack e os domínios que você liberar em `rede`. Sem
+  sandbox no sistema, o `run` não inicia.
+- **Auditoria das negações:** cada decisão do hook fica na run, e `mabel item <n>` lista o
+  que foi negado.
+
 ## Instalação
 
-Requer macOS ou Linux, Node ≥ 22.18, git e o Claude Code CLI autenticado.
+Requer macOS ou Linux, Node ≥ 22.18, git e o Claude Code CLI autenticado. No Linux, o
+sandbox precisa de `bubblewrap` e `socat`.
 
 ```bash
 scripts/setup.sh
 ```
 
-O script faz o preflight (sistema, Node, `node:sqlite`, npm, git, Claude Code, zsh,
-PATH), instala as dependências, cria `~/.mabel/`, liga `mabel` em `~/.local/bin`,
+O script faz o preflight (sistema, Node, `node:sqlite`, npm, git, Claude Code com as
+flags que o Mabel usa, sandbox do sistema, zsh, PATH), instala as dependências, cria `~/.mabel/`, liga `mabel` em `~/.local/bin`,
 configura o autocompletar no `~/.zshrc` e roda typecheck e testes. Pode ser executado
 várias vezes.
 
@@ -69,10 +92,6 @@ várias vezes.
 | `--no-shell` | Não altera o `~/.zshrc`. |
 
 ## Primeiros passos
-
-> Até o passo 5 do plano (trava de escopo por hook), o agente de execução tem terminal
-> protegido só por uma lista de comandos proibidos. Use o Mabel em projetos descartáveis
-> ou com tudo commitado.
 
 ```bash
 cd ~/projetos/minha-app        # um repositório git
@@ -143,7 +162,7 @@ No modo Mabel: `/` abre a lista de comandos, Tab completa, ↑/↓ percorrem o h
 
 | Caminho | Conteúdo |
 |---|---|
-| `.mabel/config.json` | Branch base, `setup`, comandos de `verify`, modelos e limites por etapa, `autonomia` |
+| `.mabel/config.json` | Branch base, `setup`, comandos de `verify`, modelos e limites por etapa, `autonomia`, `rede` (domínios liberados no sandbox), `contexto.maxCaracteres` (limite do contexto do projeto) e `sandbox` (`false` desliga, por sua conta) |
 | `.mabel/backlog.md` | Itens do backlog (versionado, escrito por você) |
 | `.mabel/regras-criticas.md` | Caminhos e conceitos críticos (versionado) |
 | `.mabel/quadro.md` | Quadro kanban gerado a cada transição (fora do git; editar não tem efeito) |

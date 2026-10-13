@@ -63,16 +63,16 @@ achados do teste orientam a especificação dos passos seguintes.
 - [x] Saldo eficiente e sempre visível (`docs/specs/saldo.md`): leitura antiga (30 min),
       consumo medido por etapa, projeção contra piso de 10%, ritmo da janela de 7 dias e
       rodapé fixo. Muda a política de saldo do contrato (autorizado).
-- [ ] Gravar no banco as pausas da fila (saldo de 7 dias, falta de leitura) e as respostas
+- [ ] **Próxima tarefa.** Gravar no banco as pausas da fila (saldo de 7 dias, falta de leitura) e as respostas
       do humano às perguntas da política de saldo. Hoje só aparecem na saída (auditoria).
 - [ ] 2.3 `mabel runs` com lista e detalhe da run (`docs/specs/passo-2.md`).
 - [ ] Gestão de projetos no banco (`docs/specs/projetos.md`): `mabel projetos`, auditoria
       por projeto e `mabel projeto remover`.
-- [ ] Passo 5 — Travas (`docs/specs/passo-5.md`):
+- [x] Passo 5 — Travas (`docs/specs/passo-5.md`):
   - [x] 5.1 Contexto hermético (G8).
   - [x] 5.2 Sandbox e ferramentas por etapa (G4, terminal e rede).
   - [x] 5.3 Hook de escopo (G4, arquivos).
-  - [ ] 5.4 Contrato, preflight e documentação.
+  - [x] 5.4 Contrato, preflight e documentação.
 - [x] Prova e integração (`docs/specs/prova-e-integracao.md`):
   - [x] P.1 Veredito calculado (revisor não declara aprovação).
   - [x] P.2 Prova mecânica: vermelho na base, verde no item.
@@ -127,3 +127,5 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-13 | 5.2: `settings.json` de cada etapa com sandbox estrito (`failIfUnavailable`, sem comando fora dele, `strictAllowlist`), rede dos domínios do registro da stack (catálogo) e `denyWrite` no `.git` do projeto. `--tools`/`--allowedTools` por etapa (revisor com `git show`). Commits do Mabel sem `.claude/`. `run` recusa iniciar sem sandbox (`sandbox-exec` no macOS, `bwrap` e `socat` no Linux), salvo `"sandbox": false`, que avisa a cada execução e grava `sandbox_disabled` em cada run. Desvio: o `init` grava em `rede` os domínios da stack (projeto vazio não tem o que detectar); config sem o campo usa as stacks detectadas na raiz. |
 | 2026-10-13 | 5.3: `hooks/escopo.mjs` (decisão em `src/scope.ts`) em toda etapa, pelo `node` do Mabel, com o contexto em `<run>/escopo.json` via `MABEL_ESCOPO`: nega fora do worktree, em `.git/`/`.mabel/`, caminho crítico sem aprovação e fora do escopo do plano; permite sem saída; `Bash` só registra; erro nega. Execução com `escopoAdicional`: não crítico amplia o plano (`scope_extension` e `autonomy`) e retoma a mesma sessão na mesma tentativa; crítico vai a `critical_approval` com a sessão do planejamento (para o `responder`). Decisões do hook em `events` (`hook`/`allow`/`deny`), `runs.denials` e a seção "Negações" no `mabel item`. Desvio: as negações aparecem por run (etapa e id), não por tentativa, porque a run não guarda a tentativa. |
 | 2026-10-13 | Teste real do passo 5 (Haiku, projeto descartável em `~/.mabel-teste-passo5`, apagado depois; US$ 0,10 no total). Run de execução montada pelo Mabel: escrita no diretório pai e em `~` negada, `git commit` e `git update-ref refs/heads/main` negados, `example.com` negado, `npm install left-pad` funcionou, `Write` fora do escopo negado pelo hook com a mensagem, `Write` no escopo permitido, e o agente citou a convenção do `CLAUDE.md`. `mabel run` completo: plano, execução, verificação, prova e revisão rodaram sob as travas, o código seguiu o `CLAUDE.md`, commits sem `.claude/`; o item parou em `needs_human` porque a revisão (Haiku) reprovou um critério `mantido` de comando. Achados corrigidos: `--json-schema` acrescenta a ferramenta `StructuredOutput` ao `init` (esperada quando há esquema), e o `npm` precisa gravar no `~/.npm` (caches do gerenciador de pacotes por stack em `filesystem.allowWrite`). |
+| 2026-10-13 | 5.4: contrato com os mecanismos novos de G4 (hook de escopo, `--restricted`, sandbox com `.git` fechado e rede da stack, `--disallowedTools`) e G8 (flags herméticas, contexto injetado com orçamento, conferência do `init`), e caminhos críticos "impostos pelo hook de escopo"; o texto das garantias não mudou. `scripts/setup.sh` confere as flags do Claude Code e o sandbox do sistema. README sem o aviso de projeto descartável e com a seção "Travas". `BACKLOG.md`: saem `--tools` e "medir o efeito" do contexto hermético; entram o revisor diante de critério `mantido` de comando e a escrita fora do escopo pelo terminal (dentro do worktree). Passo 5 concluído. |
+| 2026-10-13 | Próxima tarefa, a pedido do usuário: gravar no banco as pausas da fila e as respostas do humano às perguntas da política de saldo (primeiro item não marcado de "Depois do teste"). |

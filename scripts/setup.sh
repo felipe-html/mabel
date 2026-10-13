@@ -94,13 +94,43 @@ fi
 
 if command -v claude >/dev/null 2>&1; then
   ok "Claude Code $(claude --version 2>/dev/null | awk '{print $1}')"
-  if ! claude --help 2>/dev/null | grep -q -- '--output-format'; then
-    fail "Esta versão do Claude Code não suporta --output-format"
+  CLAUDE_HELP="$(claude --help 2>/dev/null)"
+  # Etapas herméticas e travas (passo 5): o Mabel não roda sem estas flags.
+  MISSING_FLAGS=""
+  for flag in --output-format --restricted --strict-mcp-config --disable-slash-commands --tools --settings; do
+    grep -q -- "$flag" <<<"$CLAUDE_HELP" || MISSING_FLAGS="$MISSING_FLAGS $flag"
+  done
+  if [[ -n "$MISSING_FLAGS" ]]; then
+    fail "Esta versão do Claude Code não tem:$MISSING_FLAGS"
+    hint "Atualize o Claude Code (claude update); o Mabel usa essas flags para isolar e travar os agentes."
   fi
 else
   fail "Claude Code CLI não encontrado"
   hint "Instale com: curl -fsSL https://claude.ai/install.sh | bash"
 fi
+
+# Sandbox do Claude Code no terminal do agente (G4): sem ele, o `mabel run` não inicia.
+case "$(uname -s)" in
+  Darwin)
+    if [[ -x /usr/bin/sandbox-exec ]]; then
+      ok "Sandbox disponível (sandbox-exec)"
+    else
+      fail "Sandbox indisponível: /usr/bin/sandbox-exec não encontrado"
+    fi
+    ;;
+  Linux)
+    MISSING=""
+    for command in bwrap socat; do
+      command -v "$command" >/dev/null 2>&1 || MISSING="$MISSING $command"
+    done
+    if [[ -z "$MISSING" ]]; then
+      ok "Sandbox disponível (bubblewrap e socat)"
+    else
+      fail "Sandbox indisponível: falta$MISSING"
+      hint "Instale bubblewrap e socat (ex.: sudo apt install bubblewrap socat)."
+    fi
+    ;;
+esac
 
 if command -v zsh >/dev/null 2>&1; then
   ok "zsh $(zsh --version | awk '{print $2}')"

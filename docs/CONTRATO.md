@@ -46,11 +46,11 @@ humano o rejeita, a `planning` ou `cancelled`.
 | G1 | **Toda run é auditada.** Item, etapa, modelo, início, fim, custo, tokens, chamadas de ferramenta e transcript bruto copiado. Se o registro não puder ser gravado, a run não inicia. | Runner lendo o stream-json, hooks, SQLite, cópia do transcript. |
 | G2 | **Nenhum item entra em execução sem critério de início.** Critérios de aceite verificáveis, escopo de arquivos declarado e, se tocar regra crítica, aprovação humana registrada. | Gate entre `planning` e `planned`. |
 | G3 | **"Done" é calculado pelo Mabel, nunca declarado pelo agente.** Gates mecânicos verdes, cada critério de aceite do item ligado a pelo menos um teste (ou a uma rota de validação humana declarada), revisão aprovada. A exigência vale para o que o item muda, não para a cobertura do projeto inteiro. O teste de um critério de comportamento novo falha no código base e passa no item; o de comportamento mantido passa nos dois. O parecer da revisão é calculado a partir dos critérios avaliados e dos problemas apontados; o revisor não declara aprovação. | Gate de verificação e prova executados pelo runner, fora do agente. |
-| G4 | **O agente não sai do escopo.** Escrita fora dos caminhos declarados e comandos da lista de bloqueio são barrados. O agente nunca faz merge nem push na branch principal. | Hook `PreToolUse` e `--disallowedTools`. |
+| G4 | **O agente não sai do escopo.** Escrita fora dos caminhos declarados e comandos da lista de bloqueio são barrados. O agente nunca faz merge nem push na branch principal. | Hook `PreToolUse` de escopo nas ferramentas de arquivo, `--restricted` (ferramentas de arquivo confinadas ao worktree), sandbox do Claude Code no terminal (escrita no worktree, `.git` do projeto fechado, rede só para os domínios da stack e do projeto) e `--disallowedTools`. Sem sandbox, a fila não roda, salvo desligamento explícito no projeto, registrado em cada run. |
 | G5 | **Cada item trabalha isolado.** | Worktree e branch próprias por item, criadas a partir da branch de integração (ou da base, sem integração). |
 | G6 | **Nenhuma etapa inicia sem saldo.** Ver "Política de saldo". Cada run tem teto de custo e de turnos. | `rate_limit_event` do stream-json, `--max-budget-usd`, `--max-turns`. |
 | G7 | **Ambiguidade em regra crítica para o item.** Suposição declarada sobre regra crítica leva o item a `needs_human`. | Saída estruturada (`--json-schema`) com campo `suposicoes`, validada pelo runner. |
-| G8 | **Contexto hermético.** O agente recebe apenas as regras do Mabel (versionadas), a configuração do projeto-alvo e os artefatos da etapa anterior. Nada da configuração pessoal do usuário. | `--setting-sources project`, `--settings`, `--append-system-prompt-file`. |
+| G8 | **Contexto hermético.** O agente recebe apenas as regras do Mabel (versionadas), a configuração do projeto-alvo e os artefatos da etapa anterior. Nada da configuração pessoal do usuário. | `--restricted`, `--strict-mcp-config`, `--disable-slash-commands`, `--tools` por etapa e `--settings` por run; contexto do projeto (`CLAUDE.md`, `AGENTS.md`, regras críticas) injetado pelo Mabel, com orçamento; o runner confere o `init` de cada run e interrompe a que trouxer memória, MCP, skills ou ferramentas fora das pedidas. |
 | G9 | **Estado sobrevive à sessão.** Interromper o Mabel a qualquer momento e reiniciá-lo retoma do último estado gravado. | Estado no banco e em arquivos; sessão nova por etapa. |
 | G10 | **A integração só recebe item com "done" calculado.** O Mabel faz o merge na branch de integração só depois do G3 e da revisão. A branch principal só recebe o merge feito pelo humano. | O runner cria o commit de merge; o agente continua sem git de escrita (G4). |
 
@@ -110,7 +110,7 @@ dados do Mabel; o repositório do projeto não é alterado.
 O projeto-alvo declara em `.mabel/regras-criticas.md` o que exige decisão humana:
 
 - **Caminhos**: arquivos cuja alteração sempre exige critérios aprovados pelo humano.
-  Imposto por hook.
+  Imposto pelo hook de escopo: sem a aprovação, a escrita neles é negada.
 - **Conceitos**: regras de negócio descritas em linguagem natural. O planejador classifica
   se o item toca algum deles. Orientação, não garantia.
 
