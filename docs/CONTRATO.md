@@ -141,6 +141,7 @@ mostrar crítico, ele sobe para garantia.
 
 - Aprovar critérios de aceite de itens que tocam regra crítica.
 - Responder a inbox.
+- Rejeitar um item integrado (`mabel rejeitar`).
 - Fazer merge na branch principal.
 - Alterar este contrato.
 

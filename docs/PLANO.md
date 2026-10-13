@@ -73,12 +73,12 @@ achados do teste orientam a especificação dos passos seguintes.
   - [ ] 5.2 Sandbox e ferramentas por etapa (G4, terminal e rede).
   - [ ] 5.3 Hook de escopo (G4, arquivos).
   - [ ] 5.4 Contrato, preflight e documentação.
-- [ ] Prova e integração (`docs/specs/prova-e-integracao.md`):
+- [x] Prova e integração (`docs/specs/prova-e-integracao.md`):
   - [x] P.1 Veredito calculado (revisor não declara aprovação).
   - [x] P.2 Prova mecânica: vermelho na base, verde no item.
   - [x] P.3 Limpeza de worktrees e branches.
   - [x] P.4 Branch de integração.
-  - [ ] P.5 Relatório da integração e `mabel rejeitar`.
+  - [x] P.5 Relatório da integração e `mabel rejeitar`.
 
 ## Histórico
 
@@ -120,3 +120,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-13 | P.2: critério do plano com `comportamento` (`novo`/`mantido`); `testeUnico` e `arquivosDeTeste` no config, por stack no catálogo e gravados pelo `init` (Vitest detectado pelo `package.json`). Gate `proof` depois do `criteria_tests`: roda cada teste no item e no código base (só os arquivos restauráveis), restaura sempre e confere o `git status`; lacuna volta à execução, `sem_prova` segue. Modo por item sem `testeUnico`. Desvios da spec: placeholder `{padrao}` (nome escapado como regex, porque o `node --test` passa sem rodar nada quando o filtro não casa) e conjunto restaurável decidido só pelos globs (teste declarado fora deles conta como "mora no código"). Testado com node:test real. |
 | 2026-10-13 | P.3: worktree removido ao chegar a `awaiting_merge` (retrabalho recria pela branch), branch apagada ao passar a `done` só se contida na base (senão, aviso), e o `run` remove na abertura os worktrees órfãos de itens em `awaiting_merge`, `done` ou `cancelled`. |
 | 2026-10-13 | P.4: `integracao` no config (padrão `mabel/integracao`, `null` desliga); itens nascem dela, o Mabel faz o merge dela no item antes da verificação (conflito → `integration_conflict`, que o `responder` devolve ao executor com os conflitos marcados) e, com a revisão aprovada, integra por `commit-tree` + `update-ref` e apaga worktree e branch. Abertura do `run` cria a integração, pausa se ela estiver aberta num checkout, avança ou faz o merge da base (conflito pausa) e leva a `done` os itens já na base. Dependência integrada libera o dependente. Coluna `items.integrated_commit`. Contrato: G5, G10, ciclo de vida e fora da v0. |
+| 2026-10-13 | P.5: `.mabel/integracao.md` regenerado a cada integração, na abertura do `run` e na rejeição ("Olhe primeiro" com critérios sem prova, prova por item, regra crítica, suposições e validações humanas; depois os itens na ordem de integração, com critérios, devoluções e arquivos), e `mabel integracao`. Projeto antigo ignora o relatório pelo `info/exclude`. `mabel rejeitar <n> "<motivo>" [--cancelar]` reverte o merge num worktree temporário destacado (`update-ref` contra o valor antigo), leva o item a `planning` com o motivo ou o cancela, avisa sobre dependentes integrados e, com conflito, não muda nada e aponta os itens que o impedem. Contrato: "Rejeitar um item integrado" nas decisões do humano. Prova e integração concluídas. |

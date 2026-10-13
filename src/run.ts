@@ -17,6 +17,7 @@ import { inboxSession, pendingItems, runInbox, terminalIO } from './inbox.ts';
 import { type Item, type ItemStatus, getItemById, listItems, syncBacklog, transition } from './items.ts';
 import { type Notify, notify as systemNotify } from './notify.ts';
 import { finishIntegrated, openIntegration } from './integration.ts';
+import { writeIntegrationReport } from './report.ts';
 import { LockError, acquireLock } from './lock.ts';
 import { type AdvanceResult, advanceItem, autonomousDecisions } from './pipeline.ts';
 import { type Project, ProjectError, mabelCommitted, resolveProject } from './project.ts';
@@ -288,7 +289,14 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
     if (opened.pause) return opened.pause;
     const cleaned = removeOrphanWorktrees(db, home, project, listItems(db, project.id));
     if (cleaned.length > 0) log.write(style.dim(`worktrees removidos: ${cleaned.map((n) => `#${n}`).join(', ')}`));
+    finishIntegrated(db, project, listItems(db, project.id)).forEach(markDone);
+    writeIntegrationReport(db, home, project);
     return undefined;
+  };
+
+  const markDone = (item: Item) => {
+    log.write(`#${item.number} ${item.title}: awaiting_merge → done`);
+    finalStates.set(item.number, 'done');
   };
 
   const loop = async (): Promise<{ end: QueueEnd; message?: string }> => {
@@ -298,10 +306,7 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
       if (abort.signal.aborted) return { end: 'interrupted' };
 
       // Itens cujo merge já entrou na base: concluídos.
-      for (const item of finishIntegrated(db, project, listItems(db, project.id))) {
-        log.write(`#${item.number} ${item.title}: awaiting_merge → done`);
-        finalStates.set(item.number, 'done');
-      }
+      finishIntegrated(db, project, listItems(db, project.id)).forEach(markDone);
       for (const item of listItems(db, project.id)) {
         if (item.status === 'awaiting_merge' && !item.integratedCommit && item.branch && isMerged(project, item.branch)) {
           transition(db, project, item.id, 'done', `merge de ${item.branch} na ${project.config.baseBranch}`);

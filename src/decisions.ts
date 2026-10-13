@@ -1,6 +1,17 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { truncate } from './format.ts';
-import { type Item, type ItemStatus, type ItemUpdate, TRANSITIONS, refreshBoard, transition, updateItem } from './items.ts';
+import { tryGit } from './git.ts';
+import { integratedItems, isAncestor, onTempWorktree } from './integration.ts';
+import {
+  type Item,
+  type ItemStatus,
+  type ItemUpdate,
+  TRANSITIONS,
+  listItems,
+  refreshBoard,
+  transition,
+  updateItem,
+} from './items.ts';
 import { attemptsSummary } from './pipeline.ts';
 import type { Project } from './project.ts';
 
@@ -123,4 +134,79 @@ export function cancel(db: DatabaseSync, project: Project, item: Item, options: 
     throw new DecisionError(`#${item.number} não pode ser cancelado no estado ${item.status}.`);
   }
   decide(db, project, item, 'cancelled', via('cancelado', options), { nextInput: null });
+}
+
+export interface RejectResult {
+  to: 'planning' | 'cancelled';
+  /** Itens integrados que dependem do rejeitado: não são revertidos sozinhos. */
+  dependents: number[];
+}
+
+/** Arquivos que o commit de integração mudou em relação à integração anterior. */
+function integratedFiles(root: string, commit: string): string[] {
+  return (tryGit(root, 'diff', '--name-only', `${commit}^1`, commit) ?? '').split('\n').filter(Boolean);
+}
+
+/**
+ * Rejeita um item integrado: reverte o merge dele na integração e o leva a replanejar com o
+ * motivo (ou o cancela). Revert com conflito não muda nada e aponta os itens que o impedem.
+ */
+export function reject(
+  db: DatabaseSync,
+  home: string,
+  project: Project,
+  item: Item,
+  reason: string,
+  { cancel: cancelItem = false }: { cancel?: boolean } = {},
+): RejectResult {
+  const integration = project.config.integracao;
+  const commit = item.integratedCommit;
+  if (!integration || item.status !== 'awaiting_merge' || !commit) {
+    throw new DecisionError(`#${item.number} não está na integração (estado: ${item.status}).`);
+  }
+  if (isAncestor(project.root, commit, project.config.baseBranch)) {
+    throw new DecisionError(`#${item.number} já está na ${project.config.baseBranch}; reverta por lá.`);
+  }
+  const reverted = onTempWorktree(
+    home,
+    project,
+    integration,
+    (path) => tryGit(path, 'revert', '--no-edit', '-m', '1', commit) !== undefined,
+    ['revert', '--abort'],
+  );
+  if (reverted.kind === 'conflict') {
+    const touched = new Set(integratedFiles(project.root, commit));
+    const later = integratedItems(db, project);
+    const blockers = later
+      .slice(later.findIndex((other) => other.id === item.id) + 1)
+      .filter((other) => integratedFiles(project.root, other.integratedCommit as string).some((file) => touched.has(file)))
+      .map((other) => `#${other.number}`);
+    throw new DecisionError(
+      `Não foi possível reverter #${item.number}: conflito em ${reverted.files.join(', ')}.` +
+        (blockers.length > 0 ? ` Rejeite antes ${blockers.join(', ')}, integrados depois dele nos mesmos arquivos.` : '') +
+        ' A integração não mudou.',
+    );
+  }
+
+  const text = `rejeitado — ${truncate(reason.replace(/\s+/g, ' '), 200)}`;
+  const update: ItemUpdate = { integratedCommit: null };
+  if (cancelItem) decide(db, project, item, 'cancelled', text, { ...update, nextInput: null });
+  else {
+    decide(db, project, item, 'planning', text, {
+      ...update,
+      attempts: 0,
+      escalatedCycle: false,
+      approvedAt: null,
+      planRetries: 0,
+      nextInput: {
+        answer: `O humano rejeitou a entrega anterior deste item: ${reason}`,
+        previousPlan: true,
+        attemptsSummary: attemptsSummary(db, item.id) || undefined,
+      },
+    });
+  }
+  const dependents = listItems(db, project.id)
+    .filter((other) => other.status === 'awaiting_merge' && other.integratedCommit && other.dependsOn.includes(item.number))
+    .map((other) => other.number);
+  return { to: cancelItem ? 'cancelled' : 'planning', dependents };
 }

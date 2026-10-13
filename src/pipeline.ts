@@ -28,6 +28,7 @@ import {
 import { git, tryGit } from './git.ts';
 import { integrateItem, mergeInProgress, mergeOrigin, setIntegrated } from './integration.ts';
 import { foundTests, proofDetail, runProof } from './proof.ts';
+import { writeIntegrationReport } from './report.ts';
 import { commitAll, commitMessage, originBranch, prepareWorktree, removeWorktree, shell } from './worktree.ts';
 
 export interface PipelineEnv {
@@ -625,6 +626,7 @@ function integrateStep(env: PipelineEnv, item: Item, notes: string | null, runId
   const branch = item.branch;
   removeWorktree(env.db, env.project, item);
   if (branch) tryGit(env.project.root, 'branch', '-D', branch);
+  writeIntegrationReport(env.db, env.home, env.project);
   return { kind: 'stopped', status: 'awaiting_merge' };
 }
 
