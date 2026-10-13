@@ -55,8 +55,14 @@ mabel projeto remover ferias-planner
     git -C /Users/felipe/Pessoal/ferias-planner branch --list 'mabel/*'
 ```
 
+Com a branch de integração (`docs/specs/prova-e-integracao.md`, P.4), o resumo avisa
+quantos itens integrados ainda não chegaram à base: o trabalho deles só existe na branch
+de integração, que a remoção não toca. O worktree temporário `_integracao` fica dentro de
+`worktrees/<projectId>` e entra na remoção e na checagem de alterações sem commit.
+
 - Recusa se houver run `running` de um item do projeto ou trava ativa do projeto.
-- Recusa se algum worktree do projeto tiver alterações sem commit, listando-os.
+- Recusa se algum worktree em `worktrees/<projectId>` (dos itens ou o `_integracao`) tiver
+  alterações sem commit, listando-os.
 - Fora do TTY, exige `--confirmar <nome>`; sem ele, só mostra o resumo e sai com erro.
 - O banco é apagado numa transação; os diretórios, depois do commit. Falha ao apagar um
   diretório é avisada e não desfaz o banco (o que sobrar em disco é órfão inofensivo).
