@@ -28,6 +28,10 @@ ${entries}
     _describe 'comando do mabel' commands
   elif [[ \${words[2]} == completion && CURRENT == 3 ]]; then
     _values 'shell' zsh
+  elif [[ \${words[2]} == projeto && CURRENT == 3 ]]; then
+    _values 'subcomando' remover
+  elif [[ \${words[2]} == projetos && CURRENT == 3 ]]; then
+    _values 'opção' --removidos
   fi
 }
 

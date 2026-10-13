@@ -12,7 +12,10 @@ export function runDir(home: string, runId: string): string {
   return join(home, 'runs', runId);
 }
 
-/** Migrações em ordem; a posição + 1 é o `user_version` depois de aplicada. */
+/**
+ * Migrações em ordem; a posição + 1 é o `user_version` depois de aplicada. Tabela nova
+ * precisa ser classificada em `tableScope` (`src/projects.ts`).
+ */
 const migrations: string[] = [
   `
   CREATE TABLE runs (
@@ -144,6 +147,18 @@ const migrations: string[] = [
   `,
   `
   ALTER TABLE items ADD COLUMN integrated_commit TEXT;
+  `,
+  `
+  CREATE TABLE removals (
+    id          INTEGER PRIMARY KEY,
+    project_id  TEXT NOT NULL,
+    name        TEXT NOT NULL,
+    root        TEXT NOT NULL,
+    items       INTEGER NOT NULL,
+    runs        INTEGER NOT NULL,
+    cost_usd    REAL NOT NULL,
+    removed_at  TEXT NOT NULL
+  );
   `,
   `
   ALTER TABLE runs ADD COLUMN denials INTEGER;
