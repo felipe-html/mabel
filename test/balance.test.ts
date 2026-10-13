@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -190,12 +190,16 @@ test('status --atualizar roda o probe auditado e mostra saldo e runs sem cores',
   const root = mkdtempSync(join(tmpdir(), 'mabel-status-'));
   const home = join(root, 'home');
   const marker = join(root, 'marker.json');
+  // Probe hermético: o cenário emite o `init` com as ferramentas pedidas (nenhuma).
+  const scenario = join(root, 'cenario.json');
+  writeFileSync(scenario, JSON.stringify({ responses: [], probe: { rate_limit: { five_hour: 0.05, seven_day: 0.2 } } }));
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     MABEL_HOME: home,
     MABEL_CLAUDE_BIN: FAKE,
     CLAUDE_CONFIG_DIR: join(root, 'claude'),
     FAKE_CLAUDE_MARKER: marker,
+    FAKE_CLAUDE_SCENARIO: scenario,
   };
   delete env.NO_COLOR;
   const mabel = (...args: string[]) =>
@@ -224,5 +228,7 @@ test('status --atualizar roda o probe auditado e mostra saldo e runs sem cores',
     db.close();
   }
   const { argv } = JSON.parse(readFileSync(marker, 'utf8')) as { argv: string[] };
-  assert.deepEqual(argv.slice(4, 8), ['--model', 'haiku', '--max-turns', '1']);
+  const at = argv.indexOf('--model');
+  assert.deepEqual(argv.slice(at, at + 4), ['--model', 'haiku', '--max-turns', '1']);
+  assert.deepEqual(argv.slice(4, 9), ['--restricted', '--strict-mcp-config', '--disable-slash-commands', '--tools', '']);
 });

@@ -2,7 +2,8 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import type { Item } from './items.ts';
-import { type CriticalRules, type Project, readCriticalRules } from './project.ts';
+import { projectContext } from './hermetic.ts';
+import type { Project } from './project.ts';
 import { type RunHandle, type RunObserver, type RunOutcome, type RunRequest, type RunStage, startRun } from './runner.ts';
 import {
   type ExecuteOutput,
@@ -15,11 +16,21 @@ import {
 import { type Schema, validate } from './schemas/validate.ts';
 import { originBranch } from './worktree.ts';
 
+/** Ferramentas que existem na etapa (`--tools`); o `init` precisa listar exatamente estas. */
 export const STAGE_TOOLS: Record<RunStage, string[]> = {
   plan: ['Read', 'Glob', 'Grep'],
   execute: ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'Bash'],
-  review: ['Read', 'Glob', 'Grep', 'Bash(git diff:*)', 'Bash(git log:*)'],
+  review: ['Read', 'Glob', 'Grep', 'Bash'],
 };
+
+/** Ferramentas liberadas sem pedir (`--allowedTools`); no `dontAsk`, o resto é negado. */
+export const STAGE_ALLOWED: Record<RunStage, string[]> = {
+  plan: STAGE_TOOLS.plan,
+  execute: STAGE_TOOLS.execute,
+  review: ['Read', 'Glob', 'Grep', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git show:*)'],
+};
+
+export class ContextBudgetError extends Error {}
 
 /** Barreira fraca contra comandos perigosos na execução; a trava real é o hook do passo 5. */
 export const EXECUTE_DISALLOWED = [
@@ -76,6 +87,8 @@ export interface StageResult<T> {
 export function stageRequest(ctx: StageContext, stage: RunStage, prompt: string, options: StageOptions = {}): RunRequest {
   const { config } = ctx.project;
   const limits = config.limits[stage];
+  const context = projectContext(ctx.worktree, config.contexto.maxCaracteres);
+  if (context.kind === 'over_budget') throw new ContextBudgetError(context.reason);
   const request: RunRequest = {
     kind: 'stage',
     stage,
@@ -86,8 +99,9 @@ export function stageRequest(ctx: StageContext, stage: RunStage, prompt: string,
     maxTurns: limits.maxTurns,
     maxBudgetUsd: limits.maxBudgetUsd,
     permissionMode: 'dontAsk',
-    allowedTools: STAGE_TOOLS[stage],
-    appendSystemPrompt: systemPrompt(stage),
+    tools: STAGE_TOOLS[stage],
+    allowedTools: STAGE_ALLOWED[stage],
+    appendSystemPrompt: `${systemPrompt(stage).trimEnd()}\n\n${context.text}`,
     jsonSchema: SCHEMAS[stage],
   };
   if (stage === 'execute') request.disallowedTools = EXECUTE_DISALLOWED;
@@ -171,17 +185,6 @@ function verifyCommands(project: Project): string {
   );
 }
 
-function criticalRules(rules: CriticalRules): string[] {
-  if (rules.paths.length === 0 && rules.concepts.length === 0) return section('Regras críticas do projeto', 'Nenhuma.');
-  return section('Regras críticas do projeto', [
-    '### Caminhos',
-    bullet(rules.paths.map((path) => `\`${path}\``), 'Nenhum.'),
-    '',
-    '### Conceitos',
-    bullet(rules.concepts, 'Nenhum.'),
-  ]);
-}
-
 export interface PlanPromptInput {
   /** Resposta do humano às perguntas ou ao pedido de aprovação. */
   answer?: string;
@@ -217,7 +220,6 @@ export function planPrompt(ctx: StageContext, input: PlanPromptInput = {}): stri
       bullet(item.criteria, 'Nenhum. Proponha critérios verificáveis.'),
     ),
     ...section('Restrições', item.restrictions ?? ''),
-    ...criticalRules(readCriticalRules(project.root)),
     ...section('Comandos de verificação', verifyCommands(project)),
     ...(input.previousPlan
       ? section('Plano anterior', renderPlanMarkdown(item, input.previousPlan).replace(/^# .*\n/, ''))
@@ -257,7 +259,6 @@ export function executePrompt(ctx: StageContext, input: ExecutePromptInput): str
     '',
     ...section('Plano', renderPlanMarkdown(ctx.item, input.plan).replace(/^# .*\n/, '')),
     ...section('Restrições', ctx.item.restrictions ?? ''),
-    ...criticalRules(readCriticalRules(ctx.project.root)),
     ...section('Comandos de verificação', verifyCommands(ctx.project)),
     ...section('Tentativas anteriores', input.attemptsSummary ?? ''),
     ...section('Falha da tentativa anterior', input.failure ?? ''),

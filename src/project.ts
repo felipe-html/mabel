@@ -42,9 +42,14 @@ export interface ProjectConfig {
    * branch por item, com merge do humano na base.
    */
   integracao: string | null;
+  /** Orçamento do contexto do projeto injetado nas etapas (`CLAUDE.md`, `AGENTS.md`, regras críticas). */
+  contexto: { maxCaracteres: number };
 }
 
 export const DEFAULT_INTEGRATION = 'mabel/integracao';
+
+/** Caracteres somados do contexto do projeto injetado nas etapas. */
+export const DEFAULT_CONTEXT_BUDGET = 40_000;
 
 export interface Project {
   id: string;
@@ -136,6 +141,12 @@ export function readConfig(root: string): ProjectConfig | undefined {
     arquivosDeTeste: Array.isArray(raw.arquivosDeTeste) ? raw.arquivosDeTeste : [...DEFAULT_TEST_GLOBS],
     // Config sem o campo vale ligada; `null` (ou vazio) desliga.
     integracao: !('integracao' in raw) ? DEFAULT_INTEGRATION : typeof raw.integracao === 'string' && raw.integracao.trim() ? raw.integracao : null,
+    contexto: {
+      maxCaracteres:
+        typeof raw.contexto?.maxCaracteres === 'number' && raw.contexto.maxCaracteres > 0
+          ? raw.contexto.maxCaracteres
+          : DEFAULT_CONTEXT_BUDGET,
+    },
   };
 }
 

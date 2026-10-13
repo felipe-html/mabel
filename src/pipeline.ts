@@ -27,6 +27,7 @@ import {
 } from './stages.ts';
 import { git, tryGit } from './git.ts';
 import { integrateItem, mergeInProgress, mergeOrigin, setIntegrated } from './integration.ts';
+import { projectContext } from './hermetic.ts';
 import { foundTests, proofDetail, runProof } from './proof.ts';
 import { writeIntegrationReport } from './report.ts';
 import { commitAll, commitMessage, originBranch, prepareWorktree, removeWorktree, shell } from './worktree.ts';
@@ -47,7 +48,8 @@ export type AdvanceResult =
   | { kind: 'stopped'; status: ItemStatus }
   | { kind: 'interrupted' }
   | { kind: 'usage_limit' }
-  | { kind: 'paused' };
+  /** `reason`: motivo da pausa decidida pelo pipeline (a da política de saldo fica com o `run`). */
+  | { kind: 'paused'; reason?: string };
 
 /** Escada de escalonamento de modelo. */
 const MODEL_LADDER = ['haiku', 'sonnet', 'opus'];
@@ -283,6 +285,14 @@ function context(env: PipelineEnv, item: Item): StageContext {
   return { home: env.home, project: env.project, item, worktree: item.worktree as string };
 }
 
+/** Contexto do projeto acima do orçamento: a etapa não inicia e a fila pausa (G8). */
+function contextOverBudget(env: PipelineEnv, item: Item): Step {
+  const context = projectContext(item.worktree as string, env.project.config.contexto.maxCaracteres);
+  if (context.kind === 'ok') return undefined;
+  env.log?.(`#${item.number} ${item.title}: ${context.reason}`);
+  return { kind: 'paused', reason: context.reason };
+}
+
 function stageOptions(env: PipelineEnv, resumeSessionId: string | undefined, model?: string) {
   return { resumeSessionId, model, observer: env.observer, onStart: env.onStart };
 }
@@ -293,6 +303,8 @@ async function planStep(env: PipelineEnv, item: Item): Promise<Step> {
     move(env, item, 'blocked', prepared.setupError);
     return { kind: 'stopped', status: 'blocked' };
   }
+  const overBudget = contextOverBudget(env, item);
+  if (overBudget) return overBudget;
   if (env.beforeAgentStage && !(await env.beforeAgentStage('plan', item))) return { kind: 'paused' };
 
   const next = item.nextInput ?? {};
@@ -415,6 +427,8 @@ async function executeStep(env: PipelineEnv, item: Item): Promise<Step> {
     move(env, item, 'blocked', prepared.setupError);
     return { kind: 'stopped', status: 'blocked' };
   }
+  const overBudget = contextOverBudget(env, item);
+  if (overBudget) return overBudget;
   if (env.beforeAgentStage && !(await env.beforeAgentStage('execute', item))) return { kind: 'paused' };
 
   const next = item.nextInput ?? {};
@@ -583,6 +597,8 @@ async function reviewStep(env: PipelineEnv, item: Item): Promise<Step> {
     move(env, item, 'failed', `artefatos da tentativa ${attemptNo} não encontrados`);
     return { kind: 'stopped', status: 'failed' };
   }
+  const overBudget = contextOverBudget(env, item);
+  if (overBudget) return overBudget;
   if (env.beforeAgentStage && !(await env.beforeAgentStage('review', item))) return { kind: 'paused' };
 
   const next = item.nextInput ?? {};

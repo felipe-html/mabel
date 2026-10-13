@@ -333,7 +333,9 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
       finalStates.set(target.number, getItemById(db, target.id).status);
 
       if (result.kind === 'interrupted') return { end: 'interrupted' };
-      if (result.kind === 'paused') return { end: abort.signal.aborted ? 'interrupted' : 'paused', message: pauseReason };
+      if (result.kind === 'paused') {
+        return { end: abort.signal.aborted ? 'interrupted' : 'paused', message: result.reason ?? pauseReason };
+      }
       if (result.kind === 'usage_limit') {
         await waitForReset();
         continue;

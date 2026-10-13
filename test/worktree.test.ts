@@ -34,6 +34,7 @@ test('claudeArgs monta as flags de etapa', () => {
     }),
     [
       '-p', '--output-format', 'stream-json', '--verbose',
+      '--restricted', '--strict-mcp-config', '--disable-slash-commands', '--tools', '',
       '--model', 'sonnet', '--max-turns', '10', '--max-budget-usd', '2',
       '--permission-mode', 'dontAsk',
       '--allowedTools', 'Read,Bash(git diff:*)',

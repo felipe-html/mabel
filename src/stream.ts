@@ -35,10 +35,12 @@ export interface ResultTotals {
   structuredOutput?: unknown;
   /** Mensagens de erro do `result` (por exemplo, limite de uso). */
   errors?: string[];
+  /** Ações negadas na run (`result.permission_denials`): hook, permissões ou `--restricted`. */
+  denials?: number;
 }
 
 export type StreamEvent =
-  | { kind: 'init'; sessionId?: string; model?: string; claudeVersion?: string }
+  | { kind: 'init'; sessionId?: string; model?: string; claudeVersion?: string; raw: Record<string, unknown> }
   | { kind: 'tool_uses'; calls: ToolUse[] }
   | { kind: 'tool_results'; results: ToolResult[] }
   | { kind: 'rate_limits'; status?: string; readings: RateLimitReading[] }
@@ -78,6 +80,7 @@ function interpret(type: string, subtype: string | null, obj: Json): StreamEvent
       sessionId: str(obj.session_id),
       model: str(obj.model),
       claudeVersion: str(obj.claude_code_version),
+      raw: obj,
     };
   }
   if (type === 'assistant') {
@@ -122,6 +125,7 @@ function interpret(type: string, subtype: string | null, obj: Json): StreamEvent
         text: str(obj.result),
         structuredOutput: obj.structured_output ?? undefined,
         errors: Array.isArray(obj.errors) ? obj.errors.filter((e): e is string => typeof e === 'string') : undefined,
+        denials: Array.isArray(obj.permission_denials) ? obj.permission_denials.length : undefined,
       },
     };
   }

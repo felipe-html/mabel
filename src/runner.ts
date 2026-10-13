@@ -1,12 +1,13 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, writeSync } from 'node:fs';
+import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, writeFileSync, writeSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { StringDecoder } from 'node:string_decoder';
 import { balanceChanged } from './balance.ts';
 import { runDir } from './db.ts';
+import { initViolation } from './hermetic.ts';
 import { type ResultTotals, type ToolResult, type ToolUse, parseLine } from './stream.ts';
 
 export type RunKind = 'exec' | 'probe' | 'stage';
@@ -30,6 +31,18 @@ export interface RunRequest {
   /** Esquema da saída estruturada; serializado em `--json-schema`. */
   jsonSchema?: object;
   resumeSessionId?: string;
+  /**
+   * Ferramentas disponíveis (`--tools`) nas runs herméticas (etapa e probe); vazio desliga
+   * todas. O `init` precisa listar exatamente estas.
+   */
+  tools?: string[];
+  /** Conteúdo do `settings.json` da run (`--settings`), gravado no diretório dela. */
+  settings?: object;
+}
+
+/** Etapa e probe rodam isoladas da configuração pessoal (G8); o `exec` avulso, não. */
+export function isHermetic(request: Pick<RunRequest, 'kind'>): boolean {
+  return request.kind !== 'exec';
 }
 
 /** Notificações ao vivo, para quem exibe a run. Disparadas depois da gravação no banco. */
@@ -65,8 +78,13 @@ export function claudeBin(): string {
   return process.env.MABEL_CLAUDE_BIN || 'claude';
 }
 
-export function claudeArgs(request: RunRequest): string[] {
+export function claudeArgs(request: RunRequest, settingsPath?: string): string[] {
   const args = ['-p', '--output-format', 'stream-json', '--verbose'];
+  if (isHermetic(request)) {
+    args.push('--restricted', '--strict-mcp-config', '--disable-slash-commands');
+    args.push('--tools', (request.tools ?? []).join(','));
+    if (settingsPath) args.push('--settings', settingsPath);
+  }
   if (request.model) args.push('--model', request.model);
   if (request.maxTurns !== undefined) args.push('--max-turns', String(request.maxTurns));
   if (request.maxBudgetUsd !== undefined) args.push('--max-budget-usd', String(request.maxBudgetUsd));
@@ -140,8 +158,13 @@ export function startRun(
   const dir = runDir(home, runId);
   let streamFd: number;
   let stderrFd: number;
+  let settingsPath: string | undefined;
   try {
     mkdirSync(dir, { recursive: true });
+    if (isHermetic(request)) {
+      settingsPath = join(dir, 'settings.json');
+      writeFileSync(settingsPath, `${JSON.stringify(request.settings ?? {}, null, 2)}\n`);
+    }
     streamFd = openSync(join(dir, 'stream.jsonl'), 'a');
     stderrFd = openSync(join(dir, 'stderr.log'), 'a');
   } catch (error) {
@@ -174,6 +197,7 @@ export function startRun(
   let rateLimitStatus: string | null = null;
   let interrupted = false;
   let auditError: Error | null = null;
+  let hermeticError: string | null = null;
   let stderrTail = '';
 
   const recordEvent = (type: string, subtype: string | null, payload: string) => {
@@ -192,6 +216,16 @@ export function startRun(
           `UPDATE runs SET session_id = coalesce(?, session_id), model = coalesce(?, model),
              claude_version = coalesce(?, claude_version) WHERE id = ?`,
         ).run(event.sessionId ?? null, event.model ?? null, event.claudeVersion ?? null, runId);
+        if (isHermetic(request) && !hermeticError) {
+          const violation = initViolation(event.raw, request.tools ?? []);
+          if (violation) {
+            // O `init` já está em `events`: a evidência fica gravada antes de encerrar.
+            hermeticError = `contexto não hermético: ${violation}`;
+            killed = true;
+            child.kill('SIGTERM');
+            break;
+          }
+        }
         observer.onInit?.({ model: event.model });
         break;
       case 'tool_uses':
@@ -256,7 +290,7 @@ export function startRun(
   };
 
   const done = new Promise<RunOutcome>((resolve) => {
-    child = spawn(claudeBin(), claudeArgs(request), {
+    child = spawn(claudeBin(), claudeArgs(request, settingsPath), {
       cwd: request.cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -326,6 +360,9 @@ export function startRun(
       if (auditError) {
         status = 'failed';
         error = `falha ao gravar a auditoria: ${(auditError as Error).message}`;
+      } else if (hermeticError) {
+        status = 'failed';
+        error = hermeticError;
       } else if (interrupted) {
         status = 'interrupted';
       } else if (spawnError) {
