@@ -66,6 +66,8 @@ achados do teste orientam a especificação dos passos seguintes.
 - [ ] Gravar no banco as pausas da fila (saldo de 7 dias, falta de leitura) e as respostas
       do humano às perguntas da política de saldo. Hoje só aparecem na saída (auditoria).
 - [ ] 2.3 `mabel runs` com lista e detalhe da run (`docs/specs/passo-2.md`).
+- [ ] Gestão de projetos no banco (`docs/specs/projetos.md`): `mabel projetos`, auditoria
+      por projeto e `mabel projeto remover`.
 - [ ] Passo 5 — Travas (`docs/specs/passo-5.md`):
   - [ ] 5.1 Contexto hermético (G8).
   - [ ] 5.2 Sandbox e ferramentas por etapa (G4, terminal e rede).
@@ -106,3 +108,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-12 | Saldo (`docs/specs/saldo.md`): leitura com mais de 30 min é atualizada antes da etapa; consumo de cada etapa medido pelas leituras das runs (média das 10 últimas, mínimo 3); com estimativa, a política compara o saldo depois da etapa com o piso de 10%, sem ela vale o limiar de 30%; janela de 7 dias acima do ritmo pergunta e, sem autorização, espera o ritmo alcançar. Rodapé fixo com as duas janelas no modo Mabel e no `mabel run`, no lugar do cabeçalho de abertura. Política de saldo do contrato atualizada. Verificado num pseudo-terminal. |
 | 2026-10-12 | Spec do passo 5 (`docs/specs/passo-5.md`), com experimentos no Claude Code real: `--restricted` isola o contexto mas não carrega o `CLAUDE.md`; hook por `--settings` nega ações; o sandbox confina o terminal e a rede. |
 | 2026-10-12 | Decisões do passo 5 (usuário): autorizada a mudança dos mecanismos de G4 e G8 no contrato; escopo rígido com ampliação automática não crítica; `run` não inicia sem sandbox, salvo `"sandbox": false`. |
+| 2026-10-13 | Spec da gestão de projetos (`docs/specs/projetos.md`), decidida com o usuário: tudo pelo terminal, remoção apaga de verdade com registro em `removals`, alcança só os dados do Mabel, runs sem item ficam fora, toda tabela nova precisa ser classificada para a remoção. Contrato: remoção de dados só por comando do humano (autorizado). |

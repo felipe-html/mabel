@@ -87,6 +87,10 @@ leitura.
 O backlog é a fonte da verdade do conteúdo dos itens. O banco é a fonte da verdade do
 estado. O quadro é uma visão, regenerada a cada transição; editá-lo não tem efeito.
 
+Dados do banco só são removidos por comando explícito do humano (`mabel projeto remover`),
+com confirmação, e cada remoção fica registrada em `removals`. A remoção alcança só os
+dados do Mabel; o repositório do projeto não é alterado.
+
 ## Retentativas e escalonamento de modelo
 
 - Após 2 falhas de gate na mesma etapa, a próxima tentativa usa o modelo da camada acima.
