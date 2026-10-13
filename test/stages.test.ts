@@ -30,11 +30,11 @@ test('cada etapa monta ferramentas, modo, modelo, limites, esquema e sessão', (
   const stage = stageContext();
   const plan = stageRequest(stage, 'plan', 'p');
   assert.deepEqual(
-    { ...plan, appendSystemPrompt: undefined, jsonSchema: undefined },
+    { ...plan, appendSystemPrompt: undefined, jsonSchema: undefined, settings: undefined },
     {
       kind: 'stage', stage: 'plan', itemId: stage.item.id, prompt: 'p', cwd: stage.worktree, model: 'opus',
       maxTurns: 40, maxBudgetUsd: 3, permissionMode: 'dontAsk', tools: ['Read', 'Glob', 'Grep'],
-      allowedTools: ['Read', 'Glob', 'Grep'], appendSystemPrompt: undefined, jsonSchema: undefined,
+      allowedTools: ['Read', 'Glob', 'Grep'], appendSystemPrompt: undefined, jsonSchema: undefined, settings: undefined,
     },
   );
   assert.ok(plan.appendSystemPrompt?.startsWith(systemPrompt('plan').trimEnd()));

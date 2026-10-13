@@ -202,10 +202,10 @@ O sandbox depende do sistema (macOS: `sandbox-exec`; Linux: `bubblewrap`). Sem e
 ### Critérios de aceite
 
 - [ ] `settings.json` gerado por run, com sandbox, rede da stack e do projeto e o hook.
-- [ ] `--tools` e `--allowedTools` por etapa conforme a tabela.
-- [ ] Commits do Mabel não incluem `.claude/`.
+- [x] `--tools` e `--allowedTools` por etapa conforme a tabela.
+- [x] Commits do Mabel não incluem `.claude/`.
 - [ ] `git commit` e `git update-ref` pelo agente falham no sandbox.
-- [ ] `run` recusa iniciar sem sandbox disponível, salvo `"sandbox": false`.
+- [x] `run` recusa iniciar sem sandbox disponível, salvo `"sandbox": false`.
 - [ ] Teste real (Haiku), executor num worktree em `~/.mabel/worktrees`: escrita no
       diretório pai e em `~` falha; `npm install <pacote pequeno>` funciona com a rede da
       stack; acesso a outro domínio falha.

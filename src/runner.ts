@@ -38,6 +38,8 @@ export interface RunRequest {
   tools?: string[];
   /** Conteúdo do `settings.json` da run (`--settings`), gravado no diretório dela. */
   settings?: object;
+  /** Etapa sem sandbox (`"sandbox": false` no config): fica registrado na run. */
+  sandboxDisabled?: boolean;
 }
 
 /** Etapa e probe rodam isoladas da configuração pessoal (G8); o `exec` avulso, não. */
@@ -203,6 +205,9 @@ export function startRun(
   const recordEvent = (type: string, subtype: string | null, payload: string) => {
     insertEvent.run(runId, ++seq, now(), type, subtype, payload);
   };
+  if (request.sandboxDisabled) {
+    recordEvent('mabel', 'sandbox_disabled', JSON.stringify({ reason: '"sandbox": false no .mabel/config.json' }));
+  }
 
   const handleLine = (line: string) => {
     const parsed = parseLine(line);

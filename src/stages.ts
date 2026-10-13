@@ -4,6 +4,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { Item } from './items.ts';
 import { projectContext } from './hermetic.ts';
 import type { Project } from './project.ts';
+import { sandboxSettings } from './sandbox.ts';
 import { type RunHandle, type RunObserver, type RunOutcome, type RunRequest, type RunStage, startRun } from './runner.ts';
 import {
   type ExecuteOutput,
@@ -103,7 +104,9 @@ export function stageRequest(ctx: StageContext, stage: RunStage, prompt: string,
     allowedTools: STAGE_ALLOWED[stage],
     appendSystemPrompt: `${systemPrompt(stage).trimEnd()}\n\n${context.text}`,
     jsonSchema: SCHEMAS[stage],
+    settings: config.sandbox ? { sandbox: sandboxSettings(ctx.project) } : {},
   };
+  if (!config.sandbox) request.sandboxDisabled = true;
   if (stage === 'execute') request.disallowedTools = EXECUTE_DISALLOWED;
   if (options.resumeSessionId) request.resumeSessionId = options.resumeSessionId;
   return request;

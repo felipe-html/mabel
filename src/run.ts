@@ -22,6 +22,7 @@ import { LockError, acquireLock } from './lock.ts';
 import { type AdvanceResult, advanceItem, autonomousDecisions } from './pipeline.ts';
 import { type Project, ProjectError, mabelCommitted, resolveProject } from './project.ts';
 import { type RunHandle, type RunStage, startRun } from './runner.ts';
+import { sandboxUnavailable } from './sandbox.ts';
 import { probeRequest } from './status.ts';
 import { style } from './style.ts';
 import { deleteBranch, isMerged, removeOrphanWorktrees, removeWorktree } from './worktree.ts';
@@ -426,6 +427,20 @@ export async function run(args: string[]): Promise<number> {
           'Rode `mabel init` para commitar, ou `git add .mabel && git commit -m "mabel init" -- .mabel`.\n',
       );
       return 1;
+    }
+    if (project.config.sandbox) {
+      const unavailable = sandboxUnavailable();
+      if (unavailable) {
+        process.stderr.write(
+          `Sandbox indisponível: ${unavailable}. O Mabel não roda etapas sem ele.\n` +
+            'Instale o que falta ou, por sua conta, ponha "sandbox": false no .mabel/config.json.\n',
+        );
+        return 1;
+      }
+    } else {
+      process.stdout.write(
+        `${style.bold('Aviso:')} "sandbox": false no .mabel/config.json; o terminal do agente roda sem confinamento nem filtro de rede.\n`,
+      );
     }
     release = acquireLock(home, project.id);
     const interactive = isInteractive();

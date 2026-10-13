@@ -44,6 +44,13 @@ export interface ProjectConfig {
   integracao: string | null;
   /** Orçamento do contexto do projeto injetado nas etapas (`CLAUDE.md`, `AGENTS.md`, regras críticas). */
   contexto: { maxCaracteres: number };
+  /**
+   * Domínios liberados na rede do sandbox. O `init` grava os da stack; `null` (config antiga):
+   * os das stacks detectadas no projeto.
+   */
+  rede: string[] | null;
+  /** `false` roda as etapas sem sandbox, com aviso a cada execução e registro em cada run. */
+  sandbox: boolean;
 }
 
 export const DEFAULT_INTEGRATION = 'mabel/integracao';
@@ -147,6 +154,8 @@ export function readConfig(root: string): ProjectConfig | undefined {
           ? raw.contexto.maxCaracteres
           : DEFAULT_CONTEXT_BUDGET,
     },
+    rede: Array.isArray(raw.rede) ? raw.rede.filter((domain) => typeof domain === 'string' && domain.trim()) : null,
+    sandbox: raw.sandbox !== false,
   };
 }
 
