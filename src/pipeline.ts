@@ -27,7 +27,7 @@ import {
 } from './stages.ts';
 import { git } from './git.ts';
 import { foundTests, proofDetail, runProof } from './proof.ts';
-import { commitAll, commitMessage, originBranch, prepareWorktree, shell } from './worktree.ts';
+import { commitAll, commitMessage, originBranch, prepareWorktree, removeWorktree, shell } from './worktree.ts';
 
 export interface PipelineEnv {
   db: DatabaseSync;
@@ -590,6 +590,8 @@ async function reviewStep(env: PipelineEnv, item: Item): Promise<Step> {
     return attemptFailed(env, item, item.attempts, `A revisão reprovou a tentativa:\n${detail}`);
   }
   move(env, item, 'awaiting_merge', mergeNotes(plan, execution), result.outcome.runId);
+  // A branch guarda tudo; um retrabalho recria o worktree a partir dela.
+  removeWorktree(env.db, env.project, item);
   return { kind: 'stopped', status: 'awaiting_merge' };
 }
 

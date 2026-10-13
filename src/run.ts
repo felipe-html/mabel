@@ -22,7 +22,7 @@ import { type Project, ProjectError, mabelCommitted, resolveProject } from './pr
 import { type RunHandle, type RunStage, startRun } from './runner.ts';
 import { probeRequest } from './status.ts';
 import { style } from './style.ts';
-import { isMerged, removeWorktree } from './worktree.ts';
+import { deleteBranch, isMerged, removeOrphanWorktrees, removeWorktree } from './worktree.ts';
 
 export const runUsage = 'mabel run [--item <n>] [--uma] [--sem-lote]';
 
@@ -277,7 +277,14 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
     return planned ? { target: planned } : { end: 'empty' };
   };
 
+  /** Abertura do `run`: limpa os worktrees que sobraram de itens que já não precisam deles. */
+  const open = () => {
+    const cleaned = removeOrphanWorktrees(db, home, project, listItems(db, project.id));
+    if (cleaned.length > 0) log.write(style.dim(`worktrees removidos: ${cleaned.map((n) => `#${n}`).join(', ')}`));
+  };
+
   const loop = async (): Promise<{ end: QueueEnd; message?: string }> => {
+    open();
     for (;;) {
       if (abort.signal.aborted) return { end: 'interrupted' };
 
@@ -287,6 +294,8 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
           transition(db, project, item.id, 'done', `merge de ${item.branch} na ${project.config.baseBranch}`);
           log.write(`#${item.number} ${item.title}: awaiting_merge → done`);
           removeWorktree(db, project, item);
+          const warning = deleteBranch(project, item.branch);
+          if (warning) log.write(style.dim(`#${item.number}: ${warning}`));
           finalStates.set(item.number, 'done');
         }
       }
