@@ -145,6 +145,9 @@ const migrations: string[] = [
   `
   ALTER TABLE items ADD COLUMN integrated_commit TEXT;
   `,
+  `
+  ALTER TABLE runs ADD COLUMN denials INTEGER;
+  `,
 ];
 
 function migrate(db: DatabaseSync): void {

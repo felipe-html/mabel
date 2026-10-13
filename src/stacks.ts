@@ -21,6 +21,8 @@ export interface Stack {
   proof: (root: string, empty: boolean) => StackProof;
   /** Domínios do registro de pacotes, liberados na rede do sandbox. */
   rede: string[];
+  /** Caches do gerenciador de pacotes fora do projeto, graváveis no sandbox (`~` = home). */
+  caches: string[];
 }
 
 export interface StackProof {
@@ -93,6 +95,7 @@ export const STACKS: Stack[] = [
     },
     // Projeto vazio nasce com o template (Vitest); nos outros, Vitest só se já estiver lá.
     rede: ['registry.npmjs.org'],
+    caches: ['~/.npm'],
     proof: (root, empty) => ({
       testeUnico:
         empty || usesVitest(root)
@@ -118,6 +121,7 @@ export const STACKS: Stack[] = [
       ],
     },
     rede: ['pypi.org', 'files.pythonhosted.org'],
+    caches: ['~/.cache/pip', '~/.cache/uv', '~/Library/Caches/pip'],
     proof: () => ({
       testeUnico: 'pytest {arquivo} -k {nome}',
       arquivosDeTeste: ['tests/**', '**/test_*.py', '**/*_test.py', '**/conftest.py'],
@@ -143,6 +147,7 @@ export const STACKS: Stack[] = [
       ],
     },
     rede: ['proxy.golang.org', 'sum.golang.org'],
+    caches: ['~/go/pkg/mod', '~/.cache/go-build', '~/Library/Caches/go-build'],
     proof: () => ({
       testeUnico: 'go test -run {padrao} ./{pasta}',
       arquivosDeTeste: ['**/*_test.go', '**/testdata/**'],
@@ -168,6 +173,7 @@ export const STACKS: Stack[] = [
       ],
     },
     rede: ['crates.io', 'static.crates.io', 'index.crates.io'],
+    caches: ['~/.cargo/registry', '~/.cargo/git'],
     proof: () => ({ testeUnico: 'cargo test {nome}', arquivosDeTeste: ['tests/**'] }),
   },
 ];

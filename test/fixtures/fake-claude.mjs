@@ -75,6 +75,7 @@ if (env.FAKE_CLAUDE_SCENARIO) {
   const emit = (event) => process.stdout.write(`${JSON.stringify(event)}\n`);
   const toolsAt = argv.indexOf('--tools');
   const tools = toolsAt >= 0 ? argv[toolsAt + 1].split(',').filter(Boolean) : ['Bash', 'Edit', 'Glob', 'Grep', 'Read', 'Write', 'WebFetch'];
+  if (stage) tools.push('StructuredOutput');
   emit({
     type: 'system',
     subtype: 'init',

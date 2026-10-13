@@ -1,9 +1,10 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { DatabaseSync } from 'node:sqlite';
 import type { Item } from './items.ts';
 import { projectContext } from './hermetic.ts';
-import type { Project } from './project.ts';
+import { type Project, readCriticalRules } from './project.ts';
 import { sandboxSettings } from './sandbox.ts';
 import { type RunHandle, type RunObserver, type RunOutcome, type RunRequest, type RunStage, startRun } from './runner.ts';
 import {
@@ -55,6 +56,21 @@ const PROMPT_FILES: Record<RunStage, string> = {
   review: 'revisar.md',
 };
 
+/** Script do hook de escopo, chamado pelo `node` que roda o Mabel. */
+export const SCOPE_HOOK = fileURLToPath(new URL('../hooks/escopo.mjs', import.meta.url));
+
+/** Hook `PreToolUse` de toda etapa: escrita e terminal passam pelo hook de escopo (G4). */
+export function scopeHooks(): object {
+  return {
+    PreToolUse: [
+      {
+        matcher: 'Write|Edit|MultiEdit|NotebookEdit|Bash',
+        hooks: [{ type: 'command', command: `${JSON.stringify(process.execPath)} ${JSON.stringify(SCOPE_HOOK)}` }],
+      },
+    ],
+  };
+}
+
 export function systemPrompt(stage: RunStage): string {
   return readFileSync(new URL(`../prompts/${PROMPT_FILES[stage]}`, import.meta.url), 'utf8');
 }
@@ -71,6 +87,8 @@ export interface StageOptions {
   /** Modelo no lugar do `config.models` (escalonamento). */
   model?: string;
   resumeSessionId?: string;
+  /** Globs que o hook de escopo libera para escrita (o escopo do plano, na execução). */
+  scope?: string[];
   observer?: RunObserver;
   /** Recebe a run assim que o `claude` inicia, para interrupção. */
   onStart?: (handle: RunHandle) => void;
@@ -104,7 +122,14 @@ export function stageRequest(ctx: StageContext, stage: RunStage, prompt: string,
     allowedTools: STAGE_ALLOWED[stage],
     appendSystemPrompt: `${systemPrompt(stage).trimEnd()}\n\n${context.text}`,
     jsonSchema: SCHEMAS[stage],
-    settings: config.sandbox ? { sandbox: sandboxSettings(ctx.project) } : {},
+    settings: { ...(config.sandbox ? { sandbox: sandboxSettings(ctx.project) } : {}), hooks: scopeHooks() },
+    scope: {
+      worktree: ctx.worktree,
+      stage,
+      escopo: options.scope ?? [],
+      criticos: readCriticalRules(ctx.worktree).paths,
+      criticosAprovados: ctx.item.approvedAt !== null,
+    },
   };
   if (!config.sandbox) request.sandboxDisabled = true;
   if (stage === 'execute') request.disallowedTools = EXECUTE_DISALLOWED;
@@ -242,6 +267,8 @@ export interface ExecutePromptInput {
   failure?: string;
   answer?: string;
   attemptsSummary?: string;
+  /** Globs que o Mabel acrescentou ao escopo a pedido da execução (`escopoAdicional`). */
+  scopeExtended?: string[];
   resuming?: boolean;
   interrupted?: boolean;
 }
@@ -254,7 +281,20 @@ export function executePrompt(ctx: StageContext, input: ExecutePromptInput): str
       ...(input.interrupted ? [INTERRUPTED, ''] : []),
       ...section('Falha da tentativa anterior', input.failure ?? ''),
       ...section('Resposta do humano', input.answer ?? ''),
-      'Corrija o que for preciso dentro do plano, rode a verificação e termine com a saída estruturada.',
+      ...section(
+        'Escopo ampliado',
+        input.scopeExtended?.length
+          ? [
+              'O Mabel acrescentou ao escopo os caminhos que você pediu; agora você pode alterá-los:',
+              bullet(input.scopeExtended.map((glob) => `\`${glob}\``), ''),
+              '',
+              'Conclua o item e termine com a saída estruturada, com `escopoAdicional` vazio se não precisar de mais nada.',
+            ]
+          : '',
+      ),
+      input.scopeExtended?.length
+        ? ''
+        : 'Corrija o que for preciso dentro do plano, rode a verificação e termine com a saída estruturada.',
     ].join('\n');
   }
   return [
@@ -322,7 +362,10 @@ export async function runExecute(
   input: ExecutePromptInput,
   options: StageOptions = {},
 ): Promise<StageResult<ExecuteOutput>> {
-  const result = await runStage<ExecuteOutput>(db, ctx, 'execute', executePrompt(ctx, input), options);
+  const result = await runStage<ExecuteOutput>(db, ctx, 'execute', executePrompt(ctx, input), {
+    ...options,
+    scope: input.plan.escopo,
+  });
   if (result.output) writeArtifact(ctx.home, ctx.item.id, `execucao-${input.attempt}.json`, result.output);
   return result;
 }

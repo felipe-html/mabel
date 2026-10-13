@@ -1,6 +1,16 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, writeFileSync, writeSync } from 'node:fs';
+import {
+  closeSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+  writeSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
@@ -8,6 +18,7 @@ import { StringDecoder } from 'node:string_decoder';
 import { balanceChanged } from './balance.ts';
 import { runDir } from './db.ts';
 import { initViolation } from './hermetic.ts';
+import type { ScopeContext } from './scope.ts';
 import { type ResultTotals, type ToolResult, type ToolUse, parseLine } from './stream.ts';
 
 export type RunKind = 'exec' | 'probe' | 'stage';
@@ -40,6 +51,11 @@ export interface RunRequest {
   settings?: object;
   /** Etapa sem sandbox (`"sandbox": false` no config): fica registrado na run. */
   sandboxDisabled?: boolean;
+  /**
+   * Contexto do hook de escopo; gravado em `<run>/escopo.json` com o `log` da run e passado
+   * ao `claude` em `MABEL_ESCOPO`.
+   */
+  scope?: Omit<ScopeContext, 'log'>;
 }
 
 /** Etapa e probe rodam isoladas da configuração pessoal (G8); o `exec` avulso, não. */
@@ -161,11 +177,18 @@ export function startRun(
   let streamFd: number;
   let stderrFd: number;
   let settingsPath: string | undefined;
+  const hookLog = join(dir, 'hook.jsonl');
+  const childEnv: NodeJS.ProcessEnv = { ...process.env };
   try {
     mkdirSync(dir, { recursive: true });
     if (isHermetic(request)) {
       settingsPath = join(dir, 'settings.json');
       writeFileSync(settingsPath, `${JSON.stringify(request.settings ?? {}, null, 2)}\n`);
+    }
+    if (request.scope) {
+      const scopePath = join(dir, 'escopo.json');
+      writeFileSync(scopePath, `${JSON.stringify({ ...request.scope, log: hookLog }, null, 2)}\n`);
+      childEnv.MABEL_ESCOPO = scopePath;
     }
     streamFd = openSync(join(dir, 'stream.jsonl'), 'a');
     stderrFd = openSync(join(dir, 'stderr.log'), 'a');
@@ -222,7 +245,9 @@ export function startRun(
              claude_version = coalesce(?, claude_version) WHERE id = ?`,
         ).run(event.sessionId ?? null, event.model ?? null, event.claudeVersion ?? null, runId);
         if (isHermetic(request) && !hermeticError) {
-          const violation = initViolation(event.raw, request.tools ?? []);
+          // `--json-schema` acrescenta a ferramenta da saída estruturada.
+          const expected = [...(request.tools ?? []), ...(request.jsonSchema ? ['StructuredOutput'] : [])];
+          const violation = initViolation(event.raw, expected);
           if (violation) {
             // O `init` já está em `events`: a evidência fica gravada antes de encerrar.
             hermeticError = `contexto não hermético: ${violation}`;
@@ -278,6 +303,7 @@ export function startRun(
           totals.structuredOutput === undefined ? null : JSON.stringify(totals.structuredOutput),
           runId,
         );
+        if (totals.denials !== undefined) db.prepare('UPDATE runs SET denials = ? WHERE id = ?').run(totals.denials, runId);
         break;
     }
   };
@@ -297,6 +323,7 @@ export function startRun(
   const done = new Promise<RunOutcome>((resolve) => {
     child = spawn(claudeBin(), claudeArgs(request, settingsPath), {
       cwd: request.cwd,
+      env: childEnv,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -392,6 +419,7 @@ export function startRun(
         if (!transcriptPath) {
           recordEvent('mabel', 'transcript_missing', JSON.stringify({ session_id: sessionId, reason: missingReason }));
         }
+        if (request.scope) importHookLog(hookLog, recordEvent);
         db.prepare(
           `UPDATE runs SET status = ?, exit_code = ?, error = ?, ended_at = ?, duration_ms = ?,
              transcript_path = ? WHERE id = ?`,
@@ -412,6 +440,22 @@ export function startRun(
   });
 
   return { runId, interrupt, done };
+}
+
+/** Decisões do hook de escopo, uma por linha, viram eventos `hook` (`allow`/`deny`) da run. */
+function importHookLog(path: string, record: (type: string, subtype: string | null, payload: string) => void): void {
+  if (!existsSync(path)) return;
+  for (const line of readFileSync(path, 'utf8').split('\n')) {
+    if (!line.trim()) continue;
+    let decision: string | null = null;
+    try {
+      const parsed = JSON.parse(line) as { decision?: unknown };
+      decision = typeof parsed.decision === 'string' ? parsed.decision : null;
+    } catch {
+      decision = 'invalid';
+    }
+    record('hook', decision, line);
+  }
 }
 
 const USAGE_LIMIT_TEXT = /usage limit|rate limit|limit reached|limite de uso|out of (?:usage|credits)/i;

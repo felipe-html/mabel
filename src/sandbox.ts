@@ -3,7 +3,7 @@ import { existsSync, realpathSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { tryGit } from './git.ts';
 import type { Project } from './project.ts';
-import { detectCommands } from './stacks.ts';
+import { STACKS, detectCommands } from './stacks.ts';
 
 /**
  * Sandbox do Claude Code nas etapas (G4, terminal e rede): o `Bash` só escreve no worktree
@@ -15,6 +15,19 @@ import { detectCommands } from './stacks.ts';
 export function allowedDomains(project: Project): string[] {
   if (project.config.rede) return [...project.config.rede];
   return [...new Set(detectCommands(project.root).stacks.flatMap((stack) => stack.rede))];
+}
+
+/**
+ * Caches dos gerenciadores de pacotes, para `npm install` e afins: os das stacks detectadas
+ * e os das stacks cujo registro está na `rede` do config (projeto vazio ainda sem arquivos).
+ */
+export function packageCaches(project: Project): string[] {
+  const rede = project.config.rede ?? [];
+  const stacks = [
+    ...detectCommands(project.root).stacks,
+    ...STACKS.filter((stack) => stack.rede.some((domain) => rede.includes(domain))),
+  ];
+  return [...new Set(stacks.flatMap((stack) => stack.caches))];
 }
 
 /**
@@ -32,7 +45,7 @@ export interface SandboxSettings {
   failIfUnavailable: true;
   allowUnsandboxedCommands: false;
   network: { allowedDomains: string[]; strictAllowlist: true };
-  filesystem: { denyWrite: string[] };
+  filesystem: { allowWrite: string[]; denyWrite: string[] };
 }
 
 export function sandboxSettings(project: Project): SandboxSettings {
@@ -41,7 +54,7 @@ export function sandboxSettings(project: Project): SandboxSettings {
     failIfUnavailable: true,
     allowUnsandboxedCommands: false,
     network: { allowedDomains: allowedDomains(project), strictAllowlist: true },
-    filesystem: { denyWrite: [gitCommonDir(project.root)] },
+    filesystem: { allowWrite: packageCaches(project), denyWrite: [gitCommonDir(project.root)] },
   };
 }
 

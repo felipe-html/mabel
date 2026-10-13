@@ -104,7 +104,7 @@ test('5.1: o runner interrompe a run não hermética como failed e guarda o init
     [{ memory_paths: { auto: '/m' } }, 'memory_paths'],
     [{ mcp_servers: [{ name: 'm' }] }, 'mcp_servers'],
     [{ skills: ['deploy'] }, 'skills'],
-    [{ tools: ['Read', 'Glob', 'Grep', 'WebFetch'] }, 'tools (+WebFetch)'],
+    [{ tools: ['Read', 'Glob', 'Grep', 'StructuredOutput', 'WebFetch'] }, 'tools (+WebFetch)'],
   ];
   const { ctx, item, worktree } = itemWithWorktree({});
   useScenario(ctx.root, cases.map(([init]) => ({ init, structured_output: PLAN })));

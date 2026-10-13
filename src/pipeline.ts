@@ -14,7 +14,7 @@ import {
 } from './items.ts';
 import { type CriticalRules, type Project, type ProjectConfig, readCriticalRules } from './project.ts';
 import { type RunHandle, type RunObserver, type RunOutcome, type RunStage, isUsageLimit } from './runner.ts';
-import type { Assumption, ExecuteOutput, PlanOutput, Question, ReviewOutput } from './schemas/stages.ts';
+import type { Assumption, ExecuteOutput, PlanOutput, Question, ReviewOutput, ScopeRequest } from './schemas/stages.ts';
 import {
   type StageContext,
   itemDir,
@@ -453,6 +453,7 @@ async function executeStep(env: PipelineEnv, item: Item): Promise<Step> {
       failure: next.failure,
       answer: next.answer,
       attemptsSummary: next.attemptsSummary,
+      scopeExtended: next.scopeExtended,
       resuming: Boolean(next.resumeSessionId),
       interrupted: next.interrupted,
     },
@@ -493,6 +494,9 @@ async function executeStep(env: PipelineEnv, item: Item): Promise<Step> {
     );
   }
 
+  const extension = scopeExtension(env, item, plan, attemptNo, result.output.escopoAdicional ?? [], sessionId, runId);
+  if (extension !== 'none') return extension;
+
   const committed = commitAll(worktree, commitMessage(item, attemptNo));
   if (!committed && git(worktree, 'rev-parse', 'HEAD') === startHead) {
     recordGate(env.db, item.id, attemptNo, 'changes', false, 'execução sem nenhuma alteração');
@@ -500,6 +504,60 @@ async function executeStep(env: PipelineEnv, item: Item): Promise<Step> {
   }
   updateItem(env.db, item.id, { attempts: cycleAttempt, nextInput: null });
   move(env, item, 'verifying', `execução ${attemptNo} commitada`, runId);
+  return undefined;
+}
+
+/** Sessão do último planejamento, para o `responder` de uma aprovação pedida na execução. */
+function lastPlanSession(db: DatabaseSync, itemId: string): string | null {
+  const row = db
+    .prepare(
+      `SELECT session_id FROM runs WHERE item_id = ? AND stage = 'plan' AND session_id IS NOT NULL
+       ORDER BY started_at DESC, rowid DESC LIMIT 1`,
+    )
+    .get(itemId) as { session_id: string } | undefined;
+  return row?.session_id ?? null;
+}
+
+/**
+ * Escopo pedido pela execução (G4): globs novos entram no plano. Sem caminho crítico (ou com
+ * o item aprovado), a mesma sessão retoma para concluir, sem contar tentativa; com caminho
+ * crítico, o item vai à aprovação humana.
+ */
+function scopeExtension(
+  env: PipelineEnv,
+  item: Item,
+  plan: PlanOutput,
+  attemptNo: number,
+  requested: ScopeRequest[],
+  sessionId: string | null,
+  runId: string,
+): Step | 'none' {
+  const added = requested.filter((r, i) => !plan.escopo.includes(r.glob) && requested.findIndex((o) => o.glob === r.glob) === i);
+  if (added.length === 0) return 'none';
+  plan.escopo.push(...added.map((r) => r.glob));
+  writePlan(env.home, item, plan);
+  const detail = added.map((r) => `\`${r.glob}\` — ${r.motivo}`).join('; ');
+  const paths = readCriticalRules(item.worktree as string).paths;
+  const critical = item.approvedAt
+    ? []
+    : added.flatMap((r) => paths.filter((path) => globsOverlap(r.glob, path)).map((path) => `\`${r.glob}\` toca o caminho crítico \`${path}\``));
+  recordGate(env.db, item.id, attemptNo, 'scope_extension', critical.length === 0, detail);
+  if (critical.length > 0) {
+    const reason = `escopo pedido pela execução: ${critical.join('; ')}`;
+    return stopForHuman(env, item, 'critical_approval', { sessionId: lastPlanSession(env.db, item.id), reason }, `item crítico, aprove os critérios: ${reason}`, runId);
+  }
+  recordGate(
+    env.db,
+    item.id,
+    attemptNo,
+    'autonomy',
+    true,
+    added.map((r) => `ampliar o escopo para \`${r.glob}\` → ${r.motivo}`).join(AUTONOMY_SEPARATOR),
+  );
+  env.log?.(`#${item.number} ${item.title}: escopo ampliado (autônomo): ${added.map((r) => r.glob).join(', ')}`);
+  updateItem(env.db, item.id, {
+    nextInput: { resumeSessionId: sessionId ?? undefined, sameAttempt: true, scopeExtended: added.map((r) => r.glob) },
+  });
   return undefined;
 }
 

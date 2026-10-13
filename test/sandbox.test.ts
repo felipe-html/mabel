@@ -34,7 +34,7 @@ test('5.2: settings.json da run com sandbox estrito, rede da stack e do projeto 
     failIfUnavailable: true,
     allowUnsandboxedCommands: false,
     network: { allowedDomains: ['registry.npmjs.org'], strictAllowlist: true },
-    filesystem: { denyWrite: [join(realpathSync(ctx.root), '.git')] },
+    filesystem: { allowWrite: ['~/.npm'], denyWrite: [join(realpathSync(ctx.root), '.git')] },
   });
 
   ctx.project.config.rede = ['registry.npmjs.org', 'api.exemplo.com'];

@@ -88,6 +88,9 @@ e com um experimento real (Haiku, 2.1.296, US$ 0,005) num worktree ligado. O que
 - O hook recebeu a variável `MABEL_ESCOPO` do processo do `claude`, e a negação dele
   apareceu em `result.permission_denials`.
 - O Claude Code cria `.claude/.cc-writes` no worktree.
+- (Teste real do passo, mesmo dia) Com `--json-schema`, o `init` lista também a ferramenta
+  `StructuredOutput`. O `npm` precisa gravar no cache `~/.npm`: os caches do gerenciador de
+  pacotes de cada stack entram em `sandbox.filesystem.allowWrite` (catálogo, `caches`).
 
 Desvios decididos na implementação estão no histórico do `docs/PLANO.md`.
 
@@ -134,7 +137,7 @@ permitidos fica em código e é comparada pelo nome.
 - [x] Orçamento estourado pausa a fila sem iniciar a run.
 - [x] `init` com memória, MCP, skills ou ferramenta extra interrompe a run como `failed`
       (testado com o `claude` falso emitindo cada caso).
-- [ ] Teste real (Haiku): uma etapa de planejamento num projeto com `CLAUDE.md` recebe o
+- [x] Teste real (Haiku): uma etapa de planejamento num projeto com `CLAUDE.md` recebe o
       conteúdo dele e passa na verificação do `init`.
 
 ## Incremento 5.2 — Sandbox e ferramentas por etapa (G4)
@@ -201,12 +204,12 @@ O sandbox depende do sistema (macOS: `sandbox-exec`; Linux: `bubblewrap`). Sem e
 
 ### Critérios de aceite
 
-- [ ] `settings.json` gerado por run, com sandbox, rede da stack e do projeto e o hook.
+- [x] `settings.json` gerado por run, com sandbox, rede da stack e do projeto e o hook.
 - [x] `--tools` e `--allowedTools` por etapa conforme a tabela.
 - [x] Commits do Mabel não incluem `.claude/`.
-- [ ] `git commit` e `git update-ref` pelo agente falham no sandbox.
+- [x] `git commit` e `git update-ref` pelo agente falham no sandbox.
 - [x] `run` recusa iniciar sem sandbox disponível, salvo `"sandbox": false`.
-- [ ] Teste real (Haiku), executor num worktree em `~/.mabel/worktrees`: escrita no
+- [x] Teste real (Haiku), executor num worktree em `~/.mabel/worktrees`: escrita no
       diretório pai e em `~` falha; `npm install <pacote pequeno>` funciona com a rede da
       stack; acesso a outro domínio falha.
 
@@ -268,12 +271,12 @@ a execução termina com `escopoAdicional` não vazio:
 
 ### Critérios de aceite
 
-- [ ] Cada regra do hook coberta por teste, executando o script com stdin simulado.
-- [ ] Erro de leitura do contexto nega a ação.
-- [ ] `escopoAdicional` não crítico amplia o escopo e retoma a sessão; crítico vai para
+- [x] Cada regra do hook coberta por teste, executando o script com stdin simulado.
+- [x] Erro de leitura do contexto nega a ação.
+- [x] `escopoAdicional` não crítico amplia o escopo e retoma a sessão; crítico vai para
       `critical_approval`.
-- [ ] Decisões do hook em `events` e `runs.denials` preenchido.
-- [ ] Teste real (Haiku): escrita fora do escopo negada com a mensagem; escrita no escopo
+- [x] Decisões do hook em `events` e `runs.denials` preenchido.
+- [x] Teste real (Haiku): escrita fora do escopo negada com a mensagem; escrita no escopo
       permitida.
 
 ## Incremento 5.4 — Contrato, preflight e documentação
