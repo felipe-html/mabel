@@ -38,7 +38,7 @@ export function makeRepo(files: Record<string, string> = {}, { commit = true } =
 }
 
 /** Projeto Mabel num repositório temporário, com `MABEL_HOME` próprio e o banco aberto. */
-export function setupProject(backlog?: string) {
+export function setupProject(backlog?: string, options: { integracao?: string } = {}) {
   const root = makeRepo({ 'src/index.js': '', 'package.json': JSON.stringify({ scripts: { test: 'node --test' } }) });
   const home = mkdtempSync(join(tmpdir(), 'mabel-home-'));
   // O ambiente é lido a cada chamada: cenários do `claude` falso valem também para o CLI.
@@ -52,6 +52,12 @@ export function setupProject(backlog?: string) {
   assert.equal(cli('init').status, 0);
   const path = join(root, '.mabel', 'backlog.md');
   if (backlog !== undefined) writeFileSync(path, BACKLOG_TEMPLATE + backlog);
+  // Os testes do pipeline usam arquivos de teste falsos: a prova roda no modo por item e,
+  // sem comando de teste no `verify`, deixa os critérios sem prova. `proof.test.ts` a liga.
+  // Sem integração: uma branch por item, como antes do P.4. `integration.test.ts` a liga.
+  const configPath = join(root, '.mabel', 'config.json');
+  const raw = JSON.parse(readFileSync(configPath, 'utf8'));
+  writeFileSync(configPath, JSON.stringify({ ...raw, testeUnico: null, integracao: options.integracao ?? null }, null, 2));
   commitMabelDir(root);
   const db = openDb(home);
   const project = resolveProject(db, root);
@@ -82,7 +88,7 @@ export function useScenario(dir: string, responses: unknown[]): { log: () => { a
 
 export const PLAN = {
   resumo: 'Criar a função soma.',
-  criterios: [{ id: 'C1', texto: 'soma(2, 3) devolve 5', verificacao: 'teste' }],
+  criterios: [{ id: 'C1', texto: 'soma(2, 3) devolve 5', verificacao: 'teste', comportamento: 'novo' }],
   escopo: ['src/**', 'test/**'],
   passos: ['Criar src/soma.js', 'Criar test/soma.test.js'],
   suposicoes: [],
@@ -103,7 +109,6 @@ export const EXECUTION_FILES = {
 };
 
 export const REVIEW_OK = {
-  aprovado: true,
   criterios: [{ id: 'C1', atendido: true, evidencia: 'test/soma.test.js' }],
   problemas: [],
 };

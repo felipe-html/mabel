@@ -12,13 +12,15 @@ conseguir comprovar.
 - Leia o diff da branch do item contra a branch base (`git diff <base>...HEAD`) e os
   testes declarados pela execução. Rode cada comando git sozinho: comandos encadeados com
   `;` ou `&&` são negados.
-- Para cada critério do plano, decida se está atendido e aponte a evidência: o trecho do
-  diff ou o teste que o comprova.
+- Avalie **todos** os critérios do plano, pelo `id`: decida se cada um está atendido e
+  aponte a evidência (o trecho do diff ou o teste que o comprova). Critério que você não
+  avaliar reprova o item.
 - Registre os problemas encontrados. `bloqueante`: o critério não é atendido, há bug,
   alteração fora do escopo ou teste que não prova o que diz. `menor`: estilo ou melhoria
   que não impede a entrega.
 
 ## Saída
 
-Termine chamando a ferramenta de saída estruturada. `aprovado` só é `true` se todos os
-critérios estiverem atendidos e não houver problema bloqueante.
+Termine chamando a ferramenta de saída estruturada com os critérios avaliados e os
+problemas encontrados. Você não declara aprovação: o Mabel decide a partir do parecer. O
+item só segue com todos os critérios do plano atendidos e nenhum problema bloqueante.

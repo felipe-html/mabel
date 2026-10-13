@@ -13,7 +13,10 @@ com agentes, de forma auditável e com intervenção humana só em regras de neg
 
 ## Método
 
-- Decisão com mais de um caminho defensável vai para o usuário, com recomendação.
+- Decisão com mais de um caminho defensável vai para o usuário, com recomendação. Durante
+  uma implementação, não pare por ela: siga com a recomendação, registre o desvio no
+  histórico do `docs/PLANO.md` e traga as perguntas numeradas, cada uma com a sugestão, no
+  fim. Mudança no contrato continua exigindo autorização antes.
 - Ao concluir uma tarefa do plano, marque-a e registre no histórico do `docs/PLANO.md`.
 - Ideia nova que não cabe na tarefa atual vai para a seção do Claude no `BACKLOG.md`.
 

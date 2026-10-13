@@ -142,6 +142,9 @@ const migrations: string[] = [
   );
   CREATE INDEX gate_results_item ON gate_results(item_id, id);
   `,
+  `
+  ALTER TABLE items ADD COLUMN integrated_commit TEXT;
+  `,
 ];
 
 function migrate(db: DatabaseSync): void {

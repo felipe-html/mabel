@@ -3,10 +3,12 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { getItem, listItems, syncBacklog } from '../src/items.ts';
+import { git, tryGit } from '../src/git.ts';
+import { getItem, listItems, syncBacklog, transition } from '../src/items.ts';
 import { lockPath } from '../src/lock.ts';
 import { writeConfig } from '../src/project.ts';
 import { type Clock, startQueue } from '../src/run.ts';
+import { deleteBranch, prepareWorktree, worktreePath } from '../src/worktree.ts';
 import { CLI, EXECUTION, EXECUTION_FILES, PLAN, REVIEW_OK, setupProject, useScenario } from './helpers.ts';
 
 const EXEC = { structured_output: EXECUTION, files: EXECUTION_FILES };
@@ -65,17 +67,46 @@ test('fila de três itens: dois em awaiting_merge, um em needs_human; responder 
   assert.deepEqual(reasons.map((r) => r.reason), ['humano: responder: Use o SQLite.']);
 });
 
-test('merge manual da branch na base leva o item a done no próximo run', () => {
+test('merge manual da branch na base leva o item a done no próximo run e apaga a branch (P.3)', () => {
   const q = queueProject('\n## A\nprimeiro\n', [PLAN_OK, EXEC, REVIEW]);
   assert.equal(q.cli('run').status, 0);
-  const worktree = getItem(q.db, q.project.id, 1)?.worktree as string;
-  assert.ok(existsSync(worktree));
+  const item = getItem(q.db, q.project.id, 1)!;
+  assert.equal(item.worktree, null);
+  assert.equal(existsSync(worktreePath(q.home, q.project.id, item)), false);
   q.merge(1);
   const result = q.cli('run');
   assert.match(result.stdout, /#1 A: awaiting_merge → done/);
   assert.deepEqual(q.states(), [[1, 'done']]);
-  assert.equal(existsSync(worktree), false);
+  assert.equal(tryGit(q.root, 'rev-parse', '--verify', '--quiet', `refs/heads/${item.branch}`), undefined);
   assert.match(q.cli('status').stdout, /concluídos 1/);
+});
+
+test('P.3: branch fora da base não é apagada; worktrees órfãos saem na abertura do run', () => {
+  const q = queueProject('\n## A\nprimeiro\n\n## B\nsegundo\n', [PLAN_OK, PLAN_OK, EXEC, REVIEW, EXEC, REVIEW]);
+  assert.equal(q.cli('run').status, 0);
+  const [a, b] = [getItem(q.db, q.project.id, 1)!, getItem(q.db, q.project.id, 2)!];
+  assert.equal(deleteBranch(q.project, a.branch!), `branch ${a.branch} não está contida na main; não foi apagada`);
+  assert.ok(tryGit(q.root, 'rev-parse', '--verify', '--quiet', `refs/heads/${a.branch}`));
+
+  // Worktree esquecido (ex.: run antigo interrompido depois do awaiting_merge).
+  const orphan = worktreePath(q.home, q.project.id, b);
+  spawnSync('git', ['worktree', 'add', '-q', orphan, b.branch!], { cwd: q.root });
+  assert.ok(existsSync(orphan));
+  const out = q.cli('run');
+  assert.match(out.stdout, /worktrees removidos: #2/);
+  assert.equal(existsSync(orphan), false);
+  assert.doesNotMatch(spawnSync('git', ['worktree', 'list'], { cwd: q.root, encoding: 'utf8' }).stdout, new RegExp(orphan));
+});
+
+test('P.3: retrabalho em awaiting_merge recria o worktree a partir da branch', () => {
+  const q = queueProject('\n## A\nprimeiro\n', [PLAN_OK, EXEC, REVIEW]);
+  assert.equal(q.cli('run').status, 0);
+  const item = getItem(q.db, q.project.id, 1)!;
+  transition(q.db, q.project, item.id, 'executing', 'retrabalho');
+  const prepared = prepareWorktree(q.db, q.home, q.project, getItem(q.db, q.project.id, 1)!);
+  assert.equal(prepared.created, true);
+  assert.equal(git(prepared.path, 'rev-parse', '--abbrev-ref', 'HEAD'), item.branch);
+  assert.ok(existsSync(join(prepared.path, 'src/soma.js')));
 });
 
 test('item com dependência só inicia depois que a dependência fica done', () => {

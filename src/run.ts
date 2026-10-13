@@ -16,13 +16,15 @@ import { formatCost, formatDuration } from './format.ts';
 import { inboxSession, pendingItems, runInbox, terminalIO } from './inbox.ts';
 import { type Item, type ItemStatus, getItemById, listItems, syncBacklog, transition } from './items.ts';
 import { type Notify, notify as systemNotify } from './notify.ts';
+import { finishIntegrated, openIntegration } from './integration.ts';
+import { writeIntegrationReport } from './report.ts';
 import { LockError, acquireLock } from './lock.ts';
 import { type AdvanceResult, advanceItem, autonomousDecisions } from './pipeline.ts';
 import { type Project, ProjectError, mabelCommitted, resolveProject } from './project.ts';
 import { type RunHandle, type RunStage, startRun } from './runner.ts';
 import { probeRequest } from './status.ts';
 import { style } from './style.ts';
-import { isMerged, removeWorktree } from './worktree.ts';
+import { deleteBranch, isMerged, removeOrphanWorktrees, removeWorktree } from './worktree.ts';
 
 export const runUsage = 'mabel run [--item <n>] [--uma] [--sem-lote]';
 
@@ -277,16 +279,41 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
     return planned ? { target: planned } : { end: 'empty' };
   };
 
+  /**
+   * Abertura do `run`: prepara a integração (pode pausar a fila) e limpa os worktrees que
+   * sobraram de itens que já não precisam deles.
+   */
+  const open = (): string | undefined => {
+    const opened = openIntegration(home, project);
+    for (const note of opened.notes) log.write(style.dim(note));
+    if (opened.pause) return opened.pause;
+    const cleaned = removeOrphanWorktrees(db, home, project, listItems(db, project.id));
+    if (cleaned.length > 0) log.write(style.dim(`worktrees removidos: ${cleaned.map((n) => `#${n}`).join(', ')}`));
+    finishIntegrated(db, project, listItems(db, project.id)).forEach(markDone);
+    writeIntegrationReport(db, home, project);
+    return undefined;
+  };
+
+  const markDone = (item: Item) => {
+    log.write(`#${item.number} ${item.title}: awaiting_merge → done`);
+    finalStates.set(item.number, 'done');
+  };
+
   const loop = async (): Promise<{ end: QueueEnd; message?: string }> => {
+    const paused = open();
+    if (paused) return { end: 'paused', message: paused };
     for (;;) {
       if (abort.signal.aborted) return { end: 'interrupted' };
 
-      // Itens cuja branch já entrou na base: concluídos.
+      // Itens cujo merge já entrou na base: concluídos.
+      finishIntegrated(db, project, listItems(db, project.id)).forEach(markDone);
       for (const item of listItems(db, project.id)) {
-        if (item.status === 'awaiting_merge' && item.branch && isMerged(project, item.branch)) {
+        if (item.status === 'awaiting_merge' && !item.integratedCommit && item.branch && isMerged(project, item.branch)) {
           transition(db, project, item.id, 'done', `merge de ${item.branch} na ${project.config.baseBranch}`);
           log.write(`#${item.number} ${item.title}: awaiting_merge → done`);
           removeWorktree(db, project, item);
+          const warning = deleteBranch(project, item.branch);
+          if (warning) log.write(style.dim(`#${item.number}: ${warning}`));
           finalStates.set(item.number, 'done');
         }
       }

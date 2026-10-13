@@ -40,6 +40,7 @@ const KIND_LABELS: Record<PendingKind, string> = {
   plan_incomplete: 'plano incompleto',
   critical_approval: 'aprovação de item crítico',
   attempts_exhausted: 'tentativas esgotadas',
+  integration_conflict: 'conflito com a integração',
 };
 
 const VIA: DecisionOptions = { via: 'inbox' };
@@ -190,13 +191,17 @@ async function criticalFlow(
   }
 }
 
+/** Tentativas esgotadas ou conflito com a integração: orientar, replanejar ou cancelar. */
 async function exhaustedFlow(db: DatabaseSync, project: Project, io: InboxIO, item: Item): Promise<Decision> {
-  const summary = item.pending?.summary || attemptsSummary(db, item.id);
+  const conflict = item.pendingKind === 'integration_conflict';
+  const summary = conflict
+    ? `arquivos em conflito: ${(item.pending?.files ?? []).join(', ')}`
+    : item.pending?.summary || attemptsSummary(db, item.id);
   for (const line of summary.split('\n')) io.write(`${INDENT}${line}`);
   for (;;) {
     const input = await choose<string>(
       io,
-      'texto orienta um novo ciclo · r <texto> replaneja · c cancela · p pula',
+      `texto orienta ${conflict ? 'a resolução do conflito' : 'um novo ciclo'} · r <texto> replaneja · c cancela · p pula`,
       (text) => text || { retry: 'Digite a orientação, r <texto>, c ou p.' },
     );
     if (input === 'p') return SKIP;
@@ -224,6 +229,7 @@ function itemFlow(db: DatabaseSync, home: string, project: Project, io: InboxIO,
     case 'critical_approval':
       return criticalFlow(db, home, project, io, item);
     case 'attempts_exhausted':
+    case 'integration_conflict':
       return exhaustedFlow(db, project, io, item);
   }
 }

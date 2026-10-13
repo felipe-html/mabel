@@ -90,11 +90,11 @@ test('artefatos gravados por etapa e tentativa; execução altera o worktree', a
   const execution = await runExecute(stage.ctx.db, stage, { plan: PLAN as never, attempt: 1 });
   assert.deepEqual(execution.output, EXECUTION);
   const review = await runReview(stage.ctx.db, stage, { plan: PLAN as never, execution: EXECUTION, attempt: 1 });
-  assert.equal(review.output?.aprovado, true);
+  assert.deepEqual(review.output, REVIEW_OK);
 
   const dir = itemDir(stage.home, stage.item.id);
   assert.deepEqual(JSON.parse(readFileSync(join(dir, 'plano.json'), 'utf8')), PLAN);
-  assert.match(readFileSync(join(dir, 'plano.md'), 'utf8'), /^# Plano do item #1: Soma\n[\s\S]*\*\*C1\*\* \(teste\): soma\(2, 3\) devolve 5/);
+  assert.match(readFileSync(join(dir, 'plano.md'), 'utf8'), /^# Plano do item #1: Soma\n[\s\S]*\*\*C1\*\* \(teste, novo\): soma\(2, 3\) devolve 5/);
   assert.deepEqual(JSON.parse(readFileSync(join(dir, 'execucao-1.json'), 'utf8')), EXECUTION);
   assert.deepEqual(JSON.parse(readFileSync(join(dir, 'revisao-1.json'), 'utf8')), REVIEW_OK);
   assert.equal(readFileSync(join(stage.worktree, 'src/soma.js'), 'utf8'), EXECUTION_FILES['src/soma.js']);
@@ -119,6 +119,7 @@ test('validador: tipos, obrigatórios, enum e campos não previstos', () => {
     perguntas: undefined,
   });
   assert.deepEqual(errors, [
+    '$.criterios[0].comportamento: obrigatório',
     '$.criterios[0].verificacao: valor "talvez" fora de ["teste","humano"]',
     '$.perguntas: esperado array, veio undefined',
     '$.extra: campo não previsto',

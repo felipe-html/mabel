@@ -82,7 +82,7 @@ function projectSummary(db: DatabaseSync): string[] {
   }
   const { warnings } = syncBacklog(db, project);
   return [
-    ...renderBoardSummary(project.name, boardItems(db, project.id)),
+    ...renderBoardSummary(project.name, boardItems(db, project)),
     ...warnings.map((warning) => style.dim(warning)),
   ];
 }

@@ -17,6 +17,13 @@ export interface Stack {
   /** Setup e verificação que já existem no projeto. */
   commands: (root: string) => { setup: string | null; verify: VerifyCommand[] };
   template: StackTemplate;
+  /** Campos da prova: comando de um teste só e globs dos arquivos de teste. */
+  proof: (root: string, empty: boolean) => StackProof;
+}
+
+export interface StackProof {
+  testeUnico: string;
+  arquivosDeTeste: string[];
 }
 
 const has = (root: string, file: string) => existsSync(join(root, file));
@@ -30,14 +37,32 @@ const LOCKFILES: [string, string][] = [
 /** Script `test` que o `npm init` gera por padrão: não é um comando de teste de verdade. */
 const NPM_PLACEHOLDER_TEST = /no test specified/;
 
-function nodeCommands(root: string) {
-  let scripts: Record<string, unknown> = {};
+interface PackageJson {
+  scripts?: Record<string, unknown>;
+  dependencies?: Record<string, unknown>;
+  devDependencies?: Record<string, unknown>;
+}
+
+function readPackage(root: string): PackageJson {
   try {
-    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { scripts?: Record<string, unknown> };
-    scripts = pkg.scripts ?? {};
+    return JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as PackageJson;
   } catch {
-    // package.json inválido: nenhum script detectado.
+    // package.json ausente ou inválido: nada detectado.
+    return {};
   }
+}
+
+/** O projeto usa Vitest: dependência declarada ou script que o chama. */
+export function usesVitest(root: string): boolean {
+  const pkg = readPackage(root);
+  if ('vitest' in (pkg.dependencies ?? {}) || 'vitest' in (pkg.devDependencies ?? {})) return true;
+  return Object.values(pkg.scripts ?? {}).some((body) => typeof body === 'string' && /\bvitest\b/.test(body));
+}
+
+const NODE_TEST_GLOBS = ['**/*.test.*', '**/*.spec.*', '**/__tests__/**', 'test/**', 'tests/**'];
+
+function nodeCommands(root: string) {
+  const scripts = readPackage(root).scripts ?? {};
   const verify: VerifyCommand[] = [];
   for (const script of ['build', 'typecheck', 'lint', 'test']) {
     const body = scripts[script];
@@ -64,6 +89,14 @@ export const STACKS: Stack[] = [
         { name: 'test', command: 'npm test' },
       ],
     },
+    // Projeto vazio nasce com o template (Vitest); nos outros, Vitest só se já estiver lá.
+    proof: (root, empty) => ({
+      testeUnico:
+        empty || usesVitest(root)
+          ? 'npx vitest run {arquivo} -t {padrao}'
+          : 'node --test --test-name-pattern={padrao} {arquivo}',
+      arquivosDeTeste: NODE_TEST_GLOBS,
+    }),
   },
   {
     id: 'python',
@@ -81,6 +114,10 @@ export const STACKS: Stack[] = [
         { name: 'test', command: 'uv run pytest' },
       ],
     },
+    proof: () => ({
+      testeUnico: 'pytest {arquivo} -k {nome}',
+      arquivosDeTeste: ['tests/**', '**/test_*.py', '**/*_test.py', '**/conftest.py'],
+    }),
   },
   {
     id: 'go',
@@ -101,6 +138,10 @@ export const STACKS: Stack[] = [
         { name: 'test', command: 'go test ./...' },
       ],
     },
+    proof: () => ({
+      testeUnico: 'go test -run {padrao} ./{pasta}',
+      arquivosDeTeste: ['**/*_test.go', '**/testdata/**'],
+    }),
   },
   {
     id: 'rust',
@@ -121,6 +162,7 @@ export const STACKS: Stack[] = [
         { name: 'test', command: 'cargo test' },
       ],
     },
+    proof: () => ({ testeUnico: 'cargo test {nome}', arquivosDeTeste: ['tests/**'] }),
   },
 ];
 

@@ -32,10 +32,15 @@ const questions: Schema = {
   items: object({ texto: str, sugestao: str, regraCritica: { type: 'boolean' } }),
 };
 
+/**
+ * `comportamento` diz o que a prova espera do teste no código base: `novo` falha nele,
+ * `mantido` passa. Obrigatório no esquema; planos anteriores à prova não têm o campo.
+ */
 export interface PlanCriterion {
   id: string;
   texto: string;
   verificacao: 'teste' | 'humano';
+  comportamento?: 'novo' | 'mantido';
 }
 
 export interface Assumption {
@@ -60,8 +65,8 @@ export interface ExecuteOutput {
   perguntas: Question[];
 }
 
+/** O parecer não declara aprovação: o Mabel a calcula (`reviewVerdict`). */
 export interface ReviewOutput {
-  aprovado: boolean;
   criterios: { id: string; atendido: boolean; evidencia: string }[];
   problemas: { gravidade: 'bloqueante' | 'menor'; descricao: string; arquivo?: string }[];
 }
@@ -70,7 +75,12 @@ export const planSchema: Schema = object({
   resumo: str,
   criterios: {
     type: 'array',
-    items: object({ id: str, texto: str, verificacao: { type: 'string', enum: ['teste', 'humano'] } }),
+    items: object({
+      id: str,
+      texto: str,
+      verificacao: { type: 'string', enum: ['teste', 'humano'] },
+      comportamento: { type: 'string', enum: ['novo', 'mantido'] },
+    }),
   },
   escopo: strings,
   passos: strings,
@@ -90,7 +100,6 @@ export const executeSchema: Schema = object({
 });
 
 export const reviewSchema: Schema = object({
-  aprovado: { type: 'boolean' },
   criterios: { type: 'array', items: object({ id: str, atendido: { type: 'boolean' }, evidencia: str }) },
   problemas: {
     type: 'array',

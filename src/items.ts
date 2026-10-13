@@ -34,7 +34,8 @@ export const TRANSITIONS: Record<ItemStatus, readonly ItemStatus[]> = {
   executing: ['verifying', 'needs_human', 'failed', 'blocked'],
   verifying: ['reviewing', 'executing', 'needs_human', 'failed'],
   reviewing: ['awaiting_merge', 'executing', 'needs_human', 'failed'],
-  awaiting_merge: ['done', 'executing'],
+  // `executing`: retrabalho sem integração; `planning`/`cancelled`: rejeição na integração.
+  awaiting_merge: ['done', 'executing', 'planning', 'cancelled'],
   needs_human: ['planning', 'planned', 'executing', 'cancelled'],
   blocked: ['backlog', 'cancelled'],
   failed: ['ready', 'cancelled'],
@@ -65,6 +66,8 @@ export interface Item extends Required<Omit<ItemFields, 'number'>> {
   planRetries: number;
   /** Instruções para a próxima run da etapa atual (sessão a retomar, resposta, falha). */
   nextInput: NextInput | null;
+  /** Commit de merge do item na branch de integração; nulo até a integração. */
+  integratedCommit: string | null;
 }
 
 export type PendingKind =
@@ -72,7 +75,8 @@ export type PendingKind =
   | 'plan_incomplete'
   | 'critical_approval'
   | 'question_execute'
-  | 'attempts_exhausted';
+  | 'attempts_exhausted'
+  | 'integration_conflict';
 
 /** Detalhes da parada em `needs_human`, mostrados pelo `mabel item`. */
 export interface Pending {
@@ -81,6 +85,8 @@ export interface Pending {
   criticalAssumptions?: string[];
   reason?: string;
   summary?: string;
+  /** Arquivos em conflito (`integration_conflict`). */
+  files?: string[];
 }
 
 export interface NextInput {
@@ -95,6 +101,8 @@ export interface NextInput {
   interrupted?: boolean;
   /** Continua a mesma tentativa (resposta a uma pergunta da execução). */
   sameAttempt?: boolean;
+  /** Antes da execução, o Mabel faz o merge da origem e deixa os conflitos para o executor. */
+  mergeOrigin?: boolean;
 }
 
 interface ItemRow {
@@ -120,6 +128,7 @@ interface ItemRow {
   attempt_no: number;
   plan_retries: number;
   next_input: string | null;
+  integrated_commit: string | null;
 }
 
 /**
@@ -165,6 +174,7 @@ function fromRow(row: ItemRow): Item {
     attemptNo: row.attempt_no,
     planRetries: row.plan_retries,
     nextInput: row.next_input ? (JSON.parse(row.next_input) as NextInput) : null,
+    integratedCommit: row.integrated_commit,
   };
 }
 
@@ -177,6 +187,7 @@ export interface ItemUpdate {
   pendingKind?: PendingKind | null;
   pending?: Pending | null;
   nextInput?: NextInput | null;
+  integratedCommit?: string | null;
 }
 
 const UPDATE_COLUMNS: Record<keyof ItemUpdate, string> = {
@@ -188,6 +199,7 @@ const UPDATE_COLUMNS: Record<keyof ItemUpdate, string> = {
   pendingKind: 'pending_kind',
   pending: 'pending',
   nextInput: 'next_input',
+  integratedCommit: 'integrated_commit',
 };
 
 /** Atualiza campos de controle do item (não o estado, que só muda por `transition`). */
@@ -291,9 +303,21 @@ export function itemCost(db: DatabaseSync, itemId: string): number {
   return row.total;
 }
 
-export function boardItems(db: DatabaseSync, projectId: string): BoardItem[] {
-  const items = listItems(db, projectId);
-  const done = new Set(items.filter((item) => item.status === 'done').map((item) => item.number));
+/**
+ * Números dos itens que satisfazem dependências: `done` e, com integração, os já integrados
+ * (`awaiting_merge` com `integrated_commit`).
+ */
+export function satisfiedNumbers(items: Item[], integration: boolean): Set<number> {
+  return new Set(
+    items
+      .filter((item) => item.status === 'done' || (integration && item.status === 'awaiting_merge' && item.integratedCommit))
+      .map((item) => item.number),
+  );
+}
+
+export function boardItems(db: DatabaseSync, project: Pick<Project, 'id' | 'config'>): BoardItem[] {
+  const items = listItems(db, project.id);
+  const done = satisfiedNumbers(items, project.config.integracao !== null);
   return items.map((item) => ({
     number: item.number,
     title: item.title,
@@ -301,6 +325,7 @@ export function boardItems(db: DatabaseSync, projectId: string): BoardItem[] {
     statusReason: item.statusReason,
     attempts: item.attempts,
     branch: item.branch,
+    integrated: item.integratedCommit !== null,
     costUsd: itemCost(db, item.id),
     pendingDeps: item.dependsOn.filter((dep) => !done.has(dep)),
   }));
@@ -308,7 +333,7 @@ export function boardItems(db: DatabaseSync, projectId: string): BoardItem[] {
 
 /** Regenera o `quadro.md` do projeto a partir do banco. */
 export function refreshBoard(db: DatabaseSync, project: Project, now = new Date()): void {
-  writeBoardFile(project.root, renderBoard(project.name, boardItems(db, project.id), latestReadings(db), now));
+  writeBoardFile(project.root, renderBoard(project.name, boardItems(db, project), latestReadings(db), now));
 }
 
 // Sincronização --------------------------------------------------------------------------
@@ -474,7 +499,7 @@ export function syncBacklog(db: DatabaseSync, project: Project): SyncResult {
 
   // 4. backlog ⇄ ready conforme título, intenção e dependências.
   const items = listItems(db, project.id);
-  const done = new Set(items.filter((item) => item.status === 'done').map((item) => item.number));
+  const done = satisfiedNumbers(items, project.config.integracao !== null);
   for (const item of items) {
     const ready = Boolean(item.title && item.intent) && item.dependsOn.every((dep) => done.has(dep));
     if (item.status === 'backlog' && ready) move(item, 'ready', null);

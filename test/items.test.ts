@@ -44,7 +44,7 @@ test('toda transição da tabela é aceita, auditada e regenera o quadro', () =>
       count++;
     }
   }
-  assert.equal(count, 36);
+  assert.equal(count, 38);
 });
 
 test('transição fora da tabela lança e não grava nada', () => {
