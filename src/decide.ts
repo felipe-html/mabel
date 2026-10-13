@@ -4,10 +4,12 @@ import type { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
 import { ask, confirm } from './ask.ts';
 import { dataDir, openDb } from './db.ts';
-import { DecisionError, approve, cancel, respond } from './decisions.ts';
+import { DecisionError, approve, cancel, reject, respond } from './decisions.ts';
 import { formatCost } from './format.ts';
 import { type Item, type PendingKind, TransitionError, getItem, itemCost } from './items.ts';
+import { LockError, acquireLock } from './lock.ts';
 import { attemptsSummary, autonomousDecisions } from './pipeline.ts';
+import { writeIntegrationReport } from './report.ts';
 import { type Project, ProjectError, resolveProject } from './project.ts';
 import type { PlanOutput } from './schemas/stages.ts';
 import { itemDir, readArtifact } from './stages.ts';
@@ -40,7 +42,7 @@ async function withItem(
     }
     return await action(db, project, item);
   } catch (error) {
-    if (error instanceof ProjectError || error instanceof DecisionError || error instanceof TransitionError) {
+    if (error instanceof ProjectError || error instanceof DecisionError || error instanceof TransitionError || error instanceof LockError) {
       process.stderr.write(`${error.message}\n`);
       return 1;
     }
@@ -60,6 +62,11 @@ const SUGGESTIONS: Record<PendingKind, (n: number) => string[]> = {
     `mabel responder ${n} "<orientação>" --replanejar`,
     `mabel cancelar ${n}`,
   ],
+  integration_conflict: (n) => [
+    `mabel responder ${n} "<orientação>"   (o executor resolve os conflitos)`,
+    `mabel responder ${n} "<orientação>" --replanejar`,
+    `mabel cancelar ${n}`,
+  ],
 };
 
 /** Detalhe do item: estado, pendência, plano, custo, runs e transições recentes. */
@@ -75,6 +82,7 @@ export function renderItemDetail(db: DatabaseSync, home: string, item: Item): st
       if (question.sugestao) lines.push(`    sugestão: ${question.sugestao}`);
     }
     for (const assumption of pending.criticalAssumptions ?? []) lines.push(`  ! suposição crítica: ${assumption}`);
+    if (pending.files?.length) lines.push(`  arquivos em conflito: ${pending.files.join(', ')}`);
     if (pending.reason) lines.push(`  ${pending.reason}`);
     if (item.pendingKind === 'attempts_exhausted') {
       lines.push(...(pending.summary || attemptsSummary(db, item.id)).split('\n').map((line) => `  ${line}`));
@@ -87,6 +95,7 @@ export function renderItemDetail(db: DatabaseSync, home: string, item: Item): st
   lines.push(`  intenção: ${item.intent.replace(/\n+/g, ' ')}`);
   if (item.restrictions) lines.push(`  restrições: ${item.restrictions}`);
   if (item.branch) lines.push(`  branch: ${item.branch}`);
+  if (item.integratedCommit) lines.push(`  integrado em: ${item.integratedCommit.slice(0, 12)}`);
   if (item.worktree) lines.push(`  worktree: ${item.worktree}`);
   lines.push(`  tentativas no ciclo: ${item.attempts} · custo ${formatCost(itemCost(db, item.id))}`);
 
@@ -131,6 +140,8 @@ export const itemUsage = 'mabel item <n>';
 export const approveUsage = 'mabel aprovar <n>';
 export const respondUsage = 'mabel responder <n> "<resposta>" [--replanejar]';
 export const cancelUsage = 'mabel cancelar <n>';
+export const rejectUsage = 'mabel rejeitar <n> "<motivo>" [--cancelar]';
+export const integrationUsage = 'mabel integracao';
 
 export function itemCommand(args: string[]): Promise<number> {
   return withItem(args[0], itemUsage, (db, _project, item) => {
@@ -176,6 +187,60 @@ export function cancelCommand(args: string[]): Promise<number> {
   });
 }
 
+export function rejectCommand(args: string[]): Promise<number> {
+  let parsed;
+  try {
+    parsed = parseArgs({ args, allowPositionals: true, options: { cancelar: { type: 'boolean' } } });
+  } catch (error) {
+    process.stderr.write(`${(error as Error).message}\nUso: ${rejectUsage}\n`);
+    return Promise.resolve(1);
+  }
+  const [number, ...rest] = parsed.positionals;
+  const reason = rest.join(' ').trim();
+  return withItem(number, rejectUsage, (db, project, item) => {
+    if (!reason) {
+      process.stderr.write(`Informe o motivo.\nUso: ${rejectUsage}\n`);
+      return 1;
+    }
+    // A rejeição escreve na integração: não pode correr junto com um `mabel run`.
+    const home = dataDir();
+    const release = acquireLock(home, project.id);
+    try {
+      const result = reject(db, home, project, item, reason, { cancel: parsed.values.cancelar });
+      writeIntegrationReport(db, home, project);
+      process.stdout.write(
+        result.to === 'cancelled'
+          ? `#${item.number} revertido na integração e cancelado.\n`
+          : `#${item.number} revertido na integração: volta ao planejamento com o motivo no próximo \`mabel run\`.\n`,
+      );
+      if (result.dependents.length > 0) {
+        const list = result.dependents.map((n) => `#${n}`).join(', ');
+        process.stdout.write(`Atenção: ${list} depende(m) de #${item.number} e continua(m) na integração; rejeite-o(s) se for o caso.\n`);
+      }
+      return 0;
+    } finally {
+      release();
+    }
+  });
+}
+
+export async function integrationCommand(): Promise<number> {
+  const home = dataDir();
+  const db = openDb(home);
+  try {
+    process.stdout.write(writeIntegrationReport(db, home, resolveProject(db)));
+    return 0;
+  } catch (error) {
+    if (error instanceof ProjectError) {
+      process.stderr.write(`${error.message}\n`);
+      return 1;
+    }
+    throw error;
+  } finally {
+    db.close();
+  }
+}
+
 // Argumentos pedidos no menu interativo ----------------------------------------------------
 
 export async function askItemNumber(): Promise<string[]> {
@@ -193,4 +258,11 @@ export async function askRespond(): Promise<string[]> {
 export async function askCancel(): Promise<string[]> {
   const number = await ask('Número do item a cancelar: ');
   return number && (await confirm(`Cancelar o item #${number}?`, false)) ? [number] : [];
+}
+
+export async function askReject(): Promise<string[]> {
+  const number = await ask('Número do item a rejeitar: ');
+  const reason = await ask('Motivo: ');
+  const cancelIt = await confirm('Cancelar o item em vez de replanejar?', false);
+  return number && reason ? [number, reason, ...(cancelIt ? ['--cancelar'] : [])] : [];
 }

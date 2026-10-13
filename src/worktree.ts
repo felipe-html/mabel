@@ -1,10 +1,10 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { git, tryGit } from './git.ts';
 import type { Item } from './items.ts';
-import type { Project } from './project.ts';
+import type { Project, ProjectConfig } from './project.ts';
 
 /** Título em minúsculas, sem acentos, só `[a-z0-9-]`, até 40 caracteres. */
 export function slugify(title: string): string {
@@ -15,6 +15,23 @@ export function slugify(title: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
   return slug.slice(0, 40).replace(/-+$/, '') || 'item';
+}
+
+/** Branch de onde os itens nascem: a integração, ou a base sem ela. */
+export function originBranch(config: Pick<ProjectConfig, 'baseBranch' | 'integracao'>): string {
+  return config.integracao ?? config.baseBranch;
+}
+
+export function branchExists(root: string, branch: string): boolean {
+  return tryGit(root, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`) !== undefined;
+}
+
+/** Cria a branch de integração a partir da base, se ainda não existe. */
+export function ensureIntegration(project: Project): void {
+  const integration = project.config.integracao;
+  if (integration && !branchExists(project.root, integration)) {
+    git(project.root, 'branch', integration, project.config.baseBranch);
+  }
 }
 
 export function branchName(item: Pick<Item, 'number' | 'title'>): string {
@@ -39,12 +56,14 @@ function lastLines(text: string, count: number): string {
 
 /** Roda um comando de shell no diretório dado, com stdout e stderr juntos. */
 export function shell(command: string, cwd: string): { code: number; output: string } {
-  const result = spawnSync('sh', ['-c', `${command} 2>&1`], { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  // Sem NODE_TEST_CONTEXT: um `node --test` do projeto não se reporta ao runner que roda o Mabel.
+  const { NODE_TEST_CONTEXT: _, ...env } = process.env;
+  const result = spawnSync('sh', ['-c', `${command} 2>&1`], { cwd, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   return { code: result.status ?? 1, output: result.stdout ?? '' };
 }
 
 /**
- * Cria (ou reutiliza, na retomada) o worktree e a branch do item a partir da branch base,
+ * Cria (ou reutiliza, na retomada) o worktree e a branch do item a partir da origem,
  * grava os caminhos no item e roda o `setup` do projeto quando o worktree é novo.
  */
 export function prepareWorktree(db: DatabaseSync, home: string, project: Project, item: Item): PreparedWorktree {
@@ -52,15 +71,16 @@ export function prepareWorktree(db: DatabaseSync, home: string, project: Project
   const path = item.worktree ?? worktreePath(home, project.id, item);
   let created = false;
 
+  const origin = originBranch(project.config);
+  ensureIntegration(project);
   if (!existsSync(path)) {
     mkdirSync(dirname(path), { recursive: true });
     tryGit(project.root, 'worktree', 'prune');
-    const branchExists = tryGit(project.root, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`) !== undefined;
-    if (branchExists) git(project.root, 'worktree', 'add', path, branch);
-    else git(project.root, 'worktree', 'add', '-b', branch, path, project.config.baseBranch);
+    if (branchExists(project.root, branch)) git(project.root, 'worktree', 'add', path, branch);
+    else git(project.root, 'worktree', 'add', '-b', branch, path, origin);
     created = true;
   } else {
-    catchUp(path, project.config.baseBranch);
+    catchUp(path, origin);
   }
   db.prepare('UPDATE items SET branch = ?, worktree = ?, updated_at = ? WHERE id = ?').run(
     branch,
@@ -82,12 +102,12 @@ export function prepareWorktree(db: DatabaseSync, home: string, project: Project
 
 /**
  * Worktree reutilizado sem commits próprios e sem alterações (ex.: item parado no
- * planejamento) avança até a branch base, para enxergar o que foi commitado depois.
+ * planejamento) avança até a origem, para enxergar o que foi commitado depois.
  */
-function catchUp(path: string, baseBranch: string): void {
-  if (tryGit(path, 'merge-base', '--is-ancestor', 'HEAD', baseBranch) === undefined) return;
+function catchUp(path: string, origin: string): void {
+  if (tryGit(path, 'merge-base', '--is-ancestor', 'HEAD', origin) === undefined) return;
   if (tryGit(path, 'status', '--porcelain', '--untracked-files=no') !== '') return;
-  tryGit(path, 'merge', '-q', '--ff-only', baseBranch);
+  tryGit(path, 'merge', '-q', '--ff-only', origin);
 }
 
 /** Remove o worktree do item (a branch fica). */
@@ -110,6 +130,49 @@ export function commitAll(path: string, message: string): boolean {
 
 export function commitMessage(item: Pick<Item, 'number' | 'title'>, attempt: number): string {
   return `mabel(#${item.number}): ${item.title} — execução ${attempt}`;
+}
+
+/**
+ * Apaga a branch do item depois de confirmar que está contida na base. Devolve o aviso
+ * quando não está (a branch fica).
+ */
+export function deleteBranch(project: Project, branch: string): string | undefined {
+  if (tryGit(project.root, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`) === undefined) return undefined;
+  if (!isMerged(project, branch)) return `branch ${branch} não está contida na ${project.config.baseBranch}; não foi apagada`;
+  git(project.root, 'branch', '-D', branch);
+  return undefined;
+}
+
+/** Diretório dos worktrees do projeto. */
+export function worktreesDir(home: string, projectId: string): string {
+  return join(home, 'worktrees', projectId);
+}
+
+const FINISHED: Item['status'][] = ['awaiting_merge', 'done', 'cancelled'];
+
+/**
+ * Remove os worktrees que sobraram de itens em `awaiting_merge`, `done` ou `cancelled`
+ * (a branch guarda o trabalho). Devolve os números dos itens limpos.
+ */
+export function removeOrphanWorktrees(db: DatabaseSync, home: string, project: Project, items: Item[]): number[] {
+  const dir = worktreesDir(home, project.id);
+  if (!existsSync(dir)) return [];
+  const present = new Set(readdirSync(dir).map((name) => join(dir, name)));
+  const removed: number[] = [];
+  for (const item of items.filter((i) => FINISHED.includes(i.status))) {
+    const path = item.worktree ?? worktreePath(home, project.id, item);
+    if (!present.has(path) && !item.worktree) continue;
+    if (existsSync(path)) {
+      if (tryGit(project.root, 'worktree', 'remove', '--force', path) === undefined) rmSync(path, { recursive: true, force: true });
+      removed.push(item.number);
+    }
+    if (item.worktree) {
+      db.prepare('UPDATE items SET worktree = NULL, updated_at = ? WHERE id = ?').run(new Date().toISOString(), item.id);
+      item.worktree = null;
+    }
+  }
+  tryGit(project.root, 'worktree', 'prune');
+  return removed;
 }
 
 /** A branch do item já está contida na branch base (merge feito pelo humano). */

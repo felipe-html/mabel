@@ -146,6 +146,9 @@ const migrations: string[] = [
   CREATE INDEX gate_results_item ON gate_results(item_id, id);
   `,
   `
+  ALTER TABLE items ADD COLUMN integrated_commit TEXT;
+  `,
+  `
   CREATE TABLE removals (
     id          INTEGER PRIMARY KEY,
     project_id  TEXT NOT NULL,

@@ -11,7 +11,8 @@ import { ITEM_STATES } from './items.ts';
 import { LockError, acquireLock, lockHolder, lockPath } from './lock.ts';
 import { select } from './menu.ts';
 import { autonomousDecisions, escalate } from './pipeline.ts';
-import { ProjectError } from './project.ts';
+import { isAncestor } from './integration.ts';
+import { DEFAULT_INTEGRATION, ProjectError, readConfig } from './project.ts';
 import { itemDir } from './stages.ts';
 import { style } from './style.ts';
 
@@ -321,8 +322,32 @@ export interface RemovalPlan {
   tables: { table: string; rows: number }[];
   /** Caminhos existentes por entrada de `dirScope`. */
   dirs: { entry: string; paths: string[] }[];
+  /** Itens integrados que ainda não chegaram à base, e onde o trabalho deles está. */
+  unmerged: { numbers: number[]; integration: string; base: string };
   /** Motivos que impedem a remoção agora. */
   refusals: string[];
+}
+
+/**
+ * Itens em `awaiting_merge` já integrados cujo commit não está na base: o trabalho deles só
+ * existe na branch de integração. Sem o repositório ou o config, vale o estado do banco.
+ */
+function unmergedItems(db: DatabaseSync, project: ProjectRow): RemovalPlan['unmerged'] {
+  let config;
+  try {
+    config = existsSync(project.root) ? readConfig(project.root) : undefined;
+  } catch {
+    config = undefined;
+  }
+  const base = config?.baseBranch ?? 'main';
+  const rows = db
+    .prepare(
+      `SELECT number, integrated_commit AS commit_id FROM items
+       WHERE project_id = ? AND status = 'awaiting_merge' AND integrated_commit IS NOT NULL ORDER BY number`,
+    )
+    .all(project.id) as { number: number; commit_id: string }[];
+  const numbers = rows.filter((row) => !config || !isAncestor(project.root, row.commit_id, base)).map((row) => row.number);
+  return { numbers, integration: config?.integracao ?? DEFAULT_INTEGRATION, base };
 }
 
 function dirtyWorktrees(home: string, projectId: string): string[] {
@@ -364,7 +389,7 @@ export function planRemoval(db: DatabaseSync, home: string, project: ProjectRow)
   if (dirty.length > 0) {
     refusals.push(['Worktrees com alterações sem commit:', ...dirty.map((path) => `  ${path}`)].join('\n'));
   }
-  return { project, target, tables, dirs, refusals };
+  return { project, target, tables, dirs, unmerged: unmergedItems(db, project), refusals };
 }
 
 export function renderRemovalSummary(plan: RemovalPlan): string[] {
@@ -374,12 +399,21 @@ export function renderRemovalSummary(plan: RemovalPlan): string[] {
     if (entry === 'worktrees') return `worktrees/${project.id.slice(0, 8)}…`;
     return `${entry}/`;
   });
-  return [
+  const lines = [
     style.bold(`${project.name} · ${project.root}`),
     `${project.items} ${project.items === 1 ? 'item' : 'itens'} · ${project.runs} runs · ${formatCost(project.costUsd)}`,
     `banco: ${plan.tables.map(({ table }) => table).join(', ') || 'nenhuma linha'}`,
     `disco: ${disk.join(', ') || 'nada'}`,
   ];
+  const { numbers, integration, base } = plan.unmerged;
+  if (numbers.length > 0) {
+    const which = numbers.map((n) => `#${n}`).join(', ');
+    const count = numbers.length === 1 ? `1 item integrado (${which}) ainda não chegou` : `${numbers.length} itens integrados (${which}) ainda não chegaram`;
+    lines.push(
+      style.accent(`aviso: ${count} a ${base}; o trabalho só existe na branch ${integration}, que a remoção não toca.`),
+    );
+  }
+  return lines;
 }
 
 /**

@@ -153,12 +153,18 @@ test('nome repetido lista os candidatos e falha', () => {
 test('remoção apaga só o projeto e preserva o outro e as runs sem item', () => {
   const { a, db, idB, seededA, seededB, execRun, cli } = twoProjects();
   const name = a.project.name;
+  // Integrado na branch de integração, mas fora da base.
+  db.prepare("UPDATE items SET status = 'awaiting_merge', integrated_commit = ? WHERE id = ?").run(
+    'f'.repeat(40),
+    seededA[1]?.itemId ?? '',
+  );
 
   const summary = cli('projeto', 'remover', name);
   assert.equal(summary.status, 1);
   assert.match(summary.stdout, /2 itens · 4 runs · US\$ 2,00/);
   assert.match(summary.stdout, /banco: events, tool_calls, rate_limits, gate_results, item_transitions, runs, items, projects/);
   assert.match(summary.stdout, /disco: runs\/ \(4\), items\/ \(2\), worktrees\/.{8}…, locks\//);
+  assert.match(summary.stdout, /aviso: 1 item integrado \(#12\) ainda não chegou a main; o trabalho só existe na branch mabel\/integracao/);
   assert.match(summary.stderr, /--confirmar/);
   assert.equal(count(db, 'SELECT count(*) AS n FROM items WHERE project_id = ?', a.project.id), 2);
 

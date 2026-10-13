@@ -1,0 +1,237 @@
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
+import { git, tryGit } from './git.ts';
+import { matchGlob } from './glob.ts';
+import type { ProjectConfig } from './project.ts';
+import type { ExecuteOutput, PlanCriterion, PlanOutput } from './schemas/stages.ts';
+import { shell } from './worktree.ts';
+
+// Prova mecânica (P.2): o teste de um critério `novo` falha no código base e passa no item;
+// o de um critério `mantido` passa nos dois.
+
+export type ProofStatus = 'provado' | 'nao_provado' | 'sem_prova';
+
+export interface TestRun {
+  arquivo: string;
+  nome: string;
+  /** Passou no item / na base; ausente quando não rodou. */
+  item?: boolean;
+  base?: boolean;
+}
+
+export interface CriterionProof {
+  id: string;
+  comportamento: PlanCriterion['comportamento'];
+  status: ProofStatus;
+  /** Lacuna (`nao_provado`) ou motivo (`sem_prova`). */
+  reason?: string;
+  tests: TestRun[];
+}
+
+export interface ProofResult {
+  /** `teste`: cada teste rodou sozinho; `item`: o comando de teste inteiro, uma vez. */
+  mode: 'teste' | 'item';
+  criteria: CriterionProof[];
+  /** O worktree voltou ao estado de antes da prova. */
+  restored: boolean;
+  /** Erro ao levar o código à base (o worktree é restaurado mesmo assim). */
+  error?: string;
+}
+
+/** Testes declarados para o critério que existem no worktree e contêm o nome. */
+export function foundTests(worktree: string, tests: { arquivo: string; nome: string }[]): { arquivo: string; nome: string }[] {
+  return tests.flatMap((t) => {
+    const path = resolve(worktree, t.arquivo);
+    const rel = relative(worktree, path);
+    if (rel.startsWith('..') || !existsSync(path)) return [];
+    try {
+      return readFileSync(path, 'utf8').includes(t.nome) ? [{ arquivo: rel, nome: t.nome }] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+export function shellQuote(text: string): string {
+  return `'${text.replace(/'/g, `'\\''`)}'`;
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Comando de um teste só: `{arquivo}`, `{pasta}` e `{nome}` literais e `{padrao}` (o nome
+ * escapado como expressão regular, para os runners que filtram por regex), todos com aspas.
+ */
+export function singleTestCommand(template: string, test: { arquivo: string; nome: string }): string {
+  const values: Record<string, string> = {
+    arquivo: test.arquivo,
+    pasta: dirname(test.arquivo),
+    nome: test.nome,
+    padrao: escapeRegExp(test.nome),
+  };
+  return template.replace(/\{(arquivo|pasta|nome|padrao)\}/g, (_, key: string) => shellQuote(values[key] as string));
+}
+
+function lines(output: string): string[] {
+  return output.split('\n').filter(Boolean);
+}
+
+/** Arquivos que o item mudou desde a base e que não são só de teste. */
+export function restorableFiles(worktree: string, base: string, testGlobs: string[]): string[] {
+  const changed = lines(git(worktree, 'diff', '--name-only', '--no-renames', base, 'HEAD'));
+  return changed.filter((file) => !testGlobs.some((glob) => matchGlob(glob, file)));
+}
+
+function status(worktree: string): string {
+  return git(worktree, 'status', '--porcelain', '--untracked-files=all');
+}
+
+/**
+ * Leva os arquivos restauráveis ao código base, roda `fn` e restaura sempre. `restored` é
+ * falso quando o `git status` depois difere do de antes: o chamador não pode seguir.
+ */
+export function withBaseCode<T>(
+  worktree: string,
+  base: string,
+  restorable: string[],
+  fn: () => T,
+): { value?: T; restored: boolean; error?: string } {
+  const before = status(worktree);
+  let value: T | undefined;
+  let error: string | undefined;
+  try {
+    const inBase = restorable.filter((file) => tryGit(worktree, 'cat-file', '-e', `${base}:${file}`) !== undefined);
+    const created = restorable.filter((file) => !inBase.includes(file));
+    if (inBase.length > 0) git(worktree, 'checkout', base, '--', ...inBase);
+    for (const file of created) rmSync(join(worktree, file), { force: true });
+    value = fn();
+  } catch (caught) {
+    error = (caught as Error).message;
+  } finally {
+    try {
+      if (restorable.length > 0) {
+        git(worktree, 'reset', '-q', '--', ...restorable);
+        const inHead = restorable.filter((file) => tryGit(worktree, 'cat-file', '-e', `HEAD:${file}`) !== undefined);
+        if (inHead.length > 0) git(worktree, 'checkout', 'HEAD', '--', ...inHead);
+        for (const file of restorable.filter((f) => !inHead.includes(f))) rmSync(join(worktree, file), { force: true });
+        git(worktree, 'clean', '-fdq', '--', ...restorable);
+      }
+    } catch (caught) {
+      error ??= (caught as Error).message;
+    }
+  }
+  return { value, restored: status(worktree) === before, error };
+}
+
+function run(command: string, worktree: string, logPath: string): boolean {
+  const { code, output } = shell(command, worktree);
+  appendFileSync(logPath, `$ ${command}\n${output}\n[saída ${code}]\n\n`);
+  return code === 0;
+}
+
+export interface ProofInput {
+  worktree: string;
+  /** Commit base: `git merge-base HEAD <origem>`. */
+  base: string;
+  config: Pick<ProjectConfig, 'testeUnico' | 'arquivosDeTeste' | 'verify'>;
+  plan: PlanOutput;
+  execution: ExecuteOutput;
+  logDir: string;
+}
+
+/** Roda a prova no worktree do item. Não muda o estado do item; ver `proofVerdict`. */
+export function runProof(input: ProofInput): ProofResult {
+  const { worktree, base, config, plan, execution, logDir } = input;
+  mkdirSync(logDir, { recursive: true });
+  const restorable = restorableFiles(worktree, base, config.arquivosDeTeste);
+  const mode = config.testeUnico ? 'teste' : 'item';
+
+  const criteria: CriterionProof[] = plan.criterios
+    .filter((c) => c.verificacao === 'teste')
+    .map((criterion) => {
+      const declared = execution.criterios.find((c) => c.id === criterion.id)?.testes ?? [];
+      const tests: TestRun[] = foundTests(worktree, declared);
+      const proof: CriterionProof = { id: criterion.id, comportamento: criterion.comportamento, status: 'provado', tests };
+      if (!criterion.comportamento) return { ...proof, status: 'sem_prova', reason: 'plano sem comportamento declarado' };
+      const inCode = tests.find((t) => restorable.includes(t.arquivo));
+      if (inCode) return { ...proof, status: 'sem_prova', reason: `o teste mora no código alterado (\`${inCode.arquivo}\`)` };
+      return proof;
+    });
+  const pending = criteria.filter((c) => c.status === 'provado');
+  if (pending.length === 0) return { mode, criteria, restored: true };
+
+  if (config.testeUnico) {
+    const template = config.testeUnico;
+    const each = (side: 'item' | 'base') => {
+      for (const criterion of pending) {
+        const logPath = join(logDir, `${criterion.id}-${side}.log`);
+        for (const test of criterion.tests) test[side] = run(singleTestCommand(template, test), worktree, logPath);
+      }
+    };
+    each('item');
+    const result = withBaseCode(worktree, base, restorable, () => each('base'));
+    if (!result.restored || result.error) return { mode, criteria, restored: result.restored, error: result.error };
+    for (const criterion of pending) Object.assign(criterion, judge(criterion));
+    return { mode, criteria, restored: true };
+  }
+
+  // Pelo nome: `hasTestCommand` também casaria com `test -f arquivo`, que não é um runner.
+  const test = config.verify.find((c) => c.name === 'test') ?? config.verify.find((c) => /test/i.test(c.name));
+  if (!test) {
+    for (const criterion of pending) Object.assign(criterion, { status: 'sem_prova', reason: 'sem `testeUnico` nem comando de teste no `verify`' });
+    return { mode, criteria, restored: true };
+  }
+  const passedOnItem = run(test.command, worktree, join(logDir, 'item.log'));
+  const result = withBaseCode(worktree, base, restorable, () => run(test.command, worktree, join(logDir, 'base.log')));
+  if (!result.restored || result.error) return { mode, criteria, restored: result.restored, error: result.error };
+  const expectBaseToFail = pending.some((c) => c.comportamento === 'novo');
+  const gap = !passedOnItem
+    ? `o comando \`${test.command}\` falha no item`
+    : result.value === !expectBaseToFail
+      ? undefined
+      : expectBaseToFail
+        ? `o comando \`${test.command}\` já passava sem a mudança; os testes não protegem os critérios novos`
+        : `o comando \`${test.command}\` falha no código anterior; os testes não descrevem o comportamento mantido`;
+  for (const criterion of pending) Object.assign(criterion, gap ? { status: 'nao_provado', reason: gap } : {});
+  return { mode, criteria, restored: true };
+}
+
+/** Resultado de um critério a partir das execuções de cada teste, na base e no item. */
+function judge(criterion: CriterionProof): Pick<CriterionProof, 'status' | 'reason'> {
+  const failedOnItem = criterion.tests.find((t) => !t.item);
+  if (failedOnItem) {
+    return { status: 'nao_provado', reason: `o teste \`${failedOnItem.nome}\` falha no item (teste instável ou nome errado)` };
+  }
+  if (criterion.comportamento === 'novo') {
+    const passedOnBase = criterion.tests.find((t) => t.base);
+    if (passedOnBase) {
+      return {
+        status: 'nao_provado',
+        reason: `o teste \`${passedOnBase.nome}\` já passava sem a mudança; ele não protege o critério`,
+      };
+    }
+  } else {
+    const failedOnBase = criterion.tests.find((t) => !t.base);
+    if (failedOnBase) {
+      return {
+        status: 'nao_provado',
+        reason: `o teste \`${failedOnBase.nome}\` falha no código anterior; ele não descreve o comportamento mantido`,
+      };
+    }
+  }
+  return { status: 'provado' };
+}
+
+/** `provado`, `provado (por item)`, `nao_provado` ou `sem_prova`, como no relatório. */
+export function proofLabel(criterion: CriterionProof, mode: ProofResult['mode']): string {
+  return criterion.status === 'provado' && mode === 'item' ? 'provado (por item)' : criterion.status;
+}
+
+/** Uma entrada por critério: `C1 provado; C2 nao_provado: …`. */
+export function proofDetail(result: ProofResult): string {
+  return result.criteria
+    .map((c) => `${c.id} ${proofLabel(c, result.mode)}${c.reason ? `: ${c.reason}` : ''}`)
+    .join('; ');
+}

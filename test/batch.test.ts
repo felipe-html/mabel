@@ -134,7 +134,7 @@ test('item aprovado em planned executa no próximo run, também item a item', as
 test('quadro e mabel status mostram planned', () => {
   const q = queue([]);
   q.db.prepare("UPDATE items SET status = 'planned' WHERE number = 2").run();
-  const items = boardItems(q.db, q.project.id);
+  const items = boardItems(q.db, q.project);
   const board = renderBoard('app', items, [], new Date(2026, 9, 12, 9, 0));
   assert.match(board, /## Na fila\n- #1 A — ready\n- #2 B — planned\n- #3 C — ready/);
   assert.match(renderBoardSummary('app', items)[0] ?? '', /na fila 3 \(planned 1\)/);

@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { globsOverlap } from './glob.ts';
 import {
@@ -14,7 +14,7 @@ import {
 } from './items.ts';
 import { type CriticalRules, type Project, type ProjectConfig, readCriticalRules } from './project.ts';
 import { type RunHandle, type RunObserver, type RunOutcome, type RunStage, isUsageLimit } from './runner.ts';
-import type { Assumption, ExecuteOutput, PlanOutput, Question } from './schemas/stages.ts';
+import type { Assumption, ExecuteOutput, PlanOutput, Question, ReviewOutput } from './schemas/stages.ts';
 import {
   type StageContext,
   itemDir,
@@ -25,7 +25,11 @@ import {
   writeArtifact,
   writePlan,
 } from './stages.ts';
-import { commitAll, commitMessage, prepareWorktree, shell } from './worktree.ts';
+import { git, tryGit } from './git.ts';
+import { integrateItem, mergeInProgress, mergeOrigin, setIntegrated } from './integration.ts';
+import { foundTests, proofDetail, runProof } from './proof.ts';
+import { writeIntegrationReport } from './report.ts';
+import { commitAll, commitMessage, originBranch, prepareWorktree, removeWorktree, shell } from './worktree.ts';
 
 export interface PipelineEnv {
   db: DatabaseSync;
@@ -104,16 +108,7 @@ export function criteriaWithoutTests(plan: PlanOutput, execution: ExecuteOutput,
   for (const criterion of plan.criterios) {
     if (criterion.verificacao !== 'teste') continue;
     const declared = execution.criterios.find((c) => c.id === criterion.id)?.testes ?? [];
-    const found = declared.some((t) => {
-      const path = resolve(worktree, t.arquivo);
-      if (relative(worktree, path).startsWith('..') || !existsSync(path)) return false;
-      try {
-        return readFileSync(path, 'utf8').includes(t.nome);
-      } catch {
-        return false;
-      }
-    });
-    if (!found) {
+    if (foundTests(worktree, declared).length === 0) {
       missing.push(
         declared.length === 0
           ? `${criterion.id}: nenhum teste declarado`
@@ -122,6 +117,41 @@ export function criteriaWithoutTests(plan: PlanOutput, execution: ExecuteOutput,
     }
   }
   return missing;
+}
+
+// Veredito da revisão (G3) -------------------------------------------------------------
+
+export interface ReviewVerdict {
+  approved: boolean;
+  /** Motivos da reprovação ou critérios ignorados; `null` quando não há nada a registrar. */
+  detail: string | null;
+}
+
+/**
+ * Parecer calculado a partir dos critérios avaliados e dos problemas apontados: aprova só
+ * com todo critério do plano avaliado e atendido e nenhum problema bloqueante. Um
+ * `aprovado` gravado por pareceres antigos é ignorado.
+ */
+export function reviewVerdict(plan: PlanOutput, review: ReviewOutput): ReviewVerdict {
+  const planned = new Set(plan.criterios.map((c) => c.id));
+  const evaluated = new Set(review.criterios.map((c) => c.id));
+  const reasons = [
+    ...plan.criterios.filter((c) => !evaluated.has(c.id)).map((c) => `revisão não avaliou o critério ${c.id}`),
+    ...review.criterios
+      .filter((c) => planned.has(c.id) && !c.atendido)
+      .map((c) => `critério ${c.id} não atendido: ${c.evidencia}`),
+    ...review.problemas
+      .filter((p) => p.gravidade === 'bloqueante')
+      .map((p) => `bloqueante: ${p.descricao}${p.arquivo ? ` (${p.arquivo})` : ''}`),
+  ];
+  const unknown = review.criterios.filter((c) => !planned.has(c.id)).map((c) => c.id);
+  const ignored = unknown.length > 0 ? [`critérios fora do plano ignorados: ${unknown.join(', ')}`] : [];
+  const approved = reasons.length === 0;
+  const minor = approved
+    ? []
+    : review.problemas.filter((p) => p.gravidade === 'menor').map((p) => `menor: ${p.descricao}${p.arquivo ? ` (${p.arquivo})` : ''}`);
+  const detail = [...reasons, ...minor, ...ignored].join('; ');
+  return { approved, detail: detail || null };
 }
 
 // Autonomia ------------------------------------------------------------------------------
@@ -388,6 +418,10 @@ async function executeStep(env: PipelineEnv, item: Item): Promise<Step> {
   if (env.beforeAgentStage && !(await env.beforeAgentStage('execute', item))) return { kind: 'paused' };
 
   const next = item.nextInput ?? {};
+  const worktree = item.worktree as string;
+  const startHead = git(worktree, 'rev-parse', 'HEAD');
+  // Conflito com a integração: o Mabel refaz o merge e deixa os conflitos para o executor.
+  if (next.mergeOrigin && !mergeInProgress(worktree)) mergeOrigin(worktree, originBranch(env.project.config), false);
   const cycleAttempt = item.attempts + 1;
   const continuing = Boolean(next.interrupted || next.sameAttempt) && item.attemptNo > 0;
   const attemptNo = continuing ? item.attemptNo : item.attemptNo + 1;
@@ -445,7 +479,8 @@ async function executeStep(env: PipelineEnv, item: Item): Promise<Step> {
     );
   }
 
-  if (!commitAll(item.worktree as string, commitMessage(item, attemptNo))) {
+  const committed = commitAll(worktree, commitMessage(item, attemptNo));
+  if (!committed && git(worktree, 'rev-parse', 'HEAD') === startHead) {
     recordGate(env.db, item.id, attemptNo, 'changes', false, 'execução sem nenhuma alteração');
     return attemptFailed(env, item, cycleAttempt, 'A execução não alterou nenhum arquivo.');
   }
@@ -463,6 +498,15 @@ function verifyStep(env: PipelineEnv, item: Item): Step {
     return { kind: 'stopped', status: 'failed' };
   }
   const worktree = item.worktree as string;
+  // A origem andou desde o início do item: o que entra na integração é o que foi verificado.
+  if (env.project.config.integracao) {
+    const conflicts = mergeOrigin(worktree, originBranch(env.project.config));
+    if (conflicts) {
+      const reason = `conflito com a ${originBranch(env.project.config)} em: ${conflicts.join(', ')}`;
+      recordGate(env.db, item.id, attemptNo, 'integration', false, reason);
+      return stopForHuman(env, item, 'integration_conflict', { files: conflicts, reason }, reason);
+    }
+  }
   const logDir = join(itemDir(env.home, item.id), `verificacao-${attemptNo}`);
   mkdirSync(logDir, { recursive: true });
 
@@ -486,6 +530,36 @@ function verifyStep(env: PipelineEnv, item: Item): Step {
   recordGate(env.db, item.id, attemptNo, 'criteria_tests', missing.length === 0, missing.join('; ') || null);
   if (missing.length > 0) {
     return attemptFailed(env, item, item.attempts, `Critérios sem teste encontrado:\n${missing.map((m) => `- ${m}`).join('\n')}`);
+  }
+  return proofStep(env, item, plan, execution);
+}
+
+/**
+ * Prova mecânica (G3): cada teste de critério roda no item e no código base. Lacuna volta à
+ * execução; critério sem prova segue para o relatório; worktree não restaurado vai a `failed`.
+ */
+function proofStep(env: PipelineEnv, item: Item, plan: PlanOutput, execution: ExecuteOutput): Step {
+  const attemptNo = item.attemptNo;
+  const worktree = item.worktree as string;
+  const logDir = join(itemDir(env.home, item.id), `prova-${attemptNo}`);
+  const base = git(worktree, 'merge-base', 'HEAD', originBranch(env.project.config));
+  const result = runProof({ worktree, base, config: env.project.config, plan, execution, logDir });
+  writeArtifact(env.home, item.id, `prova-${attemptNo}.json`, result);
+  if (!result.restored || result.error) {
+    const reason = result.restored ? `prova interrompida: ${result.error}` : 'worktree não restaurado após a prova';
+    recordGate(env.db, item.id, attemptNo, 'proof', false, reason, logDir);
+    move(env, item, 'failed', reason);
+    return { kind: 'stopped', status: 'failed' };
+  }
+  const gaps = result.criteria.filter((c) => c.status === 'nao_provado');
+  recordGate(env.db, item.id, attemptNo, 'proof', gaps.length === 0, proofDetail(result) || null, logDir);
+  if (gaps.length > 0) {
+    return attemptFailed(
+      env,
+      item,
+      item.attempts,
+      `A prova reprovou testes que não protegem os critérios:\n${gaps.map((c) => `- ${c.id}: ${c.reason}`).join('\n')}`,
+    );
   }
   move(env, item, 'reviewing', `verificação ${attemptNo} aprovada`);
   return undefined;
@@ -526,21 +600,33 @@ async function reviewStep(env: PipelineEnv, item: Item): Promise<Step> {
     recordGate(env.db, item.id, attemptNo, 'review', false, result.invalid ?? 'saída ausente');
     return attemptFailed(env, item, item.attempts, `A revisão não produziu um parecer válido: ${result.invalid}`);
   }
-  const review = result.output;
-  const blocking = review.problemas.filter((p) => p.gravidade === 'bloqueante');
-  const approved = review.aprovado && blocking.length === 0;
-  const unmet = review.criterios.filter((c) => !c.atendido);
-  const detail = approved
-    ? null
-    : [
-        ...unmet.map((c) => `critério ${c.id} não atendido: ${c.evidencia}`),
-        ...review.problemas.map((p) => `${p.gravidade}: ${p.descricao}${p.arquivo ? ` (${p.arquivo})` : ''}`),
-      ].join('; ') || 'revisão não aprovada';
+  const { approved, detail } = reviewVerdict(plan, result.output);
   recordGate(env.db, item.id, attemptNo, 'review', approved, detail);
   if (!approved) {
     return attemptFailed(env, item, item.attempts, `A revisão reprovou a tentativa:\n${detail}`);
   }
+  if (env.project.config.integracao) return integrateStep(env, item, mergeNotes(plan, execution), result.outcome.runId);
   move(env, item, 'awaiting_merge', mergeNotes(plan, execution), result.outcome.runId);
+  // A branch guarda tudo; um retrabalho recria o worktree a partir dela.
+  removeWorktree(env.db, env.project, item);
+  return { kind: 'stopped', status: 'awaiting_merge' };
+}
+
+/** Item aprovado entra na integração (G10); worktree e branch do item são apagados. */
+function integrateStep(env: PipelineEnv, item: Item, notes: string | null, runId: string): Step {
+  const integrated = integrateItem(env.project, item);
+  if ('error' in integrated) {
+    recordGate(env.db, item.id, item.attemptNo, 'integration', false, integrated.error);
+    move(env, item, 'failed', integrated.error, runId);
+    return { kind: 'stopped', status: 'failed' };
+  }
+  setIntegrated(env.db, item, integrated.commit);
+  recordGate(env.db, item.id, item.attemptNo, 'integration', true, integrated.commit);
+  move(env, item, 'awaiting_merge', notes, runId);
+  const branch = item.branch;
+  removeWorktree(env.db, env.project, item);
+  if (branch) tryGit(env.project.root, 'branch', '-D', branch);
+  writeIntegrationReport(env.db, env.home, env.project);
   return { kind: 'stopped', status: 'awaiting_merge' };
 }
 
