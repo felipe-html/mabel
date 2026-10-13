@@ -21,6 +21,7 @@ import {
 } from './decide.ts';
 import { inboxCommand, inboxUsage } from './inbox.ts';
 import { init, initUsage } from './init.ts';
+import { projectCommand, projectUsage, projectsCommand, projectsUsage } from './projects.ts';
 import { run, runUsage } from './run.ts';
 import { status } from './status.ts';
 
@@ -115,6 +116,18 @@ export const commands: Command[] = [
     description: 'Responde às decisões que aguardam você, uma por vez',
     usage: inboxUsage,
     run: inboxCommand,
+  },
+  {
+    name: 'projetos',
+    description: 'Lista os projetos registrados: itens, runs, custo e última atividade',
+    usage: projectsUsage,
+    run: projectsCommand,
+  },
+  {
+    name: 'projeto',
+    description: 'Auditoria de um projeto; `remover` apaga os dados dele no Mabel',
+    usage: projectUsage,
+    run: projectCommand,
   },
   {
     name: 'completion',

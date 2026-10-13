@@ -4,7 +4,7 @@ import { latestReadings, renderBalanceHeader } from './balance.ts';
 import { renderBoardSummary } from './board.ts';
 import { dataDir, openDb } from './db.ts';
 import { summaryLine } from './exec.ts';
-import { formatCost, truncate } from './format.ts';
+import { formatCost, formatWhen, truncate } from './format.ts';
 import { boardItems, syncBacklog } from './items.ts';
 import { ProjectError, resolveProject } from './project.ts';
 import { type RunOutcome, type RunRequest, startRun } from './runner.ts';
@@ -54,16 +54,11 @@ const STATUS_MARKS: Record<string, string> = {
   running: '▸',
 };
 
-function two(n: number): string {
-  return String(n).padStart(2, '0');
-}
-
 /** Lista compacta de runs, uma por linha, com início no fuso local. */
 export function renderRecentRuns(runs: RecentRun[]): string[] {
   if (runs.length === 0) return ['  nenhuma run registrada'];
   return runs.map((run) => {
-    const start = new Date(run.started_at);
-    const when = `${two(start.getDate())}/${two(start.getMonth() + 1)} ${two(start.getHours())}:${two(start.getMinutes())}`;
+    const when = formatWhen(run.started_at);
     const model = (run.model ?? run.model_requested ?? '?').padEnd(18);
     const cost = (run.cost_usd === null ? '' : formatCost(run.cost_usd)).padEnd(11);
     const prompt = truncate(run.prompt.replace(/\s+/g, ' '), 48);

@@ -36,3 +36,14 @@ export function acquireLock(home: string, projectId: string): () => void {
   }
   throw new LockError(`Não foi possível obter a trava ${path}.`);
 }
+
+/** Pid do `mabel run` que segura a trava do projeto, se ele ainda estiver vivo. */
+export function lockHolder(home: string, projectId: string): number | undefined {
+  let pid: number;
+  try {
+    pid = Number(readFileSync(lockPath(home, projectId), 'utf8').trim());
+  } catch {
+    return undefined;
+  }
+  return Number.isInteger(pid) && pid > 0 && processAlive(pid) ? pid : undefined;
+}
