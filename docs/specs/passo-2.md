@@ -238,8 +238,8 @@ Cabeçalho exibido acima do menu interativo e no `mabel status`:
 
 ### Critérios de aceite
 
-- [ ] Prefixo ambíguo lista as candidatas e encerra com erro.
-- [ ] Saída fora de TTY é texto simples, estável para testes.
+- [x] Prefixo ambíguo lista as candidatas e encerra com erro.
+- [x] Saída fora de TTY é texto simples, estável para testes.
 
 ## Incremento 2.4 — Substituído
 

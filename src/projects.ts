@@ -13,6 +13,7 @@ import { select } from './menu.ts';
 import { autonomousDecisions, escalate } from './pipeline.ts';
 import { isAncestor } from './integration.ts';
 import { DEFAULT_INTEGRATION, ProjectError, readConfig } from './project.ts';
+import { type QueueEvent, type QueueEventCause, listQueueEvents } from './run.ts';
 import { itemDir } from './stages.ts';
 import { style } from './style.ts';
 
@@ -37,6 +38,7 @@ export const tableScope: Record<string, TableScope> = {
   item_transitions: { scope: 'project', where: `item_id IN (${PROJECT_ITEMS})` },
   runs: { scope: 'project', where: `item_id IN (${PROJECT_ITEMS})` },
   items: { scope: 'project', where: 'project_id = ?' },
+  queue_events: { scope: 'project', where: 'project_id = ?' },
   projects: { scope: 'project', where: 'id = ?' },
   removals: { scope: 'global' },
 };
@@ -145,7 +147,7 @@ export function findProject(db: DatabaseSync, query: string): ProjectRow {
 }
 
 /** Caminho com `~` no lugar da pasta pessoal, para as tabelas. */
-function displayPath(path: string): string {
+export function displayPath(path: string): string {
   const home = homedir();
   return path === home || path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
 }
@@ -155,7 +157,7 @@ function statesText(project: ProjectRow): string {
   return project.states.map((state) => `${state.count} ${state.status}`).join(' · ');
 }
 
-function table(header: string[], rows: string[][]): string[] {
+export function table(header: string[], rows: string[][]): string[] {
   const widths = header.map((title, i) => Math.max(title.length, ...rows.map((row) => (row[i] ?? '').length)));
   const line = (cells: string[]) => `  ${cells.map((cell, i) => cell.padEnd(widths[i] ?? 0)).join('  ').trimEnd()}`;
   return [style.dim(line(header)), ...rows.map(line)];
@@ -276,6 +278,12 @@ export function renderProjectDetail(db: DatabaseSync, project: ProjectRow): stri
     for (const { number, decision } of autonomous) lines.push(`  #${number} ${oneLine(decision, 120)} (autônomo)`);
   }
 
+  const events = listQueueEvents(db, project.id);
+  if (events.length > 0) {
+    lines.push('', style.bold('Pausas da fila e decisões de saldo'));
+    for (const event of events) lines.push(`  ${formatWhen(event.at.toISOString())}  ${queueEventText(event)}`);
+  }
+
   const transitions = db
     .prepare(
       `SELECT i.number, t.from_state, t.to_state, t.reason, t.at FROM item_transitions t JOIN items i ON i.id = t.item_id
@@ -290,6 +298,27 @@ export function renderProjectDetail(db: DatabaseSync, project: ProjectRow): stri
     }
   }
   return lines;
+}
+
+const CAUSE_LABELS: Record<QueueEventCause, string> = {
+  five_hour: 'saldo de 5h',
+  seven_day: 'saldo de 7 dias',
+  pace: 'ritmo de 7 dias',
+  no_reading: 'sem leitura de saldo',
+  usage_limit: 'saldo esgotado',
+  integration: 'integração',
+  context: 'contexto do projeto',
+};
+
+/** `pausa · saldo de 7 dias — …`, `espera até 14/10 18:00 · …`, `você: continuar · …`. */
+function queueEventText(event: QueueEvent): string {
+  const head =
+    event.kind === 'pause'
+      ? 'pausa'
+      : event.kind === 'wait'
+        ? `espera${event.until ? ` até ${formatWhen(event.until.toISOString())}` : ''}`
+        : `você: ${event.approved ? 'continuar' : 'não continuar'}`;
+  return `${head} · ${CAUSE_LABELS[event.cause]} — ${oneLine(event.detail, 100)}`;
 }
 
 /** Runs de etapa em que o modelo pedido subiu um degrau em relação à run anterior da mesma etapa. */

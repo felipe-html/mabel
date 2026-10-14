@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { git, tryGit } from '../src/git.ts';
 import { getItem, listItems, syncBacklog, transition } from '../src/items.ts';
 import { lockPath } from '../src/lock.ts';
 import { writeConfig } from '../src/project.ts';
-import { type Clock, startQueue } from '../src/run.ts';
+import { type Clock, listQueueEvents, startQueue } from '../src/run.ts';
 import { deleteBranch, prepareWorktree, worktreePath } from '../src/worktree.ts';
 import { CLI, EXECUTION, EXECUTION_FILES, PLAN, REVIEW_OK, setupProject, useScenario } from './helpers.ts';
 
@@ -33,7 +33,10 @@ function queueProject(backlog: string, responses: unknown[]) {
     const result = spawnSync('git', ['merge', '-q', '--no-edit', branch], { cwd: ctx.root, encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr);
   };
-  return { ...ctx, states, calls, merge };
+  /** Eventos da fila sem o horário: `[tipo, causa, aprovado?]`. */
+  const events = () =>
+    listQueueEvents(ctx.db, ctx.project.id).map((e) => (e.approved === undefined ? [e.kind, e.cause] : [e.kind, e.cause, e.approved]));
+  return { ...ctx, states, calls, merge, events };
 }
 
 test('fila de três itens: dois em awaiting_merge, um em needs_human; responder e novo run concluem', () => {
@@ -181,6 +184,59 @@ test('saldo de 5h abaixo de 30% fora do TTY espera o reset e retoma sozinho', as
   assert.ok(now - start >= 30 * 60_000, 'esperou o reset');
   const probes = q.db.prepare("SELECT count(*) AS n FROM runs WHERE kind = 'probe'").get() as { n: number };
   assert.equal(probes.n, 1);
+  assert.deepEqual(q.events(), [['wait', 'five_hour']]);
+  const [wait] = listQueueEvents(q.db, q.project.id);
+  assert.equal(wait?.until?.getTime(), start + 30 * 60_000);
+  assert.match(wait?.detail ?? '', /janela de 5h em 20% \(abaixo de 30%\)/);
+});
+
+test('respostas às perguntas de saldo ficam gravadas: recusa espera, autorização segue', async () => {
+  const q = queueProject('\n## A\nprimeiro\n', [PLAN_OK, EXEC, REVIEW]);
+  syncBacklog(q.db, q.project);
+  let now = Date.now() - 2 * 3600_000;
+  const clock: Clock = {
+    now: () => new Date(now),
+    sleep: async (ms) => {
+      now += ms;
+    },
+  };
+  const insert = q.db.prepare(
+    'INSERT INTO rate_limits (observed_at, window, utilization, resets_at, status) VALUES (?, ?, ?, ?, ?)',
+  );
+  insert.run(new Date(now).toISOString(), 'five_hour', 0.8, new Date(now + 30 * 60_000).toISOString(), 'allowed');
+  insert.run(new Date(now).toISOString(), 'seven_day', 0.1, new Date(now + 5 * 86400_000).toISOString(), 'allowed');
+  const answers = [false];
+  const result = await startQueue({
+    db: q.db,
+    home: q.home,
+    project: q.project,
+    clock,
+    interactive: true,
+    notify: () => {},
+    confirm: async () => answers.shift() ?? assert.fail('pergunta a mais'),
+  }).done;
+  assert.equal(result.end, 'empty');
+  assert.deepEqual(q.events(), [['answer', 'five_hour', false], ['wait', 'five_hour']]);
+  assert.match(listQueueEvents(q.db, q.project.id)[0]?.detail ?? '', /saldo de 5h em 20%; continuar mesmo assim\?/);
+
+  const yes = queueProject('\n## A\nprimeiro\n', [PLAN_OK]);
+  syncBacklog(yes.db, yes.project);
+  const at = Date.now();
+  const add = yes.db.prepare(
+    'INSERT INTO rate_limits (observed_at, window, utilization, resets_at, status) VALUES (?, ?, ?, ?, ?)',
+  );
+  add.run(new Date(at).toISOString(), 'five_hour', 0.1, new Date(at + 3600_000).toISOString(), 'allowed');
+  add.run(new Date(at).toISOString(), 'seven_day', 0.85, new Date(at + 86400_000).toISOString(), 'allowed');
+  await startQueue({
+    db: yes.db,
+    home: yes.home,
+    project: yes.project,
+    interactive: true,
+    once: true,
+    notify: () => {},
+    confirm: async () => true,
+  }).done;
+  assert.deepEqual(yes.events(), [['answer', 'seven_day', true]]);
 });
 
 test('janela de 7 dias acima do ritmo fora do TTY espera o ritmo alcançar e retoma sozinha', async () => {
@@ -206,6 +262,7 @@ test('janela de 7 dias acima do ritmo fora do TTY espera o ritmo alcançar e ret
   assert.equal(result.end, 'empty');
   assert.deepEqual([...result.finalStates], [[1, 'awaiting_merge']]);
   assert.ok(now - start >= 1.1 * 86400_000 - 1000, 'esperou o ritmo');
+  assert.deepEqual(q.events(), [['wait', 'pace']]);
 });
 
 test('saldo de 7 dias abaixo de 30% fora do TTY pausa a fila com o motivo', async () => {
@@ -221,6 +278,20 @@ test('saldo de 7 dias abaixo de 30% fora do TTY pausa a fila com o motivo', asyn
   assert.equal(result.end, 'paused');
   assert.match(result.message ?? '', /janela de 7 dias em 15%/);
   assert.deepEqual(q.states(), [[1, 'planning']]);
+  assert.deepEqual(q.events(), [['pause', 'seven_day']]);
+  assert.match(listQueueEvents(q.db, q.project.id)[0]?.detail ?? '', /fila pausada até sua decisão \(abaixo de 30%\)/);
+});
+
+test('contexto acima do orçamento pausa a fila e a pausa fica gravada', async () => {
+  const q = queueProject('\n## A\nprimeiro\n', [PLAN_OK]);
+  writeFileSync(join(q.root, 'CLAUDE.md'), 'x'.repeat(41_000));
+  git(q.root, 'add', 'CLAUDE.md');
+  git(q.root, 'commit', '-q', '-m', 'contexto grande');
+  syncBacklog(q.db, q.project);
+  const result = await startQueue({ db: q.db, home: q.home, project: q.project, interactive: false }).done;
+  assert.equal(result.end, 'paused');
+  assert.deepEqual(q.events(), [['pause', 'context']]);
+  assert.equal(listQueueEvents(q.db, q.project.id)[0]?.detail, result.message);
 });
 
 test('aprovar e cancelar pela linha de comando', () => {

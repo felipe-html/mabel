@@ -36,6 +36,8 @@ lista os candidatos e encerra com erro.
 - Custo e runs por etapa e por modelo.
 - Itens: número, título, estado, tentativas, custo.
 - Gates reprovados, escalonamentos de modelo e decisões autônomas (`(autônomo)`).
+- Pausas da fila e decisões de saldo (últimas 20, tabela `queue_events`): pausas, esperas
+  que retomam sozinhas e respostas do humano às perguntas da política de saldo.
 - Últimas 20 transições de estado.
 
 ### `mabel projeto remover <nome>`
@@ -44,7 +46,7 @@ lista os candidatos e encerra com erro.
 mabel projeto remover ferias-planner
   ferias-planner · /Users/felipe/Pessoal/ferias-planner
   3 itens · 18 runs · US$ 4,65
-  banco: items, item_transitions, gate_results, runs, events, tool_calls, rate_limits
+  banco: items, item_transitions, gate_results, runs, events, tool_calls, rate_limits, queue_events
   disco: runs/ (18), items/ (3), worktrees/c70d928b…, locks/
 
   Digite o nome do projeto para confirmar: ferias-planner

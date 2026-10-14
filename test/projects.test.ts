@@ -59,6 +59,9 @@ function seedItem(db: DatabaseSync, home: string, projectId: string, number: num
   db.prepare(
     "INSERT INTO item_transitions (item_id, from_state, to_state, reason, run_id, at) VALUES (?, 'planned', 'executing', 'início', ?, ?)",
   ).run(itemId, runIds[0] ?? null, now());
+  db.prepare(
+    "INSERT INTO queue_events (project_id, at, kind, cause, detail, until) VALUES (?, ?, 'wait', 'five_hour', 'saldo da janela de 5h em 20% (abaixo de 30%)', ?)",
+  ).run(projectId, now(), now());
   for (const id of runIds) mkdirSync(runDir(home, id), { recursive: true });
   mkdirSync(itemDir(home, itemId), { recursive: true });
   return { itemId, runIds };
@@ -122,13 +125,14 @@ test('projetos e projeto mostram texto simples fora do TTY', () => {
 
   const detail = cli('projeto', a.project.name);
   assert.equal(detail.status, 0, detail.stderr);
-  for (const section of ['Totais', 'Por etapa', 'Por modelo', 'Itens', 'Gates reprovados', 'Escalonamentos de modelo', 'Últimas transições']) {
+  for (const section of ['Totais', 'Por etapa', 'Por modelo', 'Itens', 'Gates reprovados', 'Escalonamentos de modelo', 'Pausas da fila e decisões de saldo', 'Últimas transições']) {
     assert.match(detail.stdout, new RegExp(section));
   }
   assert.match(detail.stdout, /4 runs · US\$ 2,00/);
   assert.match(detail.stdout, /entrada 400 · saída 200 · cache 4,0k/);
   assert.match(detail.stdout, /#11 execute: sonnet → opus/);
   assert.match(detail.stdout, /#12 tentativa 1 · verify — teste falhou/);
+  assert.match(detail.stdout, /espera até \d\d\/\d\d \d\d:\d\d · saldo de 5h — saldo da janela de 5h em 20% \(abaixo de 30%\)/);
 
   const byPrefix = cli('projeto', a.project.id.slice(0, 6));
   assert.equal(byPrefix.status, 0);
@@ -162,7 +166,7 @@ test('remoção apaga só o projeto e preserva o outro e as runs sem item', () =
   const summary = cli('projeto', 'remover', name);
   assert.equal(summary.status, 1);
   assert.match(summary.stdout, /2 itens · 4 runs · US\$ 2,00/);
-  assert.match(summary.stdout, /banco: events, tool_calls, rate_limits, gate_results, item_transitions, runs, items, projects/);
+  assert.match(summary.stdout, /banco: events, tool_calls, rate_limits, gate_results, item_transitions, runs, items, queue_events, projects/);
   assert.match(summary.stdout, /disco: runs\/ \(4\), items\/ \(2\), worktrees\/.{8}…, locks\//);
   assert.match(summary.stdout, /aviso: 1 item integrado \(#12\) ainda não chegou a main; o trabalho só existe na branch mabel\/integracao/);
   assert.match(summary.stderr, /--confirmar/);

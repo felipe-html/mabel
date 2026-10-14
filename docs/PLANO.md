@@ -63,11 +63,11 @@ achados do teste orientam a especificação dos passos seguintes.
 - [x] Saldo eficiente e sempre visível (`docs/specs/saldo.md`): leitura antiga (30 min),
       consumo medido por etapa, projeção contra piso de 10%, ritmo da janela de 7 dias e
       rodapé fixo. Muda a política de saldo do contrato (autorizado).
-- [ ] **Próxima tarefa.** Gravar no banco as pausas da fila (saldo de 7 dias, falta de leitura) e as respostas
+- [x] Gravar no banco as pausas da fila (saldo de 7 dias, falta de leitura) e as respostas
       do humano às perguntas da política de saldo. Hoje só aparecem na saída (auditoria).
 - [ ] Gate de escopo depois da execução: arquivos alterados no commit do item conferidos
       contra o escopo do plano (fecha a escrita fora do escopo pelo terminal, dentro do worktree).
-- [ ] 2.3 `mabel runs` com lista e detalhe da run (`docs/specs/passo-2.md`).
+- [x] 2.3 `mabel runs` com lista e detalhe da run (`docs/specs/passo-2.md`).
 - [x] Gestão de projetos no banco (`docs/specs/projetos.md`): `mabel projetos`, auditoria
       por projeto e `mabel projeto remover`.
 - [x] Passo 5 — Travas (`docs/specs/passo-5.md`):
@@ -133,3 +133,7 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-13 | 5.4: contrato com os mecanismos novos de G4 (hook de escopo, `--restricted`, sandbox com `.git` fechado e rede da stack, `--disallowedTools`) e G8 (flags herméticas, contexto injetado com orçamento, conferência do `init`), e caminhos críticos "impostos pelo hook de escopo"; o texto das garantias não mudou. `scripts/setup.sh` confere as flags do Claude Code e o sandbox do sistema. README sem o aviso de projeto descartável e com a seção "Travas". `BACKLOG.md`: saem `--tools` e "medir o efeito" do contexto hermético; entram o revisor diante de critério `mantido` de comando e a escrita fora do escopo pelo terminal (dentro do worktree). Passo 5 concluído. |
 | 2026-10-13 | Próxima tarefa, a pedido do usuário: gravar no banco as pausas da fila e as respostas do humano às perguntas da política de saldo (primeiro item não marcado de "Depois do teste"). |
 | 2026-10-13 | Decisões do usuário sobre as pontas do passo 5: mantidos a pausa da fila por contexto acima do orçamento, as regras críticas só no prompt de sistema, a `rede` gravada pelo `init`, os caches de pacotes graváveis no sandbox (cache próprio só se aparecer problema), a lista fixa de agentes internos (falha fechada) e as negações por run; o gate de escopo depois da execução entra no plano logo depois das pausas da fila; o revisor diante de critério `mantido` de comando segue no `BACKLOG.md`. |
+| 2026-10-14 | Pausas da fila no banco: tabela `queue_events` (projeto, horário, tipo, causa, detalhe, retomada prevista, resposta). O `run` grava as pausas (saldo de 7 dias, sem leitura depois da chamada mínima), as esperas que retomam sozinhas (reset de 5h, ritmo de 7 dias) e as respostas do humano às perguntas de saldo; `mabel projeto <nome>` mostra as 20 últimas. Tabela classificada como `project` para a remoção. Desvio: entram também a pausa pela integração aberta ou em conflito (P.4) e a espera por saldo esgotado no meio da etapa, que são pausas da fila do mesmo tipo. |
+| 2026-10-14 | Decisões do usuário sobre as pausas da fila: mantidas a pausa pela integração e a espera por saldo esgotado na auditoria; o fim da espera não é gravado (o ctrl+c já aparece nas runs e nas transições). |
+| 2026-10-14 | Incremento 2.3: `mabel runs [--limite <n>]` (tabela com total de custo; menu no TTY) e `mabel runs <id>` (prefixo único; ambíguo lista as candidatas e falha) com resumo, ferramentas com início relativo, alvo, duração e erro, e os caminhos do `stream.jsonl` e do transcript. Desvios: coluna `id` (8 caracteres) para abrir o detalhe; o tipo das runs de etapa mostra etapa e item (`plan #3`) e o detalhe traz o título e o projeto; a lista cobre as runs de todos os projetos e as sem item, sem filtro por projeto. Verificado num pseudo-terminal. |
+| 2026-10-14 | Merge da main (passo 5) na branch das pausas: a migração de `queue_events` vai depois da de `runs.denials`, e a pausa por contexto acima do orçamento (5.1) também é gravada em `queue_events` (causa `context`). |
