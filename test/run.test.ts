@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { git, tryGit } from '../src/git.ts';
@@ -280,6 +280,18 @@ test('saldo de 7 dias abaixo de 30% fora do TTY pausa a fila com o motivo', asyn
   assert.deepEqual(q.states(), [[1, 'planning']]);
   assert.deepEqual(q.events(), [['pause', 'seven_day']]);
   assert.match(listQueueEvents(q.db, q.project.id)[0]?.detail ?? '', /fila pausada até sua decisão \(abaixo de 30%\)/);
+});
+
+test('contexto acima do orçamento pausa a fila e a pausa fica gravada', async () => {
+  const q = queueProject('\n## A\nprimeiro\n', [PLAN_OK]);
+  writeFileSync(join(q.root, 'CLAUDE.md'), 'x'.repeat(41_000));
+  git(q.root, 'add', 'CLAUDE.md');
+  git(q.root, 'commit', '-q', '-m', 'contexto grande');
+  syncBacklog(q.db, q.project);
+  const result = await startQueue({ db: q.db, home: q.home, project: q.project, interactive: false }).done;
+  assert.equal(result.end, 'paused');
+  assert.deepEqual(q.events(), [['pause', 'context']]);
+  assert.equal(listQueueEvents(q.db, q.project.id)[0]?.detail, result.message);
 });
 
 test('aprovar e cancelar pela linha de comando', () => {

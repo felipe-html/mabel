@@ -103,6 +103,8 @@ export interface NextInput {
   sameAttempt?: boolean;
   /** Antes da execução, o Mabel faz o merge da origem e deixa os conflitos para o executor. */
   mergeOrigin?: boolean;
+  /** Globs acrescentados ao escopo a pedido da execução; a mesma sessão retoma para concluir. */
+  scopeExtended?: string[];
 }
 
 interface ItemRow {

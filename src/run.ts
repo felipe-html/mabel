@@ -22,6 +22,7 @@ import { LockError, acquireLock } from './lock.ts';
 import { type AdvanceResult, advanceItem, autonomousDecisions } from './pipeline.ts';
 import { type Project, ProjectError, mabelCommitted, resolveProject } from './project.ts';
 import { type RunHandle, type RunStage, startRun } from './runner.ts';
+import { sandboxUnavailable } from './sandbox.ts';
 import { probeRequest } from './status.ts';
 import { style } from './style.ts';
 import { deleteBranch, isMerged, removeOrphanWorktrees, removeWorktree } from './worktree.ts';
@@ -89,7 +90,7 @@ export interface QueueResult {
  * da política de saldo (`approved`: seguir mesmo assim).
  */
 export type QueueEventKind = 'pause' | 'wait' | 'answer';
-export type QueueEventCause = 'five_hour' | 'seven_day' | 'pace' | 'no_reading' | 'usage_limit' | 'integration';
+export type QueueEventCause = 'five_hour' | 'seven_day' | 'pace' | 'no_reading' | 'usage_limit' | 'integration' | 'context';
 
 export interface QueueEvent {
   at: Date;
@@ -401,7 +402,11 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
       finalStates.set(target.number, getItemById(db, target.id).status);
 
       if (result.kind === 'interrupted') return { end: 'interrupted' };
-      if (result.kind === 'paused') return { end: abort.signal.aborted ? 'interrupted' : 'paused', message: pauseReason };
+      if (result.kind === 'paused') {
+        // A pausa do pipeline (contexto acima do orçamento); as do saldo já foram gravadas.
+        if (result.reason && !abort.signal.aborted) record({ kind: 'pause', cause: 'context', detail: result.reason });
+        return { end: abort.signal.aborted ? 'interrupted' : 'paused', message: result.reason ?? pauseReason };
+      }
       if (result.kind === 'usage_limit') {
         await waitForReset();
         continue;
@@ -492,6 +497,20 @@ export async function run(args: string[]): Promise<number> {
           'Rode `mabel init` para commitar, ou `git add .mabel && git commit -m "mabel init" -- .mabel`.\n',
       );
       return 1;
+    }
+    if (project.config.sandbox) {
+      const unavailable = sandboxUnavailable();
+      if (unavailable) {
+        process.stderr.write(
+          `Sandbox indisponível: ${unavailable}. O Mabel não roda etapas sem ele.\n` +
+            'Instale o que falta ou, por sua conta, ponha "sandbox": false no .mabel/config.json.\n',
+        );
+        return 1;
+      }
+    } else {
+      process.stdout.write(
+        `${style.bold('Aviso:')} "sandbox": false no .mabel/config.json; o terminal do agente roda sem confinamento nem filtro de rede.\n`,
+      );
     }
     release = acquireLock(home, project.id);
     const interactive = isInteractive();

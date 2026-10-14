@@ -9,6 +9,7 @@ import { git } from './git.ts';
 import {
   CRITICAL_RULES_TEMPLATE,
   DEFAULT_LIMITS,
+  DEFAULT_CONTEXT_BUDGET,
   DEFAULT_INTEGRATION,
   DEFAULT_MODELS,
   DEFAULT_TEST_GLOBS,
@@ -251,6 +252,9 @@ export async function init(args: string[]): Promise<number> {
       testeUnico: stack?.proof(root, empty).testeUnico ?? null,
       arquivosDeTeste: stack?.proof(root, empty).arquivosDeTeste ?? [...DEFAULT_TEST_GLOBS],
       integracao: DEFAULT_INTEGRATION,
+      contexto: { maxCaracteres: DEFAULT_CONTEXT_BUDGET },
+      rede: [...new Set([...(stack ? [stack] : []), ...detected.stacks].flatMap((found) => found.rede))],
+      sandbox: true,
     };
 
     let backlog = BACKLOG_TEMPLATE;

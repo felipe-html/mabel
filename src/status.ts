@@ -13,7 +13,7 @@ import { paint, style } from './style.ts';
 export const PROBE_PROMPT = 'Responda apenas: ok';
 
 export function probeRequest(home: string): RunRequest {
-  return { kind: 'probe', prompt: PROBE_PROMPT, cwd: home, model: 'haiku', maxTurns: 1 };
+  return { kind: 'probe', prompt: PROBE_PROMPT, cwd: home, model: 'haiku', maxTurns: 1, tools: [] };
 }
 
 /** Run mínima para obter uma leitura de saldo nova. Auditada como qualquer run. */

@@ -307,6 +307,7 @@ const CAUSE_LABELS: Record<QueueEventCause, string> = {
   no_reading: 'sem leitura de saldo',
   usage_limit: 'saldo esgotado',
   integration: 'integração',
+  context: 'contexto do projeto',
 };
 
 /** `pausa · saldo de 7 dias — …`, `espera até 14/10 18:00 · …`, `você: continuar · …`. */

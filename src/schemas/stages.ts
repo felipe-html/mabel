@@ -58,11 +58,19 @@ export interface PlanOutput {
   perguntas: Question[];
 }
 
+/** Caminho fora do escopo do plano que a execução precisou alterar, com o motivo. */
+export interface ScopeRequest {
+  glob: string;
+  motivo: string;
+}
+
 export interface ExecuteOutput {
   resumo: string;
   criterios: { id: string; testes: { arquivo: string; nome: string }[] }[];
   suposicoes: Assumption[];
   perguntas: Question[];
+  /** Obrigatório no esquema; execuções anteriores ao 5.3 não têm o campo. */
+  escopoAdicional?: ScopeRequest[];
 }
 
 /** O parecer não declara aprovação: o Mabel a calcula (`reviewVerdict`). */
@@ -97,6 +105,7 @@ export const executeSchema: Schema = object({
   },
   suposicoes: assumptions,
   perguntas: questions,
+  escopoAdicional: { type: 'array', items: object({ glob: str, motivo: str }) },
 });
 
 export const reviewSchema: Schema = object({

@@ -30,24 +30,27 @@ test('cada etapa monta ferramentas, modo, modelo, limites, esquema e sessão', (
   const stage = stageContext();
   const plan = stageRequest(stage, 'plan', 'p');
   assert.deepEqual(
-    { ...plan, appendSystemPrompt: undefined, jsonSchema: undefined },
+    { ...plan, appendSystemPrompt: undefined, jsonSchema: undefined, settings: undefined, scope: undefined },
     {
       kind: 'stage', stage: 'plan', itemId: stage.item.id, prompt: 'p', cwd: stage.worktree, model: 'opus',
-      maxTurns: 40, maxBudgetUsd: 3, permissionMode: 'dontAsk', allowedTools: ['Read', 'Glob', 'Grep'],
-      appendSystemPrompt: undefined, jsonSchema: undefined,
+      maxTurns: 40, maxBudgetUsd: 3, permissionMode: 'dontAsk', tools: ['Read', 'Glob', 'Grep'],
+      allowedTools: ['Read', 'Glob', 'Grep'], appendSystemPrompt: undefined, jsonSchema: undefined, settings: undefined, scope: undefined,
     },
   );
-  assert.equal(plan.appendSystemPrompt, systemPrompt('plan'));
+  assert.ok(plan.appendSystemPrompt?.startsWith(systemPrompt('plan').trimEnd()));
+  assert.match(plan.appendSystemPrompt ?? '', /## Regras críticas do projeto\n\nNenhuma\./);
   assert.equal(plan.jsonSchema, planSchema);
   assert.equal(plan.disallowedTools, undefined);
 
   const execute = stageRequest(stage, 'execute', 'e', { model: 'opus', resumeSessionId: 's-1' });
+  assert.deepEqual(execute.tools, ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'Bash']);
   assert.deepEqual(execute.allowedTools, ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'Bash']);
   assert.equal(execute.disallowedTools, EXECUTE_DISALLOWED);
   assert.deepEqual([execute.model, execute.maxTurns, execute.maxBudgetUsd, execute.resumeSessionId], ['opus', 120, 8, 's-1']);
 
   const review = stageRequest(stage, 'review', 'r');
-  assert.deepEqual(review.allowedTools, ['Read', 'Glob', 'Grep', 'Bash(git diff:*)', 'Bash(git log:*)']);
+  assert.deepEqual(review.tools, ['Read', 'Glob', 'Grep', 'Bash']);
+  assert.deepEqual(review.allowedTools, ['Read', 'Glob', 'Grep', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git show:*)']);
   assert.equal(review.model, 'opus');
   assert.equal(review.resumeSessionId, undefined);
 });
