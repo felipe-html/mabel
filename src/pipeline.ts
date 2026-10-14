@@ -29,8 +29,9 @@ import { git, tryGit } from './git.ts';
 import { integrateItem, mergeInProgress, mergeOrigin, setIntegrated } from './integration.ts';
 import { projectContext } from './hermetic.ts';
 import { foundTests, proofDetail, runProof } from './proof.ts';
+import { scopeViolation } from './scope.ts';
 import { writeIntegrationReport } from './report.ts';
-import { commitAll, commitMessage, originBranch, prepareWorktree, removeWorktree, shell } from './worktree.ts';
+import { type PreparedWorktree, commitAll, commitMessage, originBranch, prepareWorktree, removeWorktree, shell } from './worktree.ts';
 
 export interface PipelineEnv {
   db: DatabaseSync;
@@ -298,7 +299,7 @@ function stageOptions(env: PipelineEnv, resumeSessionId: string | undefined, mod
 }
 
 async function planStep(env: PipelineEnv, item: Item): Promise<Step> {
-  const prepared = prepareWorktree(env.db, env.home, env.project, item);
+  const prepared = prepare(env, item);
   if (prepared.setupError) {
     move(env, item, 'blocked', prepared.setupError);
     return { kind: 'stopped', status: 'blocked' };
@@ -422,7 +423,7 @@ async function executeStep(env: PipelineEnv, item: Item): Promise<Step> {
     move(env, item, 'failed', 'plano.json não encontrado');
     return { kind: 'stopped', status: 'failed' };
   }
-  const prepared = prepareWorktree(env.db, env.home, env.project, item);
+  const prepared = prepare(env, item);
   if (prepared.setupError) {
     move(env, item, 'blocked', prepared.setupError);
     return { kind: 'stopped', status: 'blocked' };
@@ -561,6 +562,54 @@ function scopeExtension(
   return undefined;
 }
 
+const SETUP_FILES = 'setup-arquivos.json';
+
+/**
+ * Prepara o worktree e acumula os arquivos gerados pelo `setup` do Mabel, que o gate de
+ * escopo não atribui ao agente. Acumula porque o retrabalho recria o worktree pela branch.
+ */
+function prepare(env: PipelineEnv, item: Item): PreparedWorktree {
+  const prepared = prepareWorktree(env.db, env.home, env.project, item);
+  if (prepared.setupFiles && prepared.setupFiles.length > 0) {
+    const known = readArtifact<string[]>(env.home, item.id, SETUP_FILES) ?? [];
+    writeArtifact(env.home, item.id, SETUP_FILES, [...new Set([...known, ...prepared.setupFiles])].sort());
+  }
+  return prepared;
+}
+
+/**
+ * Gate de escopo (G4): o que o item mudou desde que saiu da origem passa pelas regras do
+ * hook. Pega a escrita pelo terminal, que o hook não interpreta. Violação volta à execução.
+ */
+function scopeGate(env: PipelineEnv, item: Item, plan: PlanOutput, worktree: string): Step | 'ok' {
+  const base = git(worktree, 'merge-base', 'HEAD', originBranch(env.project.config));
+  const fromSetup = new Set(readArtifact<string[]>(env.home, item.id, SETUP_FILES) ?? []);
+  const changed = git(worktree, 'diff', '--name-only', '--no-renames', '-z', base, 'HEAD')
+    .split('\0')
+    .filter((path) => path && !fromSetup.has(path));
+  const context = {
+    escopo: plan.escopo,
+    criticos: readCriticalRules(worktree).paths,
+    criticosAprovados: item.approvedAt !== null,
+  };
+  const violations = changed.flatMap((path) => {
+    const reason = scopeViolation(path, context);
+    return reason ? [`\`${path}\`: ${reason}`] : [];
+  });
+  recordGate(env.db, item.id, item.attemptNo, 'scope', violations.length === 0, violations.join('; ') || null);
+  if (violations.length === 0) return 'ok';
+  return attemptFailed(
+    env,
+    item,
+    item.attempts,
+    [
+      'Arquivos alterados fora do que o plano permite (o hook não vê a escrita pelo terminal):',
+      ...violations.map((v) => `- ${v}`),
+      'Desfaça essas alterações ou, se forem necessárias, declare os caminhos em escopoAdicional.',
+    ].join('\n'),
+  );
+}
+
 function verifyStep(env: PipelineEnv, item: Item): Step {
   const attemptNo = item.attemptNo;
   const plan = readArtifact<PlanOutput>(env.home, item.id, 'plano.json');
@@ -570,6 +619,8 @@ function verifyStep(env: PipelineEnv, item: Item): Step {
     return { kind: 'stopped', status: 'failed' };
   }
   const worktree = item.worktree as string;
+  const scope = scopeGate(env, item, plan, worktree);
+  if (scope !== 'ok') return scope;
   // A origem andou desde o início do item: o que entra na integração é o que foi verificado.
   if (env.project.config.integracao) {
     const conflicts = mergeOrigin(worktree, originBranch(env.project.config));

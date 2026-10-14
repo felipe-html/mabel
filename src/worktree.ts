@@ -48,6 +48,8 @@ export interface PreparedWorktree {
   created: boolean;
   /** Saída resumida do `config.setup` quando ele falha. */
   setupError?: string;
+  /** Arquivos que o `setup` criou ou alterou no worktree novo (ex.: o lockfile). */
+  setupFiles?: string[];
 }
 
 function lastLines(text: string, count: number): string {
@@ -96,6 +98,10 @@ export function prepareWorktree(db: DatabaseSync, home: string, project: Project
     if (code !== 0) {
       return { path, branch, created, setupError: `setup \`${project.config.setup}\` saiu com ${code}: ${lastLines(output, 20)}` };
     }
+    // O worktree nasce limpo: o que aparece no status depois do setup é dele.
+    const status = git(path, 'status', '--porcelain', '-z', '--untracked-files=all', '--no-renames');
+    const setupFiles = status.split('\0').filter(Boolean).map((entry) => entry.slice(3));
+    return { path, branch, created, setupFiles };
   }
   return { path, branch, created };
 }
