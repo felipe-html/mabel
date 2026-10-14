@@ -160,6 +160,19 @@ const migrations: string[] = [
     removed_at  TEXT NOT NULL
   );
   `,
+  `
+  CREATE TABLE queue_events (
+    id          INTEGER PRIMARY KEY,
+    project_id  TEXT NOT NULL REFERENCES projects(id),
+    at          TEXT NOT NULL,
+    kind        TEXT NOT NULL,
+    cause       TEXT NOT NULL,
+    detail      TEXT NOT NULL,
+    until       TEXT,
+    approved    INTEGER
+  );
+  CREATE INDEX queue_events_project ON queue_events(project_id, id);
+  `,
 ];
 
 function migrate(db: DatabaseSync): void {

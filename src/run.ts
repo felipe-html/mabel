@@ -83,7 +83,60 @@ export interface QueueResult {
   autonomous: { number: number; decision: string }[];
 }
 
-const STAGE_LABELS: Record<RunStage, string> = { plan: 'planejar', execute: 'executar', review: 'revisar' };
+/**
+ * Auditoria da fila fora das runs: `pause` encerra o `run` até o humano agir, `wait` é a
+ * espera que retoma sozinha (até `until`) e `answer` é a resposta do humano a uma pergunta
+ * da política de saldo (`approved`: seguir mesmo assim).
+ */
+export type QueueEventKind = 'pause' | 'wait' | 'answer';
+export type QueueEventCause = 'five_hour' | 'seven_day' | 'pace' | 'no_reading' | 'usage_limit' | 'integration';
+
+export interface QueueEvent {
+  at: Date;
+  kind: QueueEventKind;
+  cause: QueueEventCause;
+  detail: string;
+  until?: Date;
+  approved?: boolean;
+}
+
+export function recordQueueEvent(db: DatabaseSync, projectId: string, event: QueueEvent): void {
+  db.prepare(
+    'INSERT INTO queue_events (project_id, at, kind, cause, detail, until, approved) VALUES (?, ?, ?, ?, ?, ?, ?)',
+  ).run(
+    projectId,
+    event.at.toISOString(),
+    event.kind,
+    event.cause,
+    event.detail,
+    event.until?.toISOString() ?? null,
+    event.approved === undefined ? null : Number(event.approved),
+  );
+}
+
+/** Os `limit` eventos mais recentes do projeto, em ordem cronológica. */
+export function listQueueEvents(db: DatabaseSync, projectId: string, limit = 20): QueueEvent[] {
+  const rows = db
+    .prepare('SELECT at, kind, cause, detail, until, approved FROM queue_events WHERE project_id = ? ORDER BY id DESC LIMIT ?')
+    .all(projectId, limit) as {
+    at: string;
+    kind: QueueEventKind;
+    cause: QueueEventCause;
+    detail: string;
+    until: string | null;
+    approved: number | null;
+  }[];
+  return rows.reverse().map((row) => ({
+    at: new Date(row.at),
+    kind: row.kind,
+    cause: row.cause,
+    detail: row.detail,
+    ...(row.until === null ? {} : { until: new Date(row.until) }),
+    ...(row.approved === null ? {} : { approved: row.approved === 1 }),
+  }));
+}
+
+const STAGE_LABELS: Record<RunStage, string> ={ plan: 'planejar', execute: 'executar', review: 'revisar' };
 const IN_PROGRESS: ItemStatus[] = ['planning', 'executing', 'verifying', 'reviewing'];
 const PLANNING: ItemStatus[] = ['ready', 'planning'];
 const EXECUTING: ItemStatus[] = ['planned', 'executing', 'verifying', 'reviewing'];
@@ -112,6 +165,13 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
   let pauseReason: string | undefined;
   // Autorizações dadas no terminal valem até o reset da janela autorizada.
   const approvedUntil = new Map<string, number>();
+  const record = (event: Omit<QueueEvent, 'at'>) => recordQueueEvent(db, project.id, { at: clock.now(), ...event });
+  /** Pergunta da política de saldo; a resposta do humano fica na auditoria. */
+  const askBalance = async (cause: QueueEventCause, notice: string): Promise<boolean> => {
+    const approved = await askHuman('  Continuar mesmo assim?', false, notice);
+    record({ kind: 'answer', cause, detail: notice, approved });
+    return approved;
+  };
 
   const interrupt = () => {
     abort.abort();
@@ -151,6 +211,7 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
       if (decision.action === 'refresh') {
         if (probed) {
           pauseReason = 'sem leitura de saldo depois da chamada mínima; fila pausada';
+          record({ kind: 'pause', cause: 'no_reading', detail: pauseReason });
           return false;
         }
         probed = true;
@@ -165,10 +226,11 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
         const expected = `${Math.round(decision.expected * 100)}%`;
         log.write(style.bold(`  Janela de 7 dias acima do ritmo: ${used} usados depois da etapa, ritmo de ${expected}.`));
         const notice = `7 dias acima do ritmo (${used} usados, ritmo de ${expected}); continuar mesmo assim?`;
-        if (interactive && (await askHuman('  Continuar mesmo assim?', false, notice))) {
+        if (interactive && (await askBalance('pace', notice))) {
           approvedUntil.set('pace', fiveHour.resetsAt.getTime());
           return true;
         }
+        record({ kind: 'wait', cause: 'pace', detail: `7 dias acima do ritmo (${used} usados, ritmo de ${expected})`, until: decision.caughtUpAt });
         await waitUntil(decision.caughtUpAt, 'o ritmo da janela de 7 dias');
         probed = false;
         continue;
@@ -183,14 +245,16 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
           ? 'abaixo de 30%'
           : `a etapa costuma usar ${Math.round(decision.estimate * 100)}% e o piso é 10%`;
       log.write(style.bold(`  Saldo da janela de ${label} em ${percent} (${why}).`));
-      if (interactive && (await askHuman('  Continuar mesmo assim?', false, `saldo de ${label} em ${percent}; continuar mesmo assim?`))) {
+      if (interactive && (await askBalance(decision.window, `saldo de ${label} em ${percent}; continuar mesmo assim?`))) {
         approvedUntil.set(decision.window, resetsAt);
         return true;
       }
       if (decision.window === 'seven_day') {
         pauseReason = `saldo da janela de 7 dias em ${percent}; fila pausada até sua decisão`;
+        record({ kind: 'pause', cause: 'seven_day', detail: `${pauseReason} (${why})` });
         return false;
       }
+      record({ kind: 'wait', cause: 'five_hour', detail: `saldo da janela de 5h em ${percent} (${why})`, until: reading.resetsAt });
       await waitUntil(reading.resetsAt, 'o reset da janela de 5h');
       probed = false;
     }
@@ -203,6 +267,7 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
     const now = clock.now().getTime();
     const target = worst && worst.resetsAt.getTime() > now ? worst.resetsAt : new Date(now + 5 * 60_000);
     log.write(style.bold('  Saldo esgotado durante a etapa; a etapa será retomada pela mesma sessão.'));
+    record({ kind: 'wait', cause: 'usage_limit', detail: 'saldo esgotado durante a etapa', until: target });
     await waitUntil(target, 'o reset do saldo');
   };
 
@@ -286,7 +351,10 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
   const open = (): string | undefined => {
     const opened = openIntegration(home, project);
     for (const note of opened.notes) log.write(style.dim(note));
-    if (opened.pause) return opened.pause;
+    if (opened.pause) {
+      record({ kind: 'pause', cause: 'integration', detail: opened.pause });
+      return opened.pause;
+    }
     const cleaned = removeOrphanWorktrees(db, home, project, listItems(db, project.id));
     if (cleaned.length > 0) log.write(style.dim(`worktrees removidos: ${cleaned.map((n) => `#${n}`).join(', ')}`));
     finishIntegrated(db, project, listItems(db, project.id)).forEach(markDone);
