@@ -137,6 +137,7 @@ test('fluxo feliz: planejar, executar, verificar, revisar e awaiting_merge com c
   assert.equal(p.branchLog(), 'mabel(#1): Soma — execução 1');
   assert.deepEqual(p.gates(), [
     { attempt: 0, gate: 'start', passed: 1 },
+    { attempt: 1, gate: 'scope', passed: 1 },
     { attempt: 1, gate: 'existe', passed: 1 },
     { attempt: 1, gate: 'criteria_tests', passed: 1 },
     { attempt: 1, gate: 'proof', passed: 1 },
@@ -210,7 +211,10 @@ test('G3 reprova por comando com erro e por critério sem teste encontrado', asy
   assert.deepEqual(await failing.advance(), { kind: 'stopped', status: 'needs_human' });
   assert.deepEqual(
     failing.gates().slice(1),
-    [1, 2, 3].map((attempt) => ({ attempt, gate: 'lint', passed: 0 })),
+    [1, 2, 3].flatMap((attempt) => [
+      { attempt, gate: 'scope', passed: 1 },
+      { attempt, gate: 'lint', passed: 0 },
+    ]),
   );
   assert.match(failing.calls()[2]?.prompt ?? '', /falhou \(código 2\)\. Últimas linhas:\nerro de lint na linha 3/);
 
@@ -219,7 +223,8 @@ test('G3 reprova por comando com erro e por critério sem teste encontrado', asy
     { structured_output: EXECUTION, files: { 'src/soma.js': 'x', 'test/soma.test.js': 'outro nome' } },
   ]);
   await noTest.advance();
-  assert.deepEqual(noTest.gates().slice(1, 3), [
+  assert.deepEqual(noTest.gates().slice(1, 4), [
+    { attempt: 1, gate: 'scope', passed: 1 },
     { attempt: 1, gate: 'existe', passed: 1 },
     { attempt: 1, gate: 'criteria_tests', passed: 0 },
   ]);

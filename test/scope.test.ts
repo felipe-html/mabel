@@ -127,7 +127,8 @@ test('5.3: escopoAdicional não crítico amplia o escopo e retoma a mesma sessã
     REVIEW,
   ]);
   syncBacklog(p.db, p.project);
-  assert.deepEqual(await advanceItem(p.env, p.item().id), { kind: 'stopped', status: 'awaiting_merge' });
+  const r = await advanceItem(p.env, p.item().id);
+  assert.deepEqual(r, { kind: 'stopped', status: 'awaiting_merge' });
   const plan = readArtifact<PlanOutput>(p.home, p.item().id, 'plano.json')!;
   assert.deepEqual(plan.escopo, ['src/**', 'test/**', 'docs/soma.md']);
   assert.deepEqual(p.gates('scope_extension'), [{ attempt: 1, passed: 1, detail: '`docs/soma.md` — documentar a função' }]);
@@ -211,4 +212,42 @@ test('5.3: decisões do hook viram eventos da run, runs.denials preenchido e mab
   const lines = renderDenials(p.db, p.item().id).join('\n');
   assert.match(lines, /execute · run .{4}: 2 negações/);
   assert.match(lines, /Write docs\/x\.md — fora do escopo do plano/);
+});
+
+test('gate de escopo: escrita pelo terminal fora do escopo, em .mabel/ e em caminho crítico volta à execução', async () => {
+  const outside = { 'docs/notas.md': 'x', '.mabel/extra.md': 'x', 'src/billing/taxa.js': 'x' };
+  const undo = Object.fromEntries(Object.keys(outside).map((path) => [path, null]));
+  // O plano não toca o caminho crítico (passa no G2); a escrita pelo terminal toca.
+  const narrow = { structured_output: { ...PLAN, escopo: ['src/soma.js', 'test/**'] } };
+  const p = scopeProject(
+    [
+      narrow,
+      { structured_output: EXECUTION, files: { ...EXECUTION_FILES, ...outside }, session_id: 'exec-1' },
+      { structured_output: EXECUTION, files: undo },
+      REVIEW,
+    ],
+    '## Caminhos\n- src/billing/**\n',
+  );
+  syncBacklog(p.db, p.project);
+  assert.deepEqual(await advanceItem(p.env, p.item().id), { kind: 'stopped', status: 'awaiting_merge' });
+  const [failed, passed] = p.gates('scope') as { attempt: number; passed: number; detail: string | null }[];
+  assert.equal(failed?.passed, 0);
+  assert.match(failed?.detail ?? '', /`\.mabel\/extra\.md`: arquivo do Mabel ou do git/);
+  assert.match(failed?.detail ?? '', /`docs\/notas\.md`: fora do escopo do plano/);
+  assert.match(failed?.detail ?? '', /`src\/billing\/taxa\.js`: caminho crítico sem aprovação: src\/billing\/\*\*/);
+  assert.deepEqual(passed, { attempt: 2, passed: 1, detail: null });
+
+  // A tentativa 2 retoma a sessão com as violações e o caminho para resolvê-las.
+  const retry = p.scenario.log().filter((call) => call.argv.includes('--json-schema'))[2]!.argv;
+  assert.equal(retry[retry.indexOf('--resume') + 1], 'exec-1');
+  assert.match(retry.at(-1) as string, /o hook não vê a escrita pelo terminal[\s\S]*`docs\/notas\.md`[\s\S]*declare os caminhos em escopoAdicional/);
+});
+
+test('gate de escopo: arquivos gerados pelo setup do Mabel não contam como escrita do agente', async () => {
+  const p = scopeProject([PLAN_OK, { structured_output: EXECUTION, files: EXECUTION_FILES }, REVIEW]);
+  p.project.config.setup = 'echo gerado > gerado.lock';
+  syncBacklog(p.db, p.project);
+  assert.deepEqual(await advanceItem(p.env, p.item().id), { kind: 'stopped', status: 'awaiting_merge' });
+  assert.deepEqual(readArtifact<string[]>(p.home, p.item().id, 'setup-arquivos.json'), ['gerado.lock']);
+  assert.deepEqual(p.gates('scope'), [{ attempt: 1, passed: 1, detail: null }]);
 });

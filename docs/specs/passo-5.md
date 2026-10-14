@@ -298,6 +298,32 @@ a execução termina com `escopoAdicional` não vazio:
 - [x] Contrato atualizado conforme a autorização registrada no histórico do plano.
 - [x] Preflight falha com mensagem clara sem as flags ou sem sandbox.
 
+## Depois do passo 5 — Gate de escopo
+
+O hook não interpreta o `Bash`, e o sandbox deixa o terminal escrever em qualquer lugar do
+worktree. O gate `scope` fecha essa porta: é o primeiro da verificação, antes do merge da
+origem e dos comandos.
+
+- Arquivos do item: `git diff --name-only --no-renames <merge-base com a origem> HEAD`
+  (apagar também conta). O merge da origem no item não entra, porque a base é o
+  `merge-base`.
+- Cada arquivo passa pelas regras 2 a 4 do hook (`scopeViolation` em `src/scope.ts`, a mesma
+  função do hook): `.git/` ou `.mabel/`, caminho crítico sem aprovação, fora do escopo do
+  plano (já com o `escopoAdicional` aceito).
+- Arquivos gerados pelo `setup` do Mabel num worktree novo (o worktree nasce limpo; o que
+  aparece no `git status` depois do setup é dele, como o lockfile) ficam em
+  `<dados>/items/<id>/setup-arquivos.json`, acumulados entre recriações do worktree, e não
+  contam.
+- Violação grava `gate_results` (`gate='scope'`, um motivo por arquivo) e é uma tentativa
+  reprovada: volta à execução com a lista e o caminho (desfazer ou declarar em
+  `escopoAdicional`; o crítico segue para `critical_approval` por esse caminho).
+
+### Critérios de aceite
+
+- [x] Escrita fora do escopo, em `.mabel/` e em caminho crítico sem aprovação reprova a
+      tentativa com o motivo de cada arquivo; desfeita, a tentativa seguinte passa.
+- [x] Arquivos do `setup` não contam.
+
 ## Fora deste passo
 
 Hook para `Bash` que interprete comandos; `CLAUDE.md` de subdiretórios; regras de rede por

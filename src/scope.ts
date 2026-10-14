@@ -72,23 +72,26 @@ export function decideScope(input: HookInput, context: ScopeContext): ScopeDecis
     return { decision: 'deny', tool, path: absolute, reason: 'fora do worktree do item' };
   }
   const posix = path.split(sep).join('/');
-  const first = posix.split('/')[0];
-  if (first === '.git' || first === '.mabel') {
-    return { decision: 'deny', tool, path: posix, reason: 'arquivo do Mabel ou do git' };
-  }
-  const critical = context.criticos.find((glob) => matchGlob(glob, posix));
-  if (critical && !context.criticosAprovados) {
-    return { decision: 'deny', tool, path: posix, reason: `caminho crítico sem aprovação: ${critical}` };
-  }
-  if (!context.escopo.some((glob) => matchGlob(glob, posix))) {
-    return {
-      decision: 'deny',
-      tool,
-      path: posix,
-      reason: 'fora do escopo do plano; declare em escopoAdicional se for necessário',
-    };
-  }
-  return { decision: 'allow', tool, path: posix };
+  const reason = scopeViolation(posix, context);
+  return reason ? { decision: 'deny', tool, path: posix, reason } : { decision: 'allow', tool, path: posix };
+}
+
+export const OUT_OF_SCOPE = 'fora do escopo do plano; declare em escopoAdicional se for necessário';
+
+/**
+ * Regras 2 a 4 do escopo para um caminho relativo ao worktree (em `/`): valem para o hook,
+ * antes da escrita, e para o gate de escopo, sobre o que o item mudou.
+ */
+export function scopeViolation(
+  path: string,
+  context: Pick<ScopeContext, 'escopo' | 'criticos' | 'criticosAprovados'>,
+): string | undefined {
+  const first = path.split('/')[0];
+  if (first === '.git' || first === '.mabel') return 'arquivo do Mabel ou do git';
+  const critical = context.criticos.find((glob) => matchGlob(glob, path));
+  if (critical && !context.criticosAprovados) return `caminho crítico sem aprovação: ${critical}`;
+  if (!context.escopo.some((glob) => matchGlob(glob, path))) return OUT_OF_SCOPE;
+  return undefined;
 }
 
 /** Saída do hook que nega a ação; permitir é não escrever nada. */
