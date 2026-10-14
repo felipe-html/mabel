@@ -147,7 +147,7 @@ export function findProject(db: DatabaseSync, query: string): ProjectRow {
 }
 
 /** Caminho com `~` no lugar da pasta pessoal, para as tabelas. */
-function displayPath(path: string): string {
+export function displayPath(path: string): string {
   const home = homedir();
   return path === home || path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
 }
@@ -157,7 +157,7 @@ function statesText(project: ProjectRow): string {
   return project.states.map((state) => `${state.count} ${state.status}`).join(' · ');
 }
 
-function table(header: string[], rows: string[][]): string[] {
+export function table(header: string[], rows: string[][]): string[] {
   const widths = header.map((title, i) => Math.max(title.length, ...rows.map((row) => (row[i] ?? '').length)));
   const line = (cells: string[]) => `  ${cells.map((cell, i) => cell.padEnd(widths[i] ?? 0)).join('  ').trimEnd()}`;
   return [style.dim(line(header)), ...rows.map(line)];

@@ -23,6 +23,7 @@ import { inboxCommand, inboxUsage } from './inbox.ts';
 import { init, initUsage } from './init.ts';
 import { projectCommand, projectUsage, projectsCommand, projectsUsage } from './projects.ts';
 import { run, runUsage } from './run.ts';
+import { runsCommand, runsUsage } from './runs.ts';
 import { status } from './status.ts';
 
 export interface Command {
@@ -110,6 +111,12 @@ export const commands: Command[] = [
     description: 'Mostra a fila, as etapas em andamento e o saldo',
     usage: 'mabel status [--atualizar]',
     run: status,
+  },
+  {
+    name: 'runs',
+    description: 'Lista as runs auditadas; com um id, mostra o detalhe e as ferramentas usadas',
+    usage: runsUsage,
+    run: runsCommand,
   },
   {
     name: 'inbox',
