@@ -4,14 +4,15 @@ Rascunho de trabalho: descreve o que cada comando faz hoje, com todos os parâme
 modos de uso, e aponta o que parece mal refinado. Depois de revisado, o conteúdo
 estável vai para o `README.md`.
 
-Fonte: o código em `src/` na branch `claude/gate-de-escopo` (outubro de 2026). Onde o
+Fonte: o código em `src/` na branch `claude/gate-de-escopo` (outubro de 2026), mais o
+`refinar` e os campos novos do `add` (`docs/specs/refinamento.md`). Onde o
 comportamento parece não ter sido intencional, o texto diz "a confirmar".
 
 ## Índice
 
 - [Como o menu aparece](#como-o-menu-aparece)
 - [Mapa rápido](#mapa-rápido)
-- Comandos: [init](#init) · [add](#add) · [run](#run) · [inbox](#inbox) · [item](#item) ·
+- Comandos: [init](#init) · [add](#add) · [refinar](#refinar) · [run](#run) · [inbox](#inbox) · [item](#item) ·
   [aprovar](#aprovar) · [responder](#responder) · [cancelar](#cancelar) ·
   [integracao](#integracao) · [rejeitar](#rejeitar) · [status](#status) · [runs](#runs) ·
   [projetos](#projetos) · [projeto](#projeto) · [exec](#exec) · [completion](#completion)
@@ -73,8 +74,8 @@ O Mabel tem três portas de entrada para os mesmos comandos (lista única em
 
 ### Menu de seleção (`select`)
 
-Usado em três lugares: escolha de stack no `init`, lista de runs em `runs` e lista de
-projetos em `projetos`/`projeto`.
+Usado em quatro lugares: escolha de stack no `init`, lista de itens em `refinar`, lista
+de runs em `runs` e lista de projetos em `projetos`/`projeto`.
 
 | Tecla | Efeito |
 |---|---|
@@ -98,7 +99,8 @@ Ordem em que aparecem na lista (a mesma de `src/commands.ts`).
 | Comando | Sintaxe | Precisa de projeto | Pergunta no REPL sem args | Trava do projeto | Fora de TTY |
 |---|---|---|---|---|---|
 | `init` | `init [--stack node\|python\|go\|rust]` | não (cria) | — (o próprio comando pergunta) | não | sem perguntas |
-| `add` | `add "<título>" [--intencao] [--criterio]… [--depende]… [--restricoes]` | sim | — (o próprio comando pergunta) | não | exige título e `--intencao` |
+| `add` | `add "<título>" [--intencao] [--criterio]… [--fora-do-escopo]… [--depende]… [--restricoes]` | sim | — (o próprio comando pergunta) | não | exige título e `--intencao` |
+| `refinar` | `refinar [<n>] [--refazer] [--aceitar \| --descartar]` | sim | — (o próprio comando abre o menu de itens) | não | sem `<n>` lista; com `<n>` mostra a proposta; `--aceitar` grava |
 | `run` | `run [--item <n>] [--uma] [--sem-lote]` | sim | não | **sim** | sem perguntas; política decide |
 | `item` | `item <n>` | sim | número | não | igual |
 | `aprovar` | `aprovar <n>` | sim | número | não | igual |
@@ -171,19 +173,25 @@ substitui. Depois aceita extras no formato `nome: comando` até uma linha vazia.
 | `"<título>"` (posicional) | palavras são juntadas | Título |
 | `--intencao <texto>` | não | Intenção (obrigatória) |
 | `--criterio <texto>` | sim | Um critério de aceite por ocorrência |
+| `--fora-do-escopo <texto>` | sim | O que o item não faz, um por ocorrência |
 | `--depende <n>` | sim; aceita `2,3` e `#2` | Números dos itens dos quais depende |
 | `--restricoes <texto>` | não | Restrições técnicas |
 
 **Modos**
 
 - **TTY sem `--intencao`:** pergunta, pulando o que já veio por argumento: título,
-  intenção, critérios (um por linha, vazia encerra), dependências (`2, 3`), restrições.
+  intenção, critérios e fora do escopo (um por linha, vazia encerra), dependências
+  (`2, 3`), restrições.
 - **TTY com `--intencao`:** não pergunta nada; critérios, dependências e restrições ficam
   vazios se não vieram.
 - **Fora de TTY:** exige título e `--intencao`.
 
 Grava o bloco, sincroniza o backlog e mostra `Item #N adicionado: <título> · <estado>`
-(`ready` ou `backlog`; `blocked` com o motivo).
+(`ready` ou `backlog`; `blocked` com o motivo). No TTY, pergunta em seguida
+`Refinar o item agora com um agente? [s/N]` e, com `s`, abre o [refinar](#refinar) do item.
+
+`Decisões:` e `Regras críticas:` não têm opção no `add`: entram pelo `refinar` ou editando
+o `backlog.md`.
 
 **Pontos a refinar**
 
@@ -194,6 +202,52 @@ Grava o bloco, sincroniza o backlog e mostra `Item #N adicionado: <título> · <
 - No modo TTY, passar `--intencao` desliga todas as perguntas, inclusive critérios. Pode
   surpreender quem passou só título e intenção esperando ser perguntado do resto.
 - A prioridade é a ordem no arquivo; o `add` sempre põe no fim. Sem `--antes`/`--topo`.
+
+### refinar
+
+**Para quê:** antes do planejamento, pedir a um agente uma proposta de critérios, fora do
+escopo, decisões de negócio e regras críticas de um item, e gravar no `backlog.md` só o que
+você aceitar. Spec: `docs/specs/refinamento.md`.
+
+| Parâmetro | Efeito |
+|---|---|
+| (nenhum) | TTY: menu dos itens refináveis com estado e situação; o escolhido abre a revisão e o menu volta ao terminar (`q` sai). Fora de TTY: tabela `# · título · estado · refinamento` |
+| `<n>` (aceita `#3`) | Usa a proposta pendente ou roda o agente; no TTY abre a revisão, fora dele imprime a proposta e como aceitar |
+| `--refazer` | Descarta a proposta pendente e roda o agente de novo |
+| `--aceitar` | Grava a proposta como veio (perguntas com sugestão viram decisões; as sem sugestão ficam para o planejamento). Pensado para fora do TTY |
+| `--descartar` | Descarta a proposta pendente sem gravar |
+
+Só itens em `backlog` ou `ready` que nunca entraram em planejamento. Situações: `não
+refinado`, `proposta pendente`, `proposta desatualizada` (o item mudou depois da
+proposta; o agente roda de novo), `refinado`, `descartado`. Item já refinado: no TTY,
+pergunta `Pedir outra proposta ao agente? [s/N]` antes de gastar outra run.
+
+**A run:** etapa `refine`, só leitura (`Read`, `Glob`, `Grep`) na raiz do projeto, com as
+travas das outras etapas; modelo `models.refine` (padrão `sonnet`), limites
+`limits.refine` (30 turnos, US$ 1). Antes dela, a política de saldo numa chamada: sem
+leitura recente faz a chamada mínima; saldo baixo ou acima do ritmo pergunta
+`Refinar mesmo assim? [s/N]` (TTY) ou recusa. Ctrl+C interrompe a run (sai com 130).
+
+**Revisão (TTY)**
+
+| Etapa | Entradas aceitas |
+|---|---|
+| Entendimento do agente | — (só leitura) |
+| Cada pergunta, com a sugestão | Enter aceita a sugestão · texto responde · `p` deixa para o planejamento |
+| Critérios, fora do escopo, regras críticas propostos | Enter aceita · `e` edita um a um (Enter mantém, `-` remove, texto substitui, depois acrescenta até linha vazia) · `-` descarta |
+| Quebra sugerida | — (informativa; crie os itens com `/add`) |
+| Prévia do bloco e `Gravar no backlog? [S/n/d]` | Enter grava · `n` deixa a proposta pendente · `d` descarta |
+
+Respostas viram `Decisões: - <pergunta> → <resposta>`. A gravação acrescenta sem repetir
+entradas iguais, regrava só o trecho do item no `backlog.md` e sincroniza. Ctrl+C na
+revisão deixa a proposta pendente.
+
+**Pontos a refinar**
+
+- A quebra sugerida não é aplicada; criar os itens e ajustar o original é manual.
+- Comentários HTML no meio do bloco do item somem quando a proposta é gravada.
+- `--aceitar` e `--descartar` exigem o número; não há "aceitar todas as pendentes".
+- O `run` não avisa sobre itens `ready` nunca refinados.
 
 ### run
 
@@ -291,7 +345,9 @@ andamento. No fim: `Respostas registradas em N itens · M pulados` e, se houve r
 
 Mostra: título e estado, motivo; se em `needs_human`, a pendência (perguntas com sugestão,
 suposições críticas, arquivos em conflito, resumo de tentativas) e os comandos que
-resolvem; intenção, restrições, branch, commit integrado, worktree, tentativas e custo;
+resolvem; intenção, restrições, fora do escopo, decisões, regras críticas, branch, commit
+integrado, worktree, tentativas e custo; refinamento (situação e, depois do planejamento,
+perguntas, suposições e replanejamentos);
 critérios do plano (ou do backlog), escopo e caminho do `plano.md`; decisões tomadas pela
 sugestão; últimas 10 runs; negações do hook de escopo; últimas 8 transições.
 
@@ -485,7 +541,8 @@ transcript.
 | `projeto remover <nome> --confirmar <nome>` | Remove sem perguntar (exigido fora de TTY) |
 
 **Auditoria:** totais de runs, custo e tokens; custo por etapa e por modelo; itens com
-estado, tentativas e custo; gates reprovados; escalonamentos de modelo; decisões
+estado, tentativas, custo, se foi refinado, perguntas e suposições; bloco "Refinamento" com
+a média de perguntas, suposições e replanejamentos dos itens refinados e dos não refinados; gates reprovados; escalonamentos de modelo; decisões
 autônomas; pausas da fila e decisões de saldo; últimas 20 transições.
 
 **Remoção:** recusa se há run em andamento, `run` ativo (trava) ou worktree com alteração
@@ -568,7 +625,7 @@ Completa nomes de comandos, `completion zsh`, `projeto remover` e `projetos --re
    sem mostrar o item nem validar antes; o "Replanejar?" aparece mesmo quando não se
    aplica. O BACKLOG já tem "autocompletar de argumentos" como ideia relacionada.
 7. **Ordem da lista não segue a jornada.** `inbox`, a ação mais frequente depois do `run`,
-   aparece em 13º. Sugestão de agrupamento: preparar (`init`, `add`), rodar (`run`,
+   aparece em 14º. Sugestão de agrupamento: preparar (`init`, `add`, `refinar`), rodar (`run`,
    `inbox`), decidir (`item`, `aprovar`, `responder`, `cancelar`), integrar (`integracao`,
    `rejeitar`), auditar (`status`, `runs`, `projetos`, `projeto`), avulsos (`exec`,
    `completion`).

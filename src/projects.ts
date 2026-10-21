@@ -14,6 +14,7 @@ import { autonomousDecisions, escalate } from './pipeline.ts';
 import { isAncestor } from './integration.ts';
 import { DEFAULT_INTEGRATION, ProjectError, readConfig } from './project.ts';
 import { type QueueEvent, type QueueEventCause, listQueueEvents } from './run.ts';
+import { signals, signalsComparison } from './refine.ts';
 import { itemDir } from './stages.ts';
 import { style } from './style.ts';
 
@@ -35,6 +36,7 @@ export const tableScope: Record<string, TableScope> = {
   tool_calls: { scope: 'project', where: `run_id IN (${PROJECT_RUNS})` },
   rate_limits: { scope: 'project', where: `run_id IN (${PROJECT_RUNS})` },
   gate_results: { scope: 'project', where: `item_id IN (${PROJECT_ITEMS})` },
+  refinements: { scope: 'project', where: `item_id IN (${PROJECT_ITEMS})` },
   item_transitions: { scope: 'project', where: `item_id IN (${PROJECT_ITEMS})` },
   runs: { scope: 'project', where: `item_id IN (${PROJECT_ITEMS})` },
   items: { scope: 'project', where: 'project_id = ?' },
@@ -242,21 +244,36 @@ export function renderProjectDetail(db: DatabaseSync, project: ProjectRow): stri
 
   const items = db
     .prepare(
-      `SELECT i.number, i.title, i.status, i.attempts,
+      `SELECT i.id, i.number, i.title, i.status, i.attempts,
          (SELECT coalesce(sum(r.cost_usd), 0) FROM runs r WHERE r.item_id = i.id) AS cost
        FROM items i WHERE i.project_id = ? ORDER BY i.number`,
     )
-    .all(project.id) as { number: number; title: string; status: string; attempts: number; cost: number }[];
+    .all(project.id) as { id: string; number: number; title: string; status: string; attempts: number; cost: number }[];
   lines.push('', style.bold('Itens'));
   if (items.length === 0) lines.push('  nenhum item');
   else {
     lines.push(
       ...table(
-        ['#', 'título', 'estado', 'tentativas', 'custo'],
-        items.map((i) => [`#${i.number}`, oneLine(i.title, 48), i.status, String(i.attempts), formatCost(i.cost)]),
+        ['#', 'título', 'estado', 'tentativas', 'custo', 'refin.', 'perg.', 'sup.'],
+        items.map((i) => {
+          const s = signals(db, i.id);
+          return [
+            `#${i.number}`,
+            oneLine(i.title, 48),
+            i.status,
+            String(i.attempts),
+            formatCost(i.cost),
+            s.refined ? 'sim' : '—',
+            s.planned ? String(s.questions) : '—',
+            s.planned ? String(s.assumptions) : '—',
+          ];
+        }),
       ),
     );
   }
+
+  const comparison = signalsComparison(db, project.id);
+  if (comparison.length > 0) lines.push('', style.bold('Refinamento'), ...comparison);
 
   const gates = db
     .prepare(

@@ -7,7 +7,7 @@ import { getItem, listItems, syncBacklog, transition } from '../src/items.ts';
 import { setupProject } from './helpers.ts';
 
 function fields(text: string) {
-  return parseBacklog(text).map(({ headingEnd: _, ...item }) => item);
+  return parseBacklog(text).map(({ headingEnd: _, start: __, contentEnd: ___, ...item }) => item);
 }
 
 test('parser: item mínimo, recomendado e completo, na ordem do arquivo', () => {
@@ -42,15 +42,16 @@ Restrições: sem bibliotecas novas
   assert.deepEqual(fields(text), [
     {
       title: 'Mínimo', number: 1, intent: 'Só a intenção.', criteria: [], dependsOn: [], restrictions: null,
-      position: 0, errors: [],
+      outOfScope: [], decisions: [], criticalConcepts: [], position: 0, errors: [],
     },
     {
       title: 'Recomendado', intent: 'Quero baixar a lista.\nEm duas linhas.',
-      criteria: ['Uma linha por pedido', 'Vírgula decimal'], dependsOn: [], restrictions: null, position: 1, errors: [],
+      criteria: ['Uma linha por pedido', 'Vírgula decimal'], dependsOn: [], restrictions: null,
+      outOfScope: [], decisions: [], criticalConcepts: [], position: 1, errors: [],
     },
     {
       title: 'Completo', number: 3, intent: 'Intenção completa.', criteria: ['C1'], dependsOn: [1, 2],
-      restrictions: 'sem bibliotecas novas', position: 2, errors: [],
+      restrictions: 'sem bibliotecas novas', outOfScope: [], decisions: [], criticalConcepts: [], position: 2, errors: [],
     },
   ]);
 });
@@ -110,7 +111,8 @@ test('atribuição de id não altera nenhum outro byte do arquivo', () => {
 test('renderItemBlock gera um bloco que o parser lê de volta', () => {
   const item = {
     number: 4, title: 'Filtro por data', intent: 'Filtrar pedidos.', criteria: ['De e até'], dependsOn: [2, 3],
-    restrictions: 'sem SQL novo',
+    restrictions: 'sem SQL novo', outOfScope: ['Filtro por hora'], decisions: ['Fuso? → o da loja'],
+    criticalConcepts: ['Preço de venda'],
   };
   const [parsed] = fields(renderItemBlock(item));
   assert.deepEqual(parsed, { ...item, position: 0, errors: [] });
@@ -119,7 +121,7 @@ test('renderItemBlock gera um bloco que o parser lê de volta', () => {
 test('add não interativo gera um bloco que o parser lê de volta com os mesmos campos', () => {
   const { cli, path, db, project } = setupProject();
   const result = cli('add', 'Exportar CSV', '--intencao', 'Abrir no Excel.', '--criterio', 'Uma linha por pedido',
-    '--criterio', 'Vírgula decimal', '--restricoes', 'sem bibliotecas');
+    '--criterio', 'Vírgula decimal', '--fora-do-escopo', 'Itens do pedido', '--restricoes', 'sem bibliotecas');
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Item #1 adicionado: Exportar CSV · ready/);
 
@@ -128,9 +130,10 @@ test('add não interativo gera um bloco que o parser lê de volta com os mesmos 
 
   assert.deepEqual(fields(readFileSync(path, 'utf8')), [
     { title: 'Exportar CSV', number: 1, intent: 'Abrir no Excel.', criteria: ['Uma linha por pedido', 'Vírgula decimal'],
-      dependsOn: [], restrictions: 'sem bibliotecas', position: 0, errors: [] },
-    { title: 'Filtro', number: 2, intent: 'Por data.', criteria: [], dependsOn: [1], restrictions: null, position: 1,
-      errors: [] },
+      dependsOn: [], restrictions: 'sem bibliotecas', outOfScope: ['Itens do pedido'], decisions: [], criticalConcepts: [],
+      position: 0, errors: [] },
+    { title: 'Filtro', number: 2, intent: 'Por data.', criteria: [], dependsOn: [1], restrictions: null, outOfScope: [],
+      decisions: [], criticalConcepts: [], position: 1, errors: [] },
   ]);
   assert.deepEqual(listItems(db, project.id).map((item) => [item.number, item.status]), [[1, 'ready'], [2, 'backlog']]);
 

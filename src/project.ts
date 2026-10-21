@@ -4,7 +4,7 @@ import { basename, extname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { tryGit } from './git.ts';
 
-export type Stage = 'plan' | 'execute' | 'review';
+export type Stage = 'refine' | 'plan' | 'execute' | 'review';
 
 export interface VerifyCommand {
   name: string;
@@ -71,9 +71,10 @@ export function mabelPath(root: string, file: string): string {
   return join(root, MABEL_DIR, file);
 }
 
-export const DEFAULT_MODELS: Record<Stage, string> = { plan: 'opus', execute: 'sonnet', review: 'opus' };
+export const DEFAULT_MODELS: Record<Stage, string> = { refine: 'sonnet', plan: 'opus', execute: 'sonnet', review: 'opus' };
 
 export const DEFAULT_LIMITS: Record<Stage, StageLimits> = {
+  refine: { maxTurns: 30, maxBudgetUsd: 1 },
   plan: { maxTurns: 40, maxBudgetUsd: 3 },
   execute: { maxTurns: 120, maxBudgetUsd: 8 },
   review: { maxTurns: 40, maxBudgetUsd: 3 },
@@ -139,6 +140,7 @@ export function readConfig(root: string): ProjectConfig | undefined {
     verify: Array.isArray(raw.verify) ? raw.verify : [],
     models: { ...DEFAULT_MODELS, ...raw.models },
     limits: {
+      refine: { ...DEFAULT_LIMITS.refine, ...raw.limits?.refine },
       plan: { ...DEFAULT_LIMITS.plan, ...raw.limits?.plan },
       execute: { ...DEFAULT_LIMITS.execute, ...raw.limits?.execute },
       review: { ...DEFAULT_LIMITS.review, ...raw.limits?.review },

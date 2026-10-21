@@ -69,15 +69,22 @@ export type StartVerdict =
   | { kind: 'incomplete'; reason: string }
   | { kind: 'critical'; reasons: string[] };
 
-/** Motivos que tornam o item crítico: escopo em caminho crítico, conceitos, suposições. */
-export function criticalReasons(plan: PlanOutput, rules: CriticalRules): string[] {
+/**
+ * Motivos que tornam o item crítico: escopo em caminho crítico, conceitos (os do plano e os
+ * declarados no backlog), suposições.
+ */
+export function criticalReasons(plan: PlanOutput, rules: CriticalRules, declared: string[] = []): string[] {
   const reasons: string[] = [];
   for (const scope of plan.escopo) {
     for (const path of rules.paths) {
       if (globsOverlap(scope, path)) reasons.push(`escopo \`${scope}\` toca o caminho crítico \`${path}\``);
     }
   }
-  for (const concept of plan.conceitosCriticos) reasons.push(`conceito crítico: ${concept}`);
+  const concepts = [...plan.conceitosCriticos];
+  for (const concept of declared) {
+    if (!concepts.some((other) => other.trim().toLowerCase() === concept.trim().toLowerCase())) concepts.push(concept);
+  }
+  for (const concept of concepts) reasons.push(`conceito crítico: ${concept}`);
   for (const assumption of plan.suposicoes) {
     if (assumption.regraCritica) reasons.push(`suposição sobre regra crítica: ${assumption.texto}`);
   }
@@ -89,6 +96,7 @@ export function startGate(
   invalid: string | undefined,
   rules: CriticalRules,
   approved: boolean,
+  declared: string[] = [],
 ): StartVerdict {
   if (!plan) return { kind: 'incomplete', reason: invalid ?? 'saída estruturada ausente' };
   if (plan.perguntas.length > 0) return { kind: 'questions', questions: plan.perguntas };
@@ -98,7 +106,7 @@ export function startGate(
     return { kind: 'incomplete', reason: `critérios sem verificação: ${unverified.map((c) => c.id).join(', ')}` };
   }
   if (plan.escopo.length === 0) return { kind: 'incomplete', reason: 'plano sem escopo de arquivos' };
-  const reasons = criticalReasons(plan, rules);
+  const reasons = criticalReasons(plan, rules, declared);
   if (reasons.length > 0 && !approved) return { kind: 'critical', reasons };
   return { kind: 'pass' };
 }
@@ -340,6 +348,7 @@ async function planStep(env: PipelineEnv, item: Item): Promise<Step> {
     result.invalid,
     readCriticalRules(env.project.root),
     item.approvedAt !== null,
+    item.criticalConcepts,
   );
   switch (verdict.kind) {
     case 'questions': {

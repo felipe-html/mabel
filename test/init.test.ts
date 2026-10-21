@@ -242,7 +242,7 @@ test('init cria os arquivos, ignora o quadro e não altera nada quando repetido'
   assert.equal(config.baseBranch, 'main');
   assert.equal(config.setup, 'npm ci');
   assert.deepEqual(config.verify, [{ name: 'test', command: 'npm test' }]);
-  assert.deepEqual(config.models, { plan: 'opus', execute: 'sonnet', review: 'opus' });
+  assert.deepEqual(config.models, { refine: 'sonnet', plan: 'opus', execute: 'sonnet', review: 'opus' });
   assert.equal(config.limits.execute.maxTurns, 120);
   assert.doesNotMatch(readFileSync(join(dir, 'backlog.md'), 'utf8'), /Estabelecer base de testes/);
   assert.match(readFileSync(join(dir, 'quadro.md'), 'utf8'), /^# Quadro · /m);

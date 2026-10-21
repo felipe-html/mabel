@@ -176,6 +176,24 @@ const migrations: string[] = [
   );
   CREATE INDEX queue_events_project ON queue_events(project_id, id);
   `,
+  `
+  ALTER TABLE items ADD COLUMN out_of_scope TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE items ADD COLUMN decisions TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE items ADD COLUMN critical_concepts TEXT NOT NULL DEFAULT '[]';
+
+  CREATE TABLE refinements (
+    id           INTEGER PRIMARY KEY,
+    item_id      TEXT NOT NULL REFERENCES items(id),
+    run_id       TEXT REFERENCES runs(id),
+    content_hash TEXT NOT NULL,
+    proposal     TEXT NOT NULL,
+    status       TEXT NOT NULL,
+    decision     TEXT,
+    created_at   TEXT NOT NULL,
+    decided_at   TEXT
+  );
+  CREATE INDEX refinements_item ON refinements(item_id, id);
+  `,
 ];
 
 function migrate(db: DatabaseSync): void {

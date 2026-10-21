@@ -117,6 +117,9 @@ interface ItemRow {
   criteria: string;
   depends_on: string;
   restrictions: string | null;
+  out_of_scope: string;
+  decisions: string;
+  critical_concepts: string;
   content_hash: string;
   status: ItemStatus;
   status_reason: string | null;
@@ -163,6 +166,9 @@ function fromRow(row: ItemRow): Item {
     criteria: JSON.parse(row.criteria) as string[],
     dependsOn: JSON.parse(row.depends_on) as number[],
     restrictions: row.restrictions,
+    outOfScope: JSON.parse(row.out_of_scope) as string[],
+    decisions: JSON.parse(row.decisions) as string[],
+    criticalConcepts: JSON.parse(row.critical_concepts) as string[],
     contentHash: row.content_hash,
     status: row.status,
     statusReason: row.status_reason,
@@ -247,7 +253,10 @@ export function isStarted(db: DatabaseSync, itemId: string): boolean {
 }
 
 export function contentHash(fields: ItemFields): string {
-  const content = [fields.title, fields.intent, fields.criteria, fields.dependsOn, fields.restrictions];
+  const content: unknown[] = [fields.title, fields.intent, fields.criteria, fields.dependsOn, fields.restrictions];
+  // Campos do refinamento só entram quando usados: o hash dos itens anteriores não muda.
+  const { outOfScope, decisions, criticalConcepts } = fields;
+  if (outOfScope.length + decisions.length + criticalConcepts.length > 0) content.push({ outOfScope, decisions, criticalConcepts });
   return createHash('sha256').update(JSON.stringify(content)).digest('hex');
 }
 
@@ -315,6 +324,17 @@ export function satisfiedNumbers(items: Item[], integration: boolean): Set<numbe
       .filter((item) => item.status === 'done' || (integration && item.status === 'awaiting_merge' && item.integratedCommit))
       .map((item) => item.number),
   );
+}
+
+/** Motivo pelo qual o item não está pronto para planejar, ou `null` quando está. */
+export function notReadyReason(item: Item, satisfied: Set<number>): string | null {
+  if (!item.title || !item.intent) return 'sem intenção';
+  // Item declarado crítico: os critérios vêm do humano (escritos ou aceitos no refinamento).
+  if (item.criticalConcepts.length > 0 && item.criteria.length === 0) {
+    return `regra crítica sem critérios: escreva os critérios ou rode \`mabel refinar ${item.number}\``;
+  }
+  if (!item.dependsOn.every((dep) => satisfied.has(dep))) return 'dependências pendentes';
+  return null;
 }
 
 export function boardItems(db: DatabaseSync, project: Pick<Project, 'id' | 'config'>): BoardItem[] {
@@ -425,14 +445,17 @@ export function syncBacklog(db: DatabaseSync, project: Project): SyncResult {
       criteria: entry.criteria,
       dependsOn: entry.dependsOn,
       restrictions: entry.restrictions,
+      outOfScope: entry.outOfScope,
+      decisions: entry.decisions,
+      criticalConcepts: entry.criticalConcepts,
     };
     const hash = contentHash(fields);
     let item = getItem(db, project.id, entry.number);
     if (!item) {
       db.prepare(
         `INSERT INTO items (id, project_id, number, position, title, intent, criteria, depends_on, restrictions,
-           content_hash, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'backlog', ?, ?)`,
+           out_of_scope, decisions, critical_concepts, content_hash, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'backlog', ?, ?)`,
       ).run(
         randomUUID(),
         project.id,
@@ -443,6 +466,9 @@ export function syncBacklog(db: DatabaseSync, project: Project): SyncResult {
         JSON.stringify(fields.criteria),
         JSON.stringify(fields.dependsOn),
         fields.restrictions,
+        JSON.stringify(fields.outOfScope),
+        JSON.stringify(fields.decisions),
+        JSON.stringify(fields.criticalConcepts),
         hash,
         now,
         now,
@@ -463,13 +489,16 @@ export function syncBacklog(db: DatabaseSync, project: Project): SyncResult {
       } else {
         db.prepare(
           `UPDATE items SET title = ?, intent = ?, criteria = ?, depends_on = ?, restrictions = ?,
-             content_hash = ?, updated_at = ? WHERE id = ?`,
+             out_of_scope = ?, decisions = ?, critical_concepts = ?, content_hash = ?, updated_at = ? WHERE id = ?`,
         ).run(
           fields.title,
           fields.intent,
           JSON.stringify(fields.criteria),
           JSON.stringify(fields.dependsOn),
           fields.restrictions,
+          JSON.stringify(fields.outOfScope),
+          JSON.stringify(fields.decisions),
+          JSON.stringify(fields.criticalConcepts),
           hash,
           now,
           item.id,
@@ -499,15 +528,14 @@ export function syncBacklog(db: DatabaseSync, project: Project): SyncResult {
     }
   }
 
-  // 4. backlog ⇄ ready conforme título, intenção e dependências.
+  // 4. backlog ⇄ ready conforme título, intenção, critérios de item crítico e dependências.
   const items = listItems(db, project.id);
   const done = satisfiedNumbers(items, project.config.integracao !== null);
   for (const item of items) {
-    const ready = Boolean(item.title && item.intent) && item.dependsOn.every((dep) => done.has(dep));
-    if (item.status === 'backlog' && ready) move(item, 'ready', null);
-    else if (item.status === 'ready' && !ready) {
-      move(item, 'backlog', item.intent ? 'dependências pendentes' : 'sem intenção');
-    }
+    if (item.status !== 'backlog' && item.status !== 'ready') continue;
+    const missing = notReadyReason(item, done);
+    if (item.status === 'backlog' && !missing) move(item, 'ready', null);
+    else if (missing) move(item, 'backlog', missing);
   }
 
   refreshBoard(db, project);

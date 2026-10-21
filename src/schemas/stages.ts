@@ -73,11 +73,30 @@ export interface ExecuteOutput {
   escopoAdicional?: ScopeRequest[];
 }
 
+/** Proposta de refinamento de um item do backlog; o humano revisa antes de gravar. */
+export interface RefineOutput {
+  entendimento: string;
+  criterios: string[];
+  foraDoEscopo: string[];
+  perguntas: Question[];
+  conceitosCriticos: string[];
+  quebra: { titulo: string; intencao: string }[];
+}
+
 /** O parecer não declara aprovação: o Mabel a calcula (`reviewVerdict`). */
 export interface ReviewOutput {
   criterios: { id: string; atendido: boolean; evidencia: string }[];
   problemas: { gravidade: 'bloqueante' | 'menor'; descricao: string; arquivo?: string }[];
 }
+
+export const refineSchema: Schema = object({
+  entendimento: str,
+  criterios: strings,
+  foraDoEscopo: strings,
+  perguntas: questions,
+  conceitosCriticos: strings,
+  quebra: { type: 'array', items: object({ titulo: str, intencao: str }) },
+});
 
 export const planSchema: Schema = object({
   resumo: str,

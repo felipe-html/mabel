@@ -49,7 +49,15 @@ const joinAnd = (parts: string[]) =>
 
 /** Item criado pelo `init` em projeto sem testes. Fica concreto quando a stack é do catálogo. */
 export function testBaseItem({ empty, stack, other }: TestBaseOptions): ItemFields {
-  const base = { number: 1, title: TEST_BASE_TITLE, dependsOn: [], restrictions: null };
+  const base = {
+    number: 1,
+    title: TEST_BASE_TITLE,
+    dependsOn: [],
+    restrictions: null,
+    outOfScope: [],
+    decisions: [],
+    criticalConcepts: [],
+  };
   if (stack && empty) {
     const { framework, setup, verify } = stack.template;
     const config = [
