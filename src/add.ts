@@ -1,14 +1,15 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import { ask, interactive } from './ask.ts';
+import { ask, confirm, interactive } from './ask.ts';
 import { type ItemFields, appendBlocks, parseBacklog, renderItemBlock } from './backlog.ts';
 import { dataDir, openDb } from './db.ts';
 import { backlogPath, getItem, nextNumber, syncBacklog } from './items.ts';
 import { ProjectError, resolveProject } from './project.ts';
+import { refineCommand } from './refine.ts';
 import { style } from './style.ts';
 
 export const addUsage =
-  'mabel add "<título>" [--intencao <texto>] [--criterio <texto>]... [--depende <n>]... [--restricoes <texto>]';
+  'mabel add "<título>" [--intencao <texto>] [--criterio <texto>]... [--fora-do-escopo <texto>]... [--depende <n>]... [--restricoes <texto>]';
 
 function parseNumbers(values: string[]): number[] | string {
   const numbers: number[] = [];
@@ -31,6 +32,7 @@ export function parseAddArgs(args: string[]): Partial<ItemFields> | string {
       options: {
         intencao: { type: 'string' },
         criterio: { type: 'string', multiple: true },
+        'fora-do-escopo': { type: 'string', multiple: true },
         depende: { type: 'string', multiple: true },
         restricoes: { type: 'string' },
       },
@@ -41,7 +43,12 @@ export function parseAddArgs(args: string[]): Partial<ItemFields> | string {
   const { values, positionals } = parsed;
   const dependsOn = parseNumbers(values.depende ?? []);
   if (typeof dependsOn === 'string') return dependsOn;
-  const fields: Partial<ItemFields> = { dependsOn, criteria: (values.criterio ?? []).map((c) => c.trim()).filter(Boolean) };
+  const list = (entries: string[] | undefined) => (entries ?? []).map((entry) => entry.trim()).filter(Boolean);
+  const fields: Partial<ItemFields> = {
+    dependsOn,
+    criteria: list(values.criterio),
+    outOfScope: list(values['fora-do-escopo']),
+  };
   const title = positionals.join(' ').trim();
   if (title) fields.title = title;
   if (values.intencao?.trim()) fields.intent = values.intencao.trim();
@@ -49,21 +56,27 @@ export function parseAddArgs(args: string[]): Partial<ItemFields> | string {
   return fields;
 }
 
-/** Perguntas em sequência no TTY: título, intenção, critérios, dependências e restrições. */
+/** Lê uma lista no terminal, uma entrada por linha, até uma linha vazia. */
+async function askList(label: string): Promise<string[]> {
+  process.stdout.write(style.dim(`${label}, um por linha (linha vazia encerra):\n`));
+  const entries: string[] = [];
+  for (;;) {
+    const entry = await ask('  - ');
+    if (!entry) return entries;
+    entries.push(entry);
+  }
+}
+
+/** Perguntas em sequência no TTY: título, intenção, critérios, fora do escopo, dependências e restrições. */
 async function askFields(partial: Partial<ItemFields>): Promise<ItemFields | string> {
   const title = partial.title ?? (await ask('Título: '));
   if (!title) return 'O título é obrigatório.';
   const intent = partial.intent ?? (await ask('Intenção (o que você quer e por quê): '));
   if (!intent) return 'A intenção é obrigatória.';
   let criteria = partial.criteria ?? [];
-  if (criteria.length === 0) {
-    process.stdout.write(style.dim('Critérios de aceite, um por linha (linha vazia encerra):\n'));
-    for (;;) {
-      const criterion = await ask('  - ');
-      if (!criterion) break;
-      criteria = [...criteria, criterion];
-    }
-  }
+  if (criteria.length === 0) criteria = await askList('Critérios de aceite');
+  let outOfScope = partial.outOfScope ?? [];
+  if (outOfScope.length === 0) outOfScope = await askList('Fora do escopo (o que o item não faz)');
   let dependsOn = partial.dependsOn ?? [];
   if (dependsOn.length === 0) {
     const answer = parseNumbers([await ask('Depende de (ex.: 2, 3; enter para nenhum): ')]);
@@ -71,7 +84,7 @@ async function askFields(partial: Partial<ItemFields>): Promise<ItemFields | str
     dependsOn = answer;
   }
   const restrictions = partial.restrictions ?? ((await ask('Restrições (enter para nenhuma): ')) || null);
-  return { title, intent, criteria, dependsOn, restrictions };
+  return { title, intent, criteria, dependsOn, restrictions, outOfScope, decisions: [], criticalConcepts: [] };
 }
 
 export async function add(args: string[]): Promise<number> {
@@ -93,6 +106,9 @@ export async function add(args: string[]): Promise<number> {
       criteria: partial.criteria ?? [],
       dependsOn: partial.dependsOn ?? [],
       restrictions: partial.restrictions ?? null,
+      outOfScope: partial.outOfScope ?? [],
+      decisions: [],
+      criticalConcepts: [],
     };
   }
   if (typeof fields === 'string') {
@@ -101,6 +117,7 @@ export async function add(args: string[]): Promise<number> {
   }
 
   const db = openDb(dataDir());
+  let number: number;
   try {
     const project = resolveProject(db);
     // Sincroniza antes para que ids pendentes no arquivo não colidam com o novo.
@@ -108,7 +125,7 @@ export async function add(args: string[]): Promise<number> {
     const path = backlogPath(project);
     const text = readFileSync(path, 'utf8');
     const numbers = parseBacklog(text).flatMap((item) => (item.number === undefined ? [] : [item.number]));
-    const number = nextNumber(db, project.id, numbers);
+    number = nextNumber(db, project.id, numbers);
     writeFileSync(path, appendBlocks(text, [renderItemBlock({ ...fields, number })]));
     const after = syncBacklog(db, project);
 
@@ -116,7 +133,7 @@ export async function add(args: string[]): Promise<number> {
     process.stdout.write(`Item #${number} adicionado: ${fields.title} · ${item?.status ?? '?'}\n`);
     for (const warning of [...before.warnings, ...after.warnings]) process.stdout.write(style.dim(`${warning}\n`));
     if (item?.status === 'blocked') process.stdout.write(`Bloqueado: ${item.statusReason}\n`);
-    return 0;
+    if (!interactive()) return 0;
   } catch (error) {
     if (error instanceof ProjectError) {
       process.stderr.write(`${error.message}\n`);
@@ -126,4 +143,7 @@ export async function add(args: string[]): Promise<number> {
   } finally {
     db.close();
   }
+  // Só no terminal: o refinamento custa uma run e espera a sua revisão.
+  if (!(await confirm('Refinar o item agora com um agente?', false))) return 0;
+  return refineCommand([String(number)]);
 }

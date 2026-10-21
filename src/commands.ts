@@ -22,6 +22,7 @@ import {
 import { inboxCommand, inboxUsage } from './inbox.ts';
 import { init, initUsage } from './init.ts';
 import { projectCommand, projectUsage, projectsCommand, projectsUsage } from './projects.ts';
+import { refineCommand, refineUsage } from './refine.ts';
 import { run, runUsage } from './run.ts';
 import { runsCommand, runsUsage } from './runs.ts';
 import { status } from './status.ts';
@@ -51,6 +52,12 @@ export const commands: Command[] = [
     description: 'Adiciona um item ao backlog do projeto',
     usage: addUsage,
     run: add,
+  },
+  {
+    name: 'refinar',
+    description: 'Pede a um agente uma proposta de critérios, decisões e limites de um item, para você revisar',
+    usage: refineUsage,
+    run: refineCommand,
   },
   {
     name: 'run',

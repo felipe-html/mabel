@@ -13,6 +13,7 @@ import {
   type ReviewOutput,
   executeSchema,
   planSchema,
+  refineSchema,
   reviewSchema,
 } from './schemas/stages.ts';
 import { type Schema, validate } from './schemas/validate.ts';
@@ -20,6 +21,7 @@ import { originBranch } from './worktree.ts';
 
 /** Ferramentas que existem na etapa (`--tools`); o `init` precisa listar exatamente estas. */
 export const STAGE_TOOLS: Record<RunStage, string[]> = {
+  refine: ['Read', 'Glob', 'Grep'],
   plan: ['Read', 'Glob', 'Grep'],
   execute: ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'Bash'],
   review: ['Read', 'Glob', 'Grep', 'Bash'],
@@ -27,6 +29,7 @@ export const STAGE_TOOLS: Record<RunStage, string[]> = {
 
 /** Ferramentas liberadas sem pedir (`--allowedTools`); no `dontAsk`, o resto é negado. */
 export const STAGE_ALLOWED: Record<RunStage, string[]> = {
+  refine: STAGE_TOOLS.refine,
   plan: STAGE_TOOLS.plan,
   execute: STAGE_TOOLS.execute,
   review: ['Read', 'Glob', 'Grep', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git show:*)'],
@@ -48,9 +51,15 @@ export const EXECUTE_DISALLOWED = [
   'Bash(wget:*)',
 ];
 
-const SCHEMAS: Record<RunStage, Schema> = { plan: planSchema, execute: executeSchema, review: reviewSchema };
+const SCHEMAS: Record<RunStage, Schema> = {
+  refine: refineSchema,
+  plan: planSchema,
+  execute: executeSchema,
+  review: reviewSchema,
+};
 
 const PROMPT_FILES: Record<RunStage, string> = {
+  refine: 'refinar.md',
   plan: 'planejar.md',
   execute: 'executar.md',
   review: 'revisar.md',
@@ -79,7 +88,7 @@ export interface StageContext {
   home: string;
   project: Project;
   item: Item;
-  /** Worktree do item: cwd de todas as etapas. */
+  /** Worktree do item: cwd das etapas (no refinamento, a raiz do projeto). */
   worktree: string;
 }
 
@@ -247,6 +256,14 @@ export function planPrompt(ctx: StageContext, input: PlanPromptInput = {}): stri
       'Critérios de aceite do backlog',
       bullet(item.criteria, 'Nenhum. Proponha critérios verificáveis.'),
     ),
+    ...section('Fora do escopo', bullet(item.outOfScope, '')),
+    ...section('Decisões já tomadas pelo humano', bullet(item.decisions, '')),
+    ...section(
+      'Regras críticas declaradas no backlog',
+      item.criticalConcepts.length > 0
+        ? [bullet(item.criticalConcepts, ''), '', 'O humano declarou que o item toca estes conceitos: copie-os em `conceitosCriticos`.']
+        : '',
+    ),
     ...section('Restrições', item.restrictions ?? ''),
     ...section('Comandos de verificação', verifyCommands(project)),
     ...(input.previousPlan
@@ -301,6 +318,8 @@ export function executePrompt(ctx: StageContext, input: ExecutePromptInput): str
     `# Item #${ctx.item.number}: ${ctx.item.title} · tentativa ${input.attempt}`,
     '',
     ...section('Plano', renderPlanMarkdown(ctx.item, input.plan).replace(/^# .*\n/, '')),
+    ...section('Fora do escopo', bullet(ctx.item.outOfScope, '')),
+    ...section('Decisões já tomadas pelo humano', bullet(ctx.item.decisions, '')),
     ...section('Restrições', ctx.item.restrictions ?? ''),
     ...section('Comandos de verificação', verifyCommands(ctx.project)),
     ...section('Tentativas anteriores', input.attemptsSummary ?? ''),
@@ -328,6 +347,7 @@ export function reviewPrompt(ctx: StageContext, input: ReviewPromptInput): strin
     `# Revisão do item #${ctx.item.number}: ${ctx.item.title}`,
     '',
     ...section('Plano', renderPlanMarkdown(ctx.item, input.plan).replace(/^# .*\n/, '')),
+    ...section('Fora do escopo do item', bullet(ctx.item.outOfScope, '')),
     ...section('Resumo da execução', input.execution.resumo),
     ...section('Testes declarados por critério', bullet(tests, 'Nenhum.')),
     '## Tarefa',

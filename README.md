@@ -104,6 +104,8 @@ No modo Mabel, os comandos começam com `/`:
    verificação, cria o `.mabel/` e faz o commit dele. Projeto sem testes ganha como
    primeiro item "Estabelecer base de testes".
 2. **`/add`** acrescenta itens ao backlog, ou edite `.mabel/backlog.md` direto.
+   **`/refinar`** pede a um agente uma proposta de critérios, decisões e limites para um
+   item; você revisa e só o que aceitar entra no backlog.
 3. **`/run`** consome a fila: planeja tudo, oferece a inbox se houver perguntas e executa
    item a item até cada um chegar a `awaiting_merge`.
 4. **Revise e faça o merge** da branch de cada item. No próximo `/run`, o item vira `done`.
@@ -118,15 +120,30 @@ Critérios:
 - Uma linha por pedido, com data, cliente e valor
 - Valores com vírgula decimal
 
+Fora do escopo:
+- Exportar itens do pedido
+
+Decisões:
+- Pedidos cancelados entram? → Não
+
 Depende de: 2
 Restrições: não adicionar bibliotecas novas
 ```
 
-| Nível | O que escrever | Efeito |
+Quanto detalhe escrever: **o que só você sabe e o que, se o agente errasse, faria você
+reclamar.** O resto o agente tira do código ou decide e registra como suposição. Um bom
+item responde: para quê (intenção), o que muda visto de fora (`Critérios:`), que regras de
+negócio já estão decididas (`Decisões:`) e o que fica de fora (`Fora do escopo:`).
+
+| Item | O que escrever | Efeito |
 |---|---|---|
-| Mínimo | Título e intenção | O planejador propõe os critérios e registra as suposições |
-| Recomendado | Com `Critérios:` | O revisor julga o código contra o que você espera |
-| Completo | Com `Depende de:` e `Restrições:` | Para itens encadeados ou com limites técnicos |
+| Ajuste pequeno, sem regra de negócio | Título e intenção | O planejador propõe os critérios e registra as suposições |
+| Com regra de negócio | Intenção, critérios, decisões e fora do escopo | O planejador não pergunta o que já está decidido; o revisor julga contra o que você espera |
+| Toca regra crítica | Também `Regras críticas:` com os conceitos | Só fica pronto com critérios e sempre passa pela sua aprovação |
+| Encadeado ou com limite técnico | `Depende de:` e `Restrições:` | Ordem e limites da implementação |
+
+O `mabel projeto <nome>` mostra quantas perguntas e suposições cada item gerou, separando
+os refinados dos não refinados: é o sinal de quanto detalhe falta no backlog.
 
 A ordem no arquivo é a prioridade. O Mabel acrescenta a linha `id:` em cada item.
 
@@ -145,6 +162,7 @@ Todos funcionam no modo Mabel (`/comando`) e no shell (`mabel comando`).
 |---|---|
 | `init [--stack <id>]` | Prepara o projeto atual para o Mabel |
 | `add` | Adiciona um item ao backlog |
+| `refinar [<n>] [--refazer] [--aceitar \| --descartar]` | Proposta de refinamento de um item, por agente, para você revisar antes de gravar no backlog |
 | `run [--item <n>] [--uma] [--sem-lote]` | Consome a fila. `--item` processa um item; `--uma` para no primeiro estado final; `--sem-lote` planeja e executa item a item |
 | `inbox` | Responde às decisões pendentes, uma por vez, com sugestão do agente |
 | `item <n>` | Detalhe do item: estado, pendência, plano, custo e runs |

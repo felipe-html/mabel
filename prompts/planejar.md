@@ -24,6 +24,9 @@ e devolve o plano na saída estruturada.
 - Em `conceitosCriticos`, copie literalmente os conceitos da seção "Regras críticas do
   projeto" que o item toca. Se o projeto não declara conceitos, ou o item não toca nenhum,
   a lista fica **vazia**. Não invente conceitos: uma lista não vazia exige aprovação humana.
+- **Fora do escopo** e **Decisões já tomadas pelo humano**, quando o item os traz, valem
+  como regra: o plano não faz o que está fora do escopo e não contraria nem pergunta de novo
+  o que já foi decidido.
 
 ## Quando perguntar
 

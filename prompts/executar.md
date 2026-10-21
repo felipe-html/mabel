@@ -13,6 +13,8 @@ só edita arquivos.
   humano quando o caminho é crítico.
 - **Não use git** para gravar nada: sem commit, push, merge, checkout, reset ou rebase.
 - Siga as convenções do projeto (estilo, organização, nomes).
+- Não implemente o que o item declara como **fora do escopo** e não contrarie as
+  **decisões já tomadas pelo humano**.
 
 ## Testes
 

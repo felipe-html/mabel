@@ -60,6 +60,9 @@ function seedItem(db: DatabaseSync, home: string, projectId: string, number: num
     "INSERT INTO item_transitions (item_id, from_state, to_state, reason, run_id, at) VALUES (?, 'planned', 'executing', 'início', ?, ?)",
   ).run(itemId, runIds[0] ?? null, now());
   db.prepare(
+    "INSERT INTO refinements (item_id, run_id, content_hash, proposal, status, created_at) VALUES (?, ?, 'h', '{}', 'discarded', ?)",
+  ).run(itemId, runIds[0] ?? null, now());
+  db.prepare(
     "INSERT INTO queue_events (project_id, at, kind, cause, detail, until) VALUES (?, ?, 'wait', 'five_hour', 'saldo da janela de 5h em 20% (abaixo de 30%)', ?)",
   ).run(projectId, now(), now());
   for (const id of runIds) mkdirSync(runDir(home, id), { recursive: true });
@@ -166,7 +169,7 @@ test('remoção apaga só o projeto e preserva o outro e as runs sem item', () =
   const summary = cli('projeto', 'remover', name);
   assert.equal(summary.status, 1);
   assert.match(summary.stdout, /2 itens · 4 runs · US\$ 2,00/);
-  assert.match(summary.stdout, /banco: events, tool_calls, rate_limits, gate_results, item_transitions, runs, items, queue_events, projects/);
+  assert.match(summary.stdout, /banco: events, tool_calls, rate_limits, gate_results, refinements, item_transitions, runs, items, queue_events, projects/);
   assert.match(summary.stdout, /disco: runs\/ \(4\), items\/ \(2\), worktrees\/.{8}…, locks\//);
   assert.match(summary.stdout, /aviso: 1 item integrado \(#12\) ainda não chegou a main; o trabalho só existe na branch mabel\/integracao/);
   assert.match(summary.stderr, /--confirmar/);

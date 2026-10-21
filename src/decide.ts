@@ -13,6 +13,7 @@ import { writeIntegrationReport } from './report.ts';
 import { type Project, ProjectError, resolveProject } from './project.ts';
 import type { PlanOutput } from './schemas/stages.ts';
 import { itemDir, readArtifact } from './stages.ts';
+import { signals, signalsLine, situation } from './refine.ts';
 import { type RecentRun, renderRecentRuns } from './status.ts';
 import { style } from './style.ts';
 
@@ -94,10 +95,14 @@ export function renderItemDetail(db: DatabaseSync, home: string, item: Item): st
   lines.push('', style.bold('Item'));
   lines.push(`  intenção: ${item.intent.replace(/\n+/g, ' ')}`);
   if (item.restrictions) lines.push(`  restrições: ${item.restrictions}`);
+  if (item.outOfScope.length > 0) lines.push(`  fora do escopo: ${item.outOfScope.join('; ')}`);
+  if (item.decisions.length > 0) lines.push(`  decisões: ${item.decisions.join('; ')}`);
+  if (item.criticalConcepts.length > 0) lines.push(`  regras críticas: ${item.criticalConcepts.join('; ')}`);
   if (item.branch) lines.push(`  branch: ${item.branch}`);
   if (item.integratedCommit) lines.push(`  integrado em: ${item.integratedCommit.slice(0, 12)}`);
   if (item.worktree) lines.push(`  worktree: ${item.worktree}`);
   lines.push(`  tentativas no ciclo: ${item.attempts} · custo ${formatCost(itemCost(db, item.id))}`);
+  lines.push(`  refinamento: ${signalsLine(signals(db, item.id), situation(db, item))}`);
 
   const plan = readArtifact<PlanOutput>(home, item.id, 'plano.json');
   if (plan) {

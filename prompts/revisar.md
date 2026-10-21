@@ -16,7 +16,8 @@ conseguir comprovar.
   aponte a evidência (o trecho do diff ou o teste que o comprova). Critério que você não
   avaliar reprova o item.
 - Registre os problemas encontrados. `bloqueante`: o critério não é atendido, há bug,
-  alteração fora do escopo ou teste que não prova o que diz. `menor`: estilo ou melhoria
+  alteração fora do escopo (inclusive o que o item declara como "fora do escopo") ou teste
+  que não prova o que diz. `menor`: estilo ou melhoria
   que não impede a entrega.
 
 ## Saída

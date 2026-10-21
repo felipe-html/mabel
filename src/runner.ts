@@ -22,7 +22,7 @@ import type { ScopeContext } from './scope.ts';
 import { type ResultTotals, type ToolResult, type ToolUse, parseLine } from './stream.ts';
 
 export type RunKind = 'exec' | 'probe' | 'stage';
-export type RunStage = 'plan' | 'execute' | 'review';
+export type RunStage = 'refine' | 'plan' | 'execute' | 'review';
 export type RunStatus = 'running' | 'succeeded' | 'failed' | 'interrupted';
 
 export interface RunRequest {
