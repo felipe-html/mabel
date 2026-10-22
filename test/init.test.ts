@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { commitMabelDir, createProjectFiles, testBaseItem } from '../src/init.ts';
 import { makeRepo } from './helpers.ts';
 import { hasCommits, isEmptyProject, parseCriticalRules } from '../src/project.ts';
-import { STACKS, detectCommands as detect, findStack } from '../src/stacks.ts';
+import { STACKS, detectCommands as detect, findStack, frameworkDomains } from '../src/stacks.ts';
 import { renderItemBlock } from '../src/backlog.ts';
 
 const CLI = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
@@ -102,11 +102,21 @@ test('catálogo reconhece cada stack e junta mais de uma', () => {
   assert.deepEqual(detectCommands(makeRepo({ 'requirements.txt': '' })), { setup: null, verify: [] });
 });
 
+test('Next libera na rede as fontes do Google que o build baixa', () => {
+  const next = makeRepo({ 'package.json': JSON.stringify({ dependencies: { next: '16.0.0' } }) });
+  assert.deepEqual(frameworkDomains(next), ['fonts.googleapis.com', 'fonts.gstatic.com']);
+  assert.deepEqual(frameworkDomains(makeRepo({ 'package.json': '{}' })), []);
+});
+
 test('item da base de testes por stack', () => {
   const node = renderItemBlock(testBaseItem({ empty: true, stack: findStack('node') }));
   assert.match(node, /estrutura mínima de Node\/TypeScript com Vitest/);
   assert.match(node, /`npm run typecheck` e `npm test` rodam e passam/);
   assert.match(node, /`setup` igual a `npm ci` e `verify` com `typecheck` \(`npm run typecheck`\) e `test` \(`npm test`\)/);
+  // O agente não escreve no `.mabel/`: o config fica como nota ao humano, não como critério.
+  for (const item of [testBaseItem({ empty: true, stack: findStack('node') }), testBaseItem({ empty: false })]) {
+    assert.ok(item.criteria.every((criterion) => !criterion.includes('.mabel')));
+  }
 
   const go = renderItemBlock(testBaseItem({ empty: true, stack: findStack('go') }));
   assert.doesNotMatch(go, /`setup` igual/, 'Go não tem setup');

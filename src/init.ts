@@ -28,7 +28,7 @@ import {
   registeredProjectId,
 } from './project.ts';
 import { select } from './menu.ts';
-import { STACKS, type Stack, detectCommands, findStack, stackLabel } from './stacks.ts';
+import { STACKS, type Stack, detectCommands, findStack, frameworkDomains, stackLabel } from './stacks.ts';
 import { style } from './style.ts';
 
 export const TEST_BASE_TITLE = 'Estabelecer base de testes';
@@ -48,6 +48,9 @@ const joinAnd = (parts: string[]) =>
   parts.length <= 1 ? parts.join('') : `${parts.slice(0, -1).join(', ')} e ${parts.at(-1)}`;
 
 /** Item criado pelo `init` em projeto sem testes. Fica concreto quando a stack é do catálogo. */
+/** O agente não escreve no `.mabel/` (G4): mudança no config do Mabel é do humano. */
+const MABEL_CONFIG_NOTE = 'O item não altera o `.mabel/config.json`: o config do Mabel é do humano.';
+
 export function testBaseItem({ empty, stack, other }: TestBaseOptions): ItemFields {
   const base = {
     number: 1,
@@ -69,11 +72,10 @@ export function testBaseItem({ empty, stack, other }: TestBaseOptions): ItemFiel
       intent: [
         `O projeto ainda não tem código. Criar a estrutura mínima de ${stack.label} com ${framework}`,
         'e escrever ao menos um teste que passe.',
+        '',
+        `${MABEL_CONFIG_NOTE} Depois do merge, o config deve ter ${joinAnd(config)}.`,
       ].join('\n'),
-      criteria: [
-        `${joinAnd(verify.map((command) => code(command.command)))} rodam e passam`,
-        `${code('.mabel/config.json')} tem ${joinAnd(config)}`,
-      ],
+      criteria: [`${joinAnd(verify.map((command) => code(command.command)))} rodam e passam`],
     };
   }
   const intent = stack
@@ -88,13 +90,11 @@ export function testBaseItem({ empty, stack, other }: TestBaseOptions): ItemFiel
         'stack, configurar o comando de teste e escrever ao menos um teste que passe.',
       ];
   if (!stack && (empty || other)) intent.push('', `Stack: ${other || 'a definir'}`);
+  intent.push('', `${MABEL_CONFIG_NOTE} Depois do merge, o comando de teste entra em ${code('verify')}.`);
   return {
     ...base,
     intent: intent.join('\n'),
-    criteria: [
-      'Um comando de teste roda e passa',
-      'O comando de teste está em `verify` no `.mabel/config.json`',
-    ],
+    criteria: ['Um comando de teste, chamado por um script do projeto, roda e passa'],
   };
 }
 
@@ -261,7 +261,9 @@ export async function init(args: string[]): Promise<number> {
       arquivosDeTeste: stack?.proof(root, empty).arquivosDeTeste ?? [...DEFAULT_TEST_GLOBS],
       integracao: DEFAULT_INTEGRATION,
       contexto: { maxCaracteres: DEFAULT_CONTEXT_BUDGET },
-      rede: [...new Set([...(stack ? [stack] : []), ...detected.stacks].flatMap((found) => found.rede))],
+      rede: [
+        ...new Set([...[...(stack ? [stack] : []), ...detected.stacks].flatMap((found) => found.rede), ...frameworkDomains(root)]),
+      ],
       sandbox: true,
     };
 

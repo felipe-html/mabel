@@ -23,6 +23,7 @@ const execFor = (n: number, content = `export const item${n} = ${n};\n`) => ({
     suposicoes: [],
     perguntas: [],
     escopoAdicional: [],
+    impedimento: '',
   },
   files: { [`src/item${n}.js`]: content, [`test/item${n}.test.js`]: `test('item ${n} existe', () => {});\n` },
 });

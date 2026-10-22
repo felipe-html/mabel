@@ -64,7 +64,8 @@ O prompt continua pedindo no máximo 3 perguntas de uma linha (pedido, não gara
 | `question_execute` | Perguntas com sugestão e suposições críticas | Enter, texto, `d`, `p`; ao final do item, `r` para replanejar com as respostas |
 | `plan_incomplete` | Motivo da reprovação | Texto (orientação), `c`, `p` |
 | `critical_approval` | Motivos e critérios do plano | `a` aprova, texto ajusta, `c`, `p`. Sem `d`. |
-| `attempts_exhausted` | Resumo das tentativas | Texto (novo ciclo), `r` + texto (replanejar), `c`, `p` |
+| `attempts_exhausted` | O que reprovou em cada tentativa, em português; causa provável quando o log mostra bloqueio do sandbox ou da rede; diagnóstico do executor na última tentativa | Texto (novo ciclo), `r` + texto (replanejar), `c`, `p` |
+| `environment_block` | Impedimento de ambiente declarado pelo executor e o que ajustar | Texto (o que mudou; a execução retoma na mesma sessão), `r` + texto, `c`, `p` |
 
 "Decide você" entra na resposta como `R: decida e registre como suposição.` O prompt das
 etapas trata essa frase como delegação explícita.

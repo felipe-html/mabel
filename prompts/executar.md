@@ -50,6 +50,19 @@ e registra como suposição. Liste em `suposicoes` toda suposição feita, marca
 Quando a resposta do humano a uma pergunta for "decida e registre como suposição", a
 decisão é sua: escolha, registre em `suposicoes` e não repita a pergunta.
 
+## Impedimento de ambiente
+
+Se um comando de verificação falha por causa do ambiente, e não do código (domínio fora da
+rede liberada, porta ou arquivo bloqueado pelo sandbox, serviço externo fora do ar), não
+contorne o bloqueio nem mude o código para escapar dele. Termine com o motivo em
+`impedimento`, numa linha que diga o que o humano precisa liberar (ex.: "o build baixa
+fontes de `fonts.googleapis.com`, fora da `rede` do `.mabel/config.json`"). O Mabel para o
+item e leva o motivo ao humano, sem gastar tentativas. `impedimento` fica vazio quando não
+há bloqueio de ambiente.
+
+Numa retentativa em que o código já está certo, não invente mudança: termine sem alterar
+nada e o Mabel verifica de novo o que já foi feito.
+
 ## Saída
 
 Termine chamando a ferramenta de saída estruturada: um resumo do que mudou e, para cada

@@ -35,6 +35,7 @@ const execution = (arquivo: string, nome: string, id = 'C1'): ExecuteOutput => (
   suposicoes: [],
   perguntas: [],
   escopoAdicional: [],
+  impedimento: '',
 });
 
 /** Repositório com a base em `main` e o item commitado numa branch, como no worktree. */

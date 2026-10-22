@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { globsOverlap } from './glob.ts';
@@ -106,6 +106,15 @@ export function startGate(
     return { kind: 'incomplete', reason: `critérios sem verificação: ${unverified.map((c) => c.id).join(', ')}` };
   }
   if (plan.escopo.length === 0) return { kind: 'incomplete', reason: 'plano sem escopo de arquivos' };
+  // O gate de escopo reprova toda escrita no `.mabel/` e no `.git/`: o plano que os inclui
+  // reprovaria na execução, por mais certo que o código estivesse.
+  const reserved = plan.escopo.filter((glob) => /^(\.\/)?\.(mabel|git)(\/|$)/.test(glob));
+  if (reserved.length > 0) {
+    return {
+      kind: 'incomplete',
+      reason: `escopo em arquivo do Mabel ou do git (${reserved.map((glob) => `\`${glob}\``).join(', ')}): o config do Mabel é do humano; registre a mudança como recomendação em suposicoes`,
+    };
+  }
   const reasons = criticalReasons(plan, rules, declared);
   if (reasons.length > 0 && !approved) return { kind: 'critical', reasons };
   return { kind: 'pass' };
@@ -239,6 +248,78 @@ export function attemptsSummary(db: DatabaseSync, itemId: string): string {
   return rows
     .map((row) => `- Tentativa ${row.attempt}: ${row.gate} — ${truncateText(row.detail ?? 'reprovado', 400)}`)
     .join('\n');
+}
+
+/** O que cada gate reprovado quer dizer, em português para o humano. */
+const GATE_MEANING: Record<string, string> = {
+  scope: 'alterou arquivo que o plano não permite',
+  changes: 'a execução não alterou nada',
+  execution_output: 'a saída da execução veio inválida',
+  criteria_tests: 'critério sem teste encontrado',
+  proof: 'a prova reprovou os testes',
+  review: 'a revisão reprovou',
+  environment: 'impedimento de ambiente',
+};
+
+/** Trechos de log que indicam bloqueio do ambiente (sandbox, rede), não erro do código. */
+const ENVIRONMENT_SIGNS = /Operation not permitted|EPERM|ENOTFOUND|EAI_AGAIN|getaddrinfo|ECONNREFUSED|Failed to fetch/;
+
+function readLog(path: string | null): string {
+  if (!path || !existsSync(path)) return '';
+  try {
+    return readFileSync(path, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Resumo das tentativas para o humano decidir sem abrir o código: o que reprovou em cada
+ * tentativa, a causa provável quando o log mostra bloqueio do ambiente e o diagnóstico que
+ * o executor escreveu na última tentativa.
+ */
+export function humanAttemptsSummary(db: DatabaseSync, home: string, item: Pick<Item, 'id' | 'attemptNo'>): string[] {
+  const rows = db
+    .prepare(
+      `SELECT attempt, gate, detail, log_path FROM gate_results
+       WHERE item_id = ? AND attempt > 0 AND passed = 0 ORDER BY id`,
+    )
+    .all(item.id) as { attempt: number; gate: string; detail: string | null; log_path: string | null }[];
+  const lines = ['O que reprovou:'];
+  let environment = false;
+  for (const row of rows) {
+    const meaning = GATE_MEANING[row.gate] ?? `a verificação \`${row.gate}\` falhou`;
+    const detail = row.detail && row.gate !== 'changes' ? ` (${truncateText(row.detail, 160)})` : '';
+    lines.push(`- Tentativa ${row.attempt}: ${meaning}${detail}`);
+    if (ENVIRONMENT_SIGNS.test(readLog(row.log_path))) {
+      environment = true;
+      lines.push(`  log: ${row.log_path}`);
+    }
+  }
+  if (environment) {
+    lines.push('', 'Causa provável: bloqueio do ambiente (sandbox ou rede), não o código.');
+  }
+  const execution = readArtifact<ExecuteOutput>(home, item.id, `execucao-${item.attemptNo}.json`);
+  if (execution?.resumo) {
+    lines.push('', `Diagnóstico do executor (tentativa ${item.attemptNo}):`, ...wrap(truncateText(execution.resumo, 1400), 90));
+  }
+  return lines;
+}
+
+/** Quebra o texto em linhas de até `width` caracteres, nos espaços. */
+function wrap(text: string, width: number): string[] {
+  const lines: string[] = [];
+  let line = '';
+  for (const word of text.split(' ')) {
+    if (line && line.length + word.length + 1 > width) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = line ? `${line} ${word}` : word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
 }
 
 function truncateText(text: string, max: number): string {
@@ -508,13 +589,30 @@ async function executeStep(env: PipelineEnv, item: Item): Promise<Step> {
   if (extension !== 'none') return extension;
 
   const committed = commitAll(worktree, commitMessage(item, attemptNo));
-  if (!committed && git(worktree, 'rev-parse', 'HEAD') === startHead) {
-    recordGate(env.db, item.id, attemptNo, 'changes', false, 'execução sem nenhuma alteração');
-    return attemptFailed(env, item, cycleAttempt, 'A execução não alterou nenhum arquivo.');
+  const unchanged = !committed && git(worktree, 'rev-parse', 'HEAD') === startHead;
+  const blocker = result.output.impedimento?.trim();
+  if (unchanged && !blocker) {
+    // Retentativa sem nada a mudar: o código das tentativas anteriores volta à verificação,
+    // que reprova (e conta a tentativa) se o problema continuar.
+    if (!hasOwnCommits(worktree, originBranch(env.project.config))) {
+      recordGate(env.db, item.id, attemptNo, 'changes', false, 'execução sem nenhuma alteração');
+      return attemptFailed(env, item, cycleAttempt, 'A execução não alterou nenhum arquivo.');
+    }
+    recordGate(env.db, item.id, attemptNo, 'changes', true, 'sem alteração nova: verifica de novo o que já foi commitado');
   }
   updateItem(env.db, item.id, { attempts: cycleAttempt, nextInput: null });
-  move(env, item, 'verifying', `execução ${attemptNo} commitada`, runId);
+  if (blocker) {
+    // Impedimento de ambiente: outra tentativa não muda o ambiente, então o item para já.
+    recordGate(env.db, item.id, attemptNo, 'environment', false, blocker);
+    return stopForHuman(env, item, 'environment_block', { reason: blocker, sessionId }, `impedimento de ambiente: ${blocker}`, runId);
+  }
+  move(env, item, 'verifying', committed ? `execução ${attemptNo} commitada` : `execução ${attemptNo} sem alteração nova`, runId);
   return undefined;
+}
+
+/** A branch do item tem commits que a origem não tem. */
+function hasOwnCommits(worktree: string, origin: string): boolean {
+  return Number(git(worktree, 'rev-list', '--count', `${origin}..HEAD`)) > 0;
 }
 
 /** Sessão do último planejamento, para o `responder` de uma aprovação pedida na execução. */

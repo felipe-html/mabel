@@ -33,7 +33,7 @@ test('5.2: settings.json da run com sandbox estrito, rede da stack e do projeto 
     enabled: true,
     failIfUnavailable: true,
     allowUnsandboxedCommands: false,
-    network: { allowedDomains: ['registry.npmjs.org'], strictAllowlist: true },
+    network: { allowedDomains: ['registry.npmjs.org'], strictAllowlist: true, allowLocalBinding: true },
     filesystem: { allowWrite: ['~/.npm'], denyWrite: [join(realpathSync(ctx.root), '.git')] },
   });
 

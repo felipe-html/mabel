@@ -76,6 +76,7 @@ export type PendingKind =
   | 'critical_approval'
   | 'question_execute'
   | 'attempts_exhausted'
+  | 'environment_block'
   | 'integration_conflict';
 
 /** Detalhes da parada em `needs_human`, mostrados pelo `mabel item`. */

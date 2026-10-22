@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { approve, respond } from '../src/decisions.ts';
 import { getItem, syncBacklog } from '../src/items.ts';
-import { type PipelineEnv, advanceItem, criteriaWithoutTests, escalate, reviewVerdict, startGate } from '../src/pipeline.ts';
+import { type PipelineEnv, advanceItem, criteriaWithoutTests, escalate, humanAttemptsSummary, reviewVerdict, startGate } from '../src/pipeline.ts';
 import { reviewSchema } from '../src/schemas/stages.ts';
 import { validate } from '../src/schemas/validate.ts';
 import type { PlanOutput } from '../src/schemas/stages.ts';
@@ -35,6 +36,9 @@ test('G2: cada condição do gate de início', () => {
     kind: 'incomplete',
     reason: 'plano sem escopo de arquivos',
   });
+  const reserved = startGate(plan({ escopo: ['src/**', '.mabel/config.json'] }), undefined, NO_RULES, false);
+  assert.equal(reserved.kind, 'incomplete');
+  assert.match((reserved as { reason: string }).reason, /escopo em arquivo do Mabel ou do git \(`\.mabel\/config\.json`\)/);
   assert.deepEqual(startGate(plan(), undefined, NO_RULES, false), { kind: 'pass' });
 });
 
@@ -284,6 +288,57 @@ test('três falhas levam a needs_human com o resumo das tentativas', async () =>
     p.gates().filter((g) => g.passed === 0).map((g) => g.attempt),
     [1, 2, 3],
   );
+});
+
+test('inbox: tentativas esgotadas explicam o que reprovou e trazem o diagnóstico do executor', async () => {
+  const p = await exhausted();
+  const lines = humanAttemptsSummary(p.ctx.db, p.ctx.home, p.item());
+  assert.equal(lines[0], 'O que reprovou:');
+  assert.match(lines[1] ?? '', /^- Tentativa 1: a verificação `versao` falhou \(`grep/);
+  assert.ok(lines.includes('Diagnóstico do executor (tentativa 3):'));
+  assert.ok(!lines.some((line) => line.startsWith('Causa provável')), 'grep reprovado não é bloqueio do ambiente');
+});
+
+test('retentativa sem alteração verifica de novo o que já foi commitado', async () => {
+  // O "ambiente" só deixa a verificação passar da segunda vez em diante.
+  const marker = join(mkdtempSync(join(tmpdir(), 'mabel-ambiente-')), 'liberado');
+  const p = pipeline(
+    [{ structured_output: PLAN }, exec(1), { structured_output: EXECUTION }, { structured_output: REVIEW_OK }],
+    { verify: [{ name: 'ambiente', command: `test -f ${marker} || { touch ${marker}; exit 1; }` }] },
+  );
+  assert.deepEqual(await p.advance(), { kind: 'stopped', status: 'awaiting_merge' });
+  assert.equal(p.branchLog(), 'mabel(#1): Soma — execução 1');
+  assert.deepEqual(
+    p.gates().filter((g) => g.attempt === 2).map((g) => [g.gate, g.passed]),
+    [['changes', 1], ['scope', 1], ['ambiente', 1], ['criteria_tests', 1], ['proof', 1], ['review', 1]],
+  );
+
+  // Sem nenhum commit do item, execução vazia continua reprovando.
+  const empty = pipeline([{ structured_output: PLAN }, { structured_output: EXECUTION }]);
+  await empty.advance();
+  assert.deepEqual(empty.gates()[1], { attempt: 1, gate: 'changes', passed: 0 });
+});
+
+test('impedimento de ambiente para o item sem gastar tentativas; responder retoma e verifica', async () => {
+  const blocked = { ...EXECUTION, impedimento: 'o build baixa fontes de fonts.googleapis.com, fora da rede' };
+  const p = pipeline([
+    { structured_output: PLAN },
+    exec(1, { session_id: 'exec-1', structured_output: blocked }),
+    { structured_output: EXECUTION },
+    { structured_output: REVIEW_OK },
+  ]);
+  assert.deepEqual(await p.advance(), { kind: 'stopped', status: 'needs_human' });
+  assert.equal(p.item().pendingKind, 'environment_block');
+  assert.equal(p.item().pending?.reason, blocked.impedimento);
+  assert.equal(p.branchLog(), 'mabel(#1): Soma — execução 1', 'o trabalho feito fica commitado');
+  assert.deepEqual(p.gates().at(-1), { attempt: 1, gate: 'environment', passed: 0 });
+
+  assert.equal(respond(p.ctx.db, p.ctx.project, p.item(), 'Liberei o domínio.'), 'executing');
+  assert.equal(p.item().attempts, 0);
+  assert.deepEqual(await p.advance(), { kind: 'stopped', status: 'awaiting_merge' });
+  const resumed = p.calls()[2];
+  assert.equal(resumed?.resume, 'exec-1');
+  assert.match(resumed?.prompt ?? '', /Liberei o domínio\./);
 });
 
 test('responder em attempts_exhausted abre novo ciclo escalonado em sessão nova', async () => {

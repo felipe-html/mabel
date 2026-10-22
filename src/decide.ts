@@ -8,7 +8,7 @@ import { DecisionError, approve, cancel, reject, respond } from './decisions.ts'
 import { formatCost } from './format.ts';
 import { type Item, type PendingKind, TransitionError, getItem, itemCost } from './items.ts';
 import { LockError, acquireLock } from './lock.ts';
-import { attemptsSummary, autonomousDecisions } from './pipeline.ts';
+import { autonomousDecisions, humanAttemptsSummary } from './pipeline.ts';
 import { writeIntegrationReport } from './report.ts';
 import { type Project, ProjectError, resolveProject } from './project.ts';
 import type { PlanOutput } from './schemas/stages.ts';
@@ -63,6 +63,10 @@ const SUGGESTIONS: Record<PendingKind, (n: number) => string[]> = {
     `mabel responder ${n} "<orientação>" --replanejar`,
     `mabel cancelar ${n}`,
   ],
+  environment_block: (n) => [
+    `mabel responder ${n} "<o que mudou no ambiente>"   (a execução retoma e verifica de novo)`,
+    `mabel cancelar ${n}`,
+  ],
   integration_conflict: (n) => [
     `mabel responder ${n} "<orientação>"   (o executor resolve os conflitos)`,
     `mabel responder ${n} "<orientação>" --replanejar`,
@@ -86,7 +90,7 @@ export function renderItemDetail(db: DatabaseSync, home: string, item: Item): st
     if (pending.files?.length) lines.push(`  arquivos em conflito: ${pending.files.join(', ')}`);
     if (pending.reason) lines.push(`  ${pending.reason}`);
     if (item.pendingKind === 'attempts_exhausted') {
-      lines.push(...(pending.summary || attemptsSummary(db, item.id)).split('\n').map((line) => `  ${line}`));
+      lines.push(...humanAttemptsSummary(db, home, item).map((line) => (line ? `  ${line}` : '')));
     }
     lines.push('', 'Comandos:', '  mabel inbox   (responde tudo, uma pergunta por vez)');
     lines.push(...SUGGESTIONS[item.pendingKind](item.number).map((command) => `  ${command}`));
