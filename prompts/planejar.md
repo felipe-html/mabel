@@ -16,6 +16,14 @@ e devolve o plano na saída estruturada.
     no código atual e passar depois da mudança;
   - `mantido`: o critério descreve algo que o código já faz e precisa continuar fazendo
     (caracterização, refatoração). O teste passa antes e depois.
+  - "O código atual" é o da **base**, antes do item. Num replanejamento, a branch pode já ter
+    o trabalho das tentativas anteriores: ele não conta como comportamento existente. O
+    Mabel prova cada teste no código da base, e o critério que só a branch atende é `novo`.
+    Num item que cria a base de testes ou instala o runner, os critérios são `novo`. As
+    dependências instaladas no worktree continuam lá quando a prova volta o código à base,
+    então um teste de sanidade (ex.: `1 + 1 = 2`) passa nos dois lados e não prova nada:
+    prove com testes que dependem do que o item muda (o script `test` do `package.json`, a
+    configuração do runner) ou declare o critério como `humano`.
 - Declare o **escopo**: os arquivos que a execução pode criar ou alterar, **só globs**
   relativos à raiz do repositório (ex.: `src/pedidos/**`, `test/pedidos.test.ts`), sem
   frases. Seja específico; o escopo é usado para barrar alterações fora dele.

@@ -137,12 +137,14 @@ test('perguntas da execução: suposição crítica confirmada e r replaneja com
 
 test('impedimento de ambiente: mostra o motivo e o texto retoma a execução', async () => {
   const blocked = { ...EXECUTION, impedimento: 'o build baixa fontes de fonts.googleapis.com, fora da rede' };
-  const p = inboxProject('\n## Soma\nsoma\n', [{ structured_output: PLAN }, { structured_output: blocked, files: EXECUTION_FILES, session_id: 'exec-1' }]);
+  // Sem `src/soma.js`, a verificação do Mabel também falha: o impedimento se confirma.
+  const files = { 'src/outro.js': 'x\n' };
+  const p = inboxProject('\n## Soma\nsoma\n', [{ structured_output: PLAN }, { structured_output: blocked, files, session_id: 'exec-1' }]);
   assert.equal(p.item(1).pendingKind, 'environment_block');
   const { io, out } = scripted(['Liberei fonts.googleapis.com na rede.']);
   await runInbox(p.db, p.home, p.project, io);
   assert.ok(out.some((line) => line.includes('impedimento de ambiente')));
-  assert.ok(out.includes(`      ${blocked.impedimento}`));
+  assert.ok(out.some((line) => line.startsWith(`      ${blocked.impedimento} A verificação do Mabel`)));
   assert.ok(out.some((line) => line.includes('texto diz o que mudou no ambiente e retoma')));
   assert.equal(p.item(1).status, 'executing');
   assert.equal(p.item(1).nextInput?.resumeSessionId, 'exec-1');

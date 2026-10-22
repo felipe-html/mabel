@@ -10,7 +10,7 @@ import { type PipelineEnv, advanceItem } from '../src/pipeline.ts';
 import { DEFAULT_TEST_GLOBS, readConfig } from '../src/project.ts';
 import { type ProofInput, proofDetail, runProof, singleTestCommand, withBaseCode } from '../src/proof.ts';
 import type { ExecuteOutput, PlanOutput } from '../src/schemas/stages.ts';
-import { STACKS, findStack } from '../src/stacks.ts';
+import { STACKS, findStack, proofTestCommand } from '../src/stacks.ts';
 import { CLI, PLAN, REVIEW_OK, makeRepo, setupProject, useScenario } from './helpers.ts';
 
 const NODE_TEST = 'node --test --test-name-pattern={padrao} {arquivo}';
@@ -219,6 +219,20 @@ test('P.2 critério 7: catálogo com testeUnico e arquivosDeTeste por stack', ()
   assert.equal(node.proof(empty, true).testeUnico, 'npx vitest run {arquivo} -t {padrao}');
   writeFileSync(join(empty, 'package.json'), JSON.stringify({ devDependencies: { vitest: '^3' } }));
   assert.equal(node.proof(empty, false).testeUnico, 'npx vitest run {arquivo} -t {padrao}');
+});
+
+test('prova usa o Vitest quando o item troca o node --test padrão pelo Vitest', () => {
+  const vitest = makeRepo({ 'package.json': JSON.stringify({ devDependencies: { vitest: '^4' } }) });
+  const plain = makeRepo({ 'package.json': '{}' });
+  assert.equal(proofTestCommand(NODE_TEST, vitest), 'npx vitest run {arquivo} -t {padrao}');
+  assert.equal(proofTestCommand(NODE_TEST, plain), NODE_TEST, 'sem Vitest, o config vale');
+  // Comando escrito pelo humano não é trocado.
+  assert.equal(proofTestCommand('node --test {arquivo}', vitest), 'node --test {arquivo}');
+  assert.equal(proofTestCommand(null, vitest), null);
+  assert.match(
+    proofDetail({ mode: 'teste', criteria: [], restored: true, testeUnico: 'npx vitest run {arquivo} -t {padrao}' }),
+    /testes rodados com `npx vitest run/,
+  );
 });
 
 test('P.2 critério 7: init grava os campos da prova; config sem eles vale modo por item', () => {

@@ -4,6 +4,7 @@ import { git, tryGit } from './git.ts';
 import { matchGlob } from './glob.ts';
 import type { ProjectConfig } from './project.ts';
 import type { ExecuteOutput, PlanCriterion, PlanOutput } from './schemas/stages.ts';
+import { proofTestCommand } from './stacks.ts';
 import { shell } from './worktree.ts';
 
 // Prova mecânica (P.2): o teste de um critério `novo` falha no código base e passa no item;
@@ -36,6 +37,8 @@ export interface ProofResult {
   restored: boolean;
   /** Erro ao levar o código à base (o worktree é restaurado mesmo assim). */
   error?: string;
+  /** Comando usado no lugar do `testeUnico` do config, quando o item trocou o runner. */
+  testeUnico?: string;
 }
 
 /** Testes declarados para o critério que existem no worktree e contêm o nome. */
@@ -146,7 +149,10 @@ export function runProof(input: ProofInput): ProofResult {
   const { worktree, base, config, plan, execution, logDir } = input;
   mkdirSync(logDir, { recursive: true });
   const restorable = restorableFiles(worktree, base, config.arquivosDeTeste);
-  const mode = config.testeUnico ? 'teste' : 'item';
+  // Lido no código do item, antes de levar o worktree à base.
+  const template = proofTestCommand(config.testeUnico, worktree);
+  const adjusted = template !== config.testeUnico && template ? { testeUnico: template } : {};
+  const mode = template ? 'teste' : 'item';
 
   const criteria: CriterionProof[] = plan.criterios
     .filter((c) => c.verificacao === 'teste')
@@ -160,10 +166,9 @@ export function runProof(input: ProofInput): ProofResult {
       return proof;
     });
   const pending = criteria.filter((c) => c.status === 'provado');
-  if (pending.length === 0) return { mode, criteria, restored: true };
+  if (pending.length === 0) return { mode, criteria, restored: true, ...adjusted };
 
-  if (config.testeUnico) {
-    const template = config.testeUnico;
+  if (template) {
     const each = (side: 'item' | 'base') => {
       for (const criterion of pending) {
         const logPath = join(logDir, `${criterion.id}-${side}.log`);
@@ -172,9 +177,9 @@ export function runProof(input: ProofInput): ProofResult {
     };
     each('item');
     const result = withBaseCode(worktree, base, restorable, () => each('base'));
-    if (!result.restored || result.error) return { mode, criteria, restored: result.restored, error: result.error };
+    if (!result.restored || result.error) return { mode, criteria, restored: result.restored, error: result.error, ...adjusted };
     for (const criterion of pending) Object.assign(criterion, judge(criterion));
-    return { mode, criteria, restored: true };
+    return { mode, criteria, restored: true, ...adjusted };
   }
 
   // Pelo nome: `hasTestCommand` também casaria com `test -f arquivo`, que não é um runner.
@@ -231,7 +236,7 @@ export function proofLabel(criterion: CriterionProof, mode: ProofResult['mode'])
 
 /** Uma entrada por critério: `C1 provado; C2 nao_provado: …`. */
 export function proofDetail(result: ProofResult): string {
-  return result.criteria
-    .map((c) => `${c.id} ${proofLabel(c, result.mode)}${c.reason ? `: ${c.reason}` : ''}`)
-    .join('; ');
+  const criteria = result.criteria.map((c) => `${c.id} ${proofLabel(c, result.mode)}${c.reason ? `: ${c.reason}` : ''}`);
+  if (result.testeUnico) criteria.push(`testes rodados com \`${result.testeUnico}\` (o item passou a usar outro runner)`);
+  return criteria.join('; ');
 }

@@ -151,6 +151,12 @@ Dois campos novos no `config.json`, com valores padrão por stack no catálogo
 `init` detecta Vitest pelo `package.json` para escolher o `testeUnico`. Config sem
 `testeUnico`: a prova cai para o **modo por item** (abaixo).
 
+Desde 2026-10-22: quando o `testeUnico` é o padrão do `node --test` gravado pelo `init` e o
+`package.json` do item passa a usar Vitest (o item que estabelece a base de testes), a
+prova roda com `npx vitest run {arquivo} -t {padrao}` e o detalhe do gate registra o
+comando usado. O config é do humano e o agente não o altera; sem o ajuste, a prova rodaria
+os testes do item com o runner errado. `testeUnico` escrito pelo humano não é trocado.
+
 Para Go, o `nome` declarado pela execução é o nome da função (`TestX`); o `prompts/executar.md`
 passa a dizer isso por stack.
 

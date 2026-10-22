@@ -71,8 +71,10 @@ mabel(#<n>): <título> — execução <tentativa>
 com o autor configurado no repositório. Execução sem nenhuma alteração é falha de gate
 (`changes`), salvo quando o item já tem commits próprios: aí a retentativa volta à
 verificação com o código já commitado (desde 2026-10-22). Execução com `impedimento`
-(bloqueio de ambiente declarado pelo executor) é commitada e vai a `needs_human`
-(`environment_block`) sem verificar.
+(bloqueio de ambiente declarado pelo executor) é commitada e verificada pelo Mabel, fora do
+sandbox: comando de verificação que falha leva a `needs_human` (`environment_block`) sem
+gastar tentativa; verificação aprovada registra o gate `environment` como aprovado e o item
+segue.
 
 ### Trava de execução
 
@@ -331,7 +333,7 @@ O item guarda o motivo da parada em `items.pending_kind`. O `responder` age conf
 | `plan_incomplete` | Plano incompleto duas vezes | → `planning`, retoma a sessão do planejamento com a resposta | Igual |
 | `critical_approval` | Item crítico aguardando aprovação (caminho ou conceito crítico, ou suposição com `regraCritica` no planejamento) | A resposta é um ajuste dos critérios: → `planning`, retoma a sessão do planejamento. Para aprovar sem ajuste, use `aprovar` | Igual |
 | `question_execute` | Perguntas ou suposição crítica na execução | → `executing`, retoma a sessão daquela execução com a resposta. Contador de tentativas inalterado | → `planning`, sessão nova com o plano anterior, a resposta e o resumo das tentativas |
-| `environment_block` | Impedimento de ambiente declarado pelo executor (desde 2026-10-22) | → `executing`, ciclo novo (contador zerado), retoma a sessão da execução com a resposta | → `planning`, sessão nova com o plano anterior, a resposta e o resumo das tentativas |
+| `environment_block` | Impedimento de ambiente declarado pelo executor e confirmado pela verificação do Mabel (desde 2026-10-22) | → `executing`, ciclo novo (contador zerado), retoma a sessão da execução com a resposta | → `planning`, sessão nova com o plano anterior, a resposta e o resumo das tentativas |
 | `attempts_exhausted` | Três tentativas reprovadas | → `executing`, **novo ciclo** de até 3 tentativas: contador do ciclo zerado, sessão nova com a resposta e o resumo das tentativas anteriores, todas as tentativas do ciclo com o modelo escalonado. Nova reprovação no ciclo → `needs_human` (`attempts_exhausted`) de novo | → `planning`, sessão nova com o plano anterior, a resposta e o resumo das tentativas; ao voltar à execução, novo ciclo com as regras normais |
 
 - `items.attempts` passa a contar as tentativas **do ciclo atual**; o total do item é
