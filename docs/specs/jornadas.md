@@ -143,7 +143,8 @@ Seção "Decididas pela sugestão" com as linhas `autonomy` do item.
 
 - Gate de início aprovado: `planning → planned` (motivo `plano aprovado pelo gate de início`).
 - `aprovar` (e `a` na inbox): `needs_human → planned`.
-- `responder` em `question_execute` / `attempts_exhausted` continua indo para `executing`.
+- `responder` em `question_execute` / `attempts_exhausted` / `environment_block` continua
+  indo para `executing`.
 - `advanceItem` trata `planned` como o ponto de entrada da execução: `planned → executing`
   e segue. `prepareWorktree` já avança até a base um worktree sem commits próprios, então
   o item executa sobre a base atual mesmo planejado horas antes.
