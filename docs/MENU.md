@@ -101,7 +101,7 @@ Ordem em que aparecem na lista (a mesma de `src/commands.ts`).
 | `init` | `init [--stack node\|python\|go\|rust]` | não (cria) | — (o próprio comando pergunta) | não | sem perguntas |
 | `add` | `add "<título>" [--intencao] [--criterio]… [--fora-do-escopo]… [--depende]… [--restricoes]` | sim | — (o próprio comando pergunta) | não | exige título e `--intencao` |
 | `refinar` | `refinar [<n>] [--refazer] [--aceitar \| --descartar]` | sim | — (o próprio comando abre o menu de itens) | não | sem `<n>` lista; com `<n>` mostra a proposta; `--aceitar` grava |
-| `referencia` | `referencia` · `referencia api <nome> <url>` | sim | não | não | igual |
+| `referencia` | `referencia` · `referencia api <nome> <url>` · `referencia tela <nome> <url-figma> [--escala <n>]` · `referencia tela <nome> --png <arquivo>` | sim | não | não | igual |
 | `run` | `run [--item <n>] [--uma] [--sem-lote]` | sim | não | **sim** | sem perguntas; política decide |
 | `item` | `item <n>` | sim | número | não | igual |
 | `aprovar` | `aprovar <n>` | sim | número | não | igual |
@@ -263,6 +263,8 @@ revisão deixa a proposta pendente.
 |---|---|
 | (nenhum) | Lista as APIs (operações) e as telas (arquivos) de `.mabel/referencias/`, com os itens que citam cada uma |
 | `api <nome> <url>` | Baixa o OpenAPI em JSON e grava `api/<nome>.openapi.json` e `api/<nome>.md` (origem, data, notas abaixo de `<!-- notas -->` ficam) |
+| `tela <nome> <url-figma>` | Com `FIGMA_TOKEN`, exporta o frame do link (`node-id`) em `telas/<nome>/tela.png` (escala 2, ou `--escala` até 4) e descreve em `tela.md` arquivo, frame, tamanho, textos e cores sólidas |
+| `tela <nome> --png <arquivo>` | Grava um PNG exportado à mão, com um `tela.md` mínimo; sem rede |
 
 A URL do swagger-ui do Quarkus (`…/q/swagger-ui/`) vira `…/q/openapi?format=json`.
 Recapturando, mostra as operações novas e removidas e os itens não iniciados que citam uma
@@ -272,6 +274,8 @@ operação que saiu. Não versiona: lembra o `git add .mabel/referencias`.
 
 - OpenAPI em YAML não é aceito; só JSON.
 - Sem autenticação: API que exige token não é capturada.
+- Um frame por comando; estados (erro, vazio) entram à mão em `telas/<nome>/`.
+- O `tela.md` não traz fontes, espaçamentos nem componentes; só textos e cores.
 
 ### run
 

@@ -88,11 +88,11 @@ achados do teste orientam a especificação dos passos seguintes.
 - [x] Entrega da integração (`docs/specs/entregar.md`): `mabel entregar` cria um snapshot
       da integração, publica, abre o PR com o relatório (`gh`, com alternativa sem ele) e
       volta o checkout da raiz para a base; o `run` acompanha o merge da entrega.
-- [ ] Referências de tela e de API (`docs/specs/referencias.md`):
+- [x] Referências de tela e de API (`docs/specs/referencias.md`):
   - [x] Campo `Referências:`, gate do `ready`, hash com os arquivos, cópia congelada do
         item, `--add-dir` e seção nos prompts.
   - [x] `mabel referencia` (lista) e `mabel referencia api`.
-  - [ ] `mabel referencia tela` (Figma e `--png`), em commit separado.
+  - [x] `mabel referencia tela` (Figma e `--png`), em commit separado.
 
 ## Histórico
 
@@ -166,3 +166,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-22 | `mabel entregar` confere a entrega aberta antes de decidir, com o mesmo `checkDeliveries` da abertura do `run`: merge seguido de `git pull` e de outra entrega, sem `run` no meio, recusava com "Já há uma entrega aberta". As notas da conferência abrem a saída. |
 | 2026-10-22 | Spec das referências de tela e de API (`docs/specs/referencias.md`), com as decisões do usuário: `.mabel/referencias/` versionado, hash do item com os arquivos, backend dev fora da `rede`, Figma por último e em commit separado. Campo `Referências:` (`tela:`, `api: <nome> <MÉTODO> <caminho>` ou `<operationId>`, caminho de arquivo), coluna `item_references`, gate do `ready` (`referência inválida: …`, fica em `backlog`), hash com o conteúdo dos arquivos só quando o campo é usado, cópia congelada em `items/<id>/referencias/` no primeiro uso pelas etapas (com a operação extraída e os `$ref` alcançados), `--add-dir` no planejamento, execução e revisão, seção "Referências" nos prompts e no do refinamento (caminhos da raiz, sem cópia), linha no `mabel item`, README. Desvio: a cópia é feita na montagem da primeira run de etapa (o planejamento), não na transição para `planning`; o efeito é o mesmo e fica num lugar só. |
 | 2026-10-22 | `mabel referencia` (lista as APIs e telas com os itens que as citam) e `mabel referencia api <nome> <url>`: baixa o OpenAPI em JSON (swagger-ui do Quarkus vira `/q/openapi?format=json`), grava o snapshot e o `.md` (notas abaixo de `<!-- notas -->` ficam), relata operações novas e removidas e os itens não iniciados que citam operação que saiu. Teste real com o backend `wego-acessos` (dev): 57 operações, nenhuma com `operationId` (a referência nesse backend é `MÉTODO /caminho`); a operação extraída com os esquemas que usa fica em 17 KB, contra 232 KB do snapshot. Desvio: sem suporte a YAML nem a API autenticada (anotados no `MENU.md`). |
+| 2026-10-22 | `mabel referencia tela <nome> <url-figma> [--escala <n>]`: com `FIGMA_TOKEN`, `GET /v1/images` e `/v1/files/<chave>/nodes` da API REST do Figma, grava `tela.png` e `tela.md` (arquivo, frame, tamanho, textos visíveis na ordem, cores sólidas com contagem); `--png <arquivo>` grava um PNG exportado à mão, sem rede. API do Figma trocável por `MABEL_FIGMA_API` nos testes. Commit separado, para desfazer com `git revert` se o caminho pelo Figma não servir. |

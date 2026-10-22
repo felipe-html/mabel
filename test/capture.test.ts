@@ -2,8 +2,18 @@ import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { type Server, createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { join } from 'node:path';
 import { test } from 'node:test';
-import { CaptureError, captureApi, openApiUrl, renderReferences } from '../src/capture.ts';
+import {
+  CaptureError,
+  captureApi,
+  captureFigma,
+  captureScreenFile,
+  describeFrame,
+  openApiUrl,
+  parseFigmaUrl,
+  renderReferences,
+} from '../src/capture.ts';
 import { getItem, syncBacklog } from '../src/items.ts';
 import { snapshotPath } from '../src/references.ts';
 import { setupProject } from './helpers.ts';
@@ -79,4 +89,89 @@ test('referencia api: recusa resposta que não é OpenAPI em JSON e status de er
   } finally {
     server.close();
   }
+});
+
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+
+test('parseFigmaUrl: chave do arquivo e nó; link sem node-id ou de outro site é recusado', () => {
+  assert.deepEqual(
+    parseFigmaUrl('https://www.figma.com/design/3nMA92NWxgkIzhW5riWgvZ/We.Go---Acessos?node-id=2696-108134&t=abc'),
+    { fileKey: '3nMA92NWxgkIzhW5riWgvZ', nodeId: '2696:108134' },
+  );
+  assert.throws(() => parseFigmaUrl('https://www.figma.com/design/abc/x'), /não tem node-id/);
+  assert.throws(() => parseFigmaUrl('https://example.com/design/abc/x?node-id=1-2'), /não é um link de arquivo do Figma/);
+});
+
+test('describeFrame: textos visíveis na ordem e cores sólidas com contagem', () => {
+  const frame = {
+    type: 'FRAME',
+    fills: [{ type: 'SOLID', color: { r: 1, g: 1, b: 1, a: 1 } }],
+    children: [
+      { type: 'TEXT', characters: 'Cadastrar\nacesso', fills: [{ type: 'SOLID', color: { r: 0, g: 0, b: 0, a: 1 } }] },
+      { type: 'TEXT', characters: 'Oculto', visible: false },
+      { type: 'TEXT', characters: 'CPF', fills: [{ type: 'SOLID', color: { r: 0, g: 0, b: 0, a: 1 }, opacity: 0.5 }] },
+      { type: 'RECTANGLE', fills: [{ type: 'GRADIENT_LINEAR' }, { type: 'SOLID', color: { r: 1, g: 1, b: 1, a: 1 } }] },
+    ],
+  };
+  assert.deepEqual(describeFrame(frame), {
+    texts: ['Cadastrar / acesso', 'CPF'],
+    colors: [['#FFFFFF', 2], ['#000000', 1], ['#00000080', 1]],
+  });
+});
+
+test('referencia tela: exporta o PNG e o tela.md pelo Figma; sem token, erro com a alternativa; --png sem rede', async () => {
+  const { root } = setupProject();
+  const requests: { url: string; token?: string }[] = [];
+  const server = createServer((req, res) => {
+    requests.push({ url: req.url ?? '', token: req.headers['x-figma-token'] as string | undefined });
+    const port = (server.address() as AddressInfo).port;
+    if (req.url?.startsWith('/v1/images/')) {
+      res.end(JSON.stringify({ err: null, images: { '2696:108134': `http://127.0.0.1:${port}/render.png` } }));
+    } else if (req.url?.startsWith('/v1/files/')) {
+      res.end(JSON.stringify({
+        name: 'We.Go Acessos',
+        nodes: { '2696:108134': { document: {
+          type: 'FRAME', name: 'Cadastro', absoluteBoundingBox: { width: 1440, height: 1024 },
+          children: [{ type: 'TEXT', characters: 'Novo acesso' }],
+        } } },
+      }));
+    } else if (req.url === '/render.png') {
+      res.end(PNG);
+    } else {
+      res.writeHead(404).end();
+    }
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const env = { api: process.env.MABEL_FIGMA_API, token: process.env.FIGMA_TOKEN };
+  const link = 'https://www.figma.com/design/3nMA92NWxgkIzhW5riWgvZ/x?node-id=2696-108134';
+  try {
+    process.env.MABEL_FIGMA_API = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    delete process.env.FIGMA_TOKEN;
+    await assert.rejects(captureFigma(root, 'cadastro', link), /FIGMA_TOKEN[\s\S]*--png/);
+
+    process.env.FIGMA_TOKEN = 'token-de-teste';
+    const capture = await captureFigma(root, 'cadastro', link, 2, new Date('2026-10-22T12:00:00Z'));
+    assert.deepEqual(readFileSync(join(capture.dir, 'tela.png')), PNG);
+    const md = readFileSync(join(capture.dir, 'tela.md'), 'utf8');
+    assert.match(md, /frame "Cadastro" \(2696:108134\)/);
+    assert.match(md, /Tamanho: 1440 × 1024 \(PNG em escala 2\)/);
+    assert.match(md, /## Textos\n\n- Novo acesso/);
+    assert.ok(!md.includes('token-de-teste'));
+    assert.equal(requests[0]?.url, '/v1/images/3nMA92NWxgkIzhW5riWgvZ?ids=2696%3A108134&format=png&scale=2');
+    assert.equal(requests[0]?.token, 'token-de-teste');
+    assert.equal(requests.find((r) => r.url === '/render.png')?.token, undefined);
+  } finally {
+    server.close();
+    for (const [key, value] of [['MABEL_FIGMA_API', env.api], ['FIGMA_TOKEN', env.token]] as const) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+
+  const file = join(root, 'exportado.png');
+  writeFileSync(file, PNG);
+  const manual = captureScreenFile(root, 'manual', file);
+  assert.deepEqual(readFileSync(join(manual.dir, 'tela.png')), PNG);
+  writeFileSync(file, 'não é png');
+  assert.throws(() => captureScreenFile(root, 'manual', file), /não é um PNG/);
 });
