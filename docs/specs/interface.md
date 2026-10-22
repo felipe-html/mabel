@@ -180,10 +180,16 @@ O item 1 carrega o template completo:
 O projeto ainda não tem código. Criar a estrutura mínima de Node/TypeScript com Vitest e
 escrever ao menos um teste que passe.
 
+O item não altera o `.mabel/config.json`: o config do Mabel é do humano. Depois do merge,
+o config deve ter `setup` igual a `npm ci` e `verify` com `typecheck` (`npm run typecheck`)
+e `test` (`npm test`).
+
 Critérios de aceite:
 - `npm run typecheck` e `npm test` rodam e passam
-- `.mabel/config.json` tem `setup` igual a `npm ci` e `verify` com `typecheck` e `test`
 ```
+
+Até 2026-10-22 o config era critério do item; o gate de escopo barra o `.mabel/`, e o item
+reprovava por fazer o que o critério pedia.
 
 Com "Outra", o texto é o de hoje, com `Stack: <texto>`.
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -319,20 +319,37 @@ test('retentativa sem alteração verifica de novo o que já foi commitado', asy
   assert.deepEqual(empty.gates()[1], { attempt: 1, gate: 'changes', passed: 0 });
 });
 
-test('impedimento de ambiente para o item sem gastar tentativas; responder retoma e verifica', async () => {
+test('impedimento que não se confirma na verificação do Mabel não para o item', async () => {
+  const blocked = { ...EXECUTION, impedimento: 'o build abre porta local, bloqueada no sandbox' };
+  const p = pipeline([{ structured_output: PLAN }, exec(1, { structured_output: blocked }), { structured_output: REVIEW_OK }]);
+  assert.deepEqual(await p.advance(), { kind: 'stopped', status: 'awaiting_merge' });
+  assert.deepEqual(
+    p.gates().filter((g) => g.gate === 'environment'),
+    [{ attempt: 1, gate: 'environment', passed: 1 }],
+  );
+});
+
+test('impedimento confirmado pela verificação do Mabel para o item sem gastar tentativas; responder retoma', async () => {
   const blocked = { ...EXECUTION, impedimento: 'o build baixa fontes de fonts.googleapis.com, fora da rede' };
-  const p = pipeline([
-    { structured_output: PLAN },
-    exec(1, { session_id: 'exec-1', structured_output: blocked }),
-    { structured_output: EXECUTION },
-    { structured_output: REVIEW_OK },
-  ]);
+  // O "ambiente" só deixa a verificação passar depois que o humano o ajusta.
+  const marker = join(mkdtempSync(join(tmpdir(), 'mabel-ambiente-')), 'liberado');
+  const p = pipeline(
+    [
+      { structured_output: PLAN },
+      exec(1, { session_id: 'exec-1', structured_output: blocked }),
+      { structured_output: EXECUTION },
+      { structured_output: REVIEW_OK },
+    ],
+    { verify: [{ name: 'ambiente', command: `test -f ${marker}` }] },
+  );
   assert.deepEqual(await p.advance(), { kind: 'stopped', status: 'needs_human' });
   assert.equal(p.item().pendingKind, 'environment_block');
-  assert.equal(p.item().pending?.reason, blocked.impedimento);
+  assert.match(p.item().pending?.reason ?? '', /fonts\.googleapis\.com[\s\S]*verificação do Mabel, fora do sandbox, também falhou em `test -f/);
+  assert.equal(p.item().pending?.sessionId, 'exec-1');
   assert.equal(p.branchLog(), 'mabel(#1): Soma — execução 1', 'o trabalho feito fica commitado');
   assert.deepEqual(p.gates().at(-1), { attempt: 1, gate: 'environment', passed: 0 });
 
+  writeFileSync(marker, '');
   assert.equal(respond(p.ctx.db, p.ctx.project, p.item(), 'Liberei o domínio.'), 'executing');
   assert.equal(p.item().attempts, 0);
   assert.deepEqual(await p.advance(), { kind: 'stopped', status: 'awaiting_merge' });

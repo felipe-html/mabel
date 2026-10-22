@@ -65,6 +65,20 @@ export function usesVitest(root: string): boolean {
 
 const NODE_TEST_GLOBS = ['**/*.test.*', '**/*.spec.*', '**/__tests__/**', 'test/**', 'tests/**'];
 
+/** `testeUnico` que o `init` grava num projeto Node sem Vitest. */
+export const NODE_TEST_COMMAND = 'node --test --test-name-pattern={padrao} {arquivo}';
+const VITEST_COMMAND = 'npx vitest run {arquivo} -t {padrao}';
+
+/**
+ * Comando da prova para um teste: o `testeUnico` do config, salvo quando ele é o padrão do
+ * `node --test` gravado pelo `init` e o item passou a usar Vitest (o item que estabelece a
+ * base de testes, por exemplo). O config é do humano e o agente não o altera; sem o ajuste,
+ * a prova rodaria os testes do item com o runner errado.
+ */
+export function proofTestCommand(configured: string | null, worktree: string): string | null {
+  return configured === NODE_TEST_COMMAND && usesVitest(worktree) ? VITEST_COMMAND : configured;
+}
+
 function nodeCommands(root: string) {
   const scripts = readPackage(root).scripts ?? {};
   const verify: VerifyCommand[] = [];
@@ -97,10 +111,7 @@ export const STACKS: Stack[] = [
     rede: ['registry.npmjs.org'],
     caches: ['~/.npm'],
     proof: (root, empty) => ({
-      testeUnico:
-        empty || usesVitest(root)
-          ? 'npx vitest run {arquivo} -t {padrao}'
-          : 'node --test --test-name-pattern={padrao} {arquivo}',
+      testeUnico: empty || usesVitest(root) ? VITEST_COMMAND : NODE_TEST_COMMAND,
       arquivosDeTeste: NODE_TEST_GLOBS,
     }),
   },

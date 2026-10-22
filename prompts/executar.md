@@ -56,9 +56,10 @@ Se um comando de verificação falha por causa do ambiente, e não do código (d
 rede liberada, porta ou arquivo bloqueado pelo sandbox, serviço externo fora do ar), não
 contorne o bloqueio nem mude o código para escapar dele. Termine com o motivo em
 `impedimento`, numa linha que diga o que o humano precisa liberar (ex.: "o build baixa
-fontes de `fonts.googleapis.com`, fora da `rede` do `.mabel/config.json`"). O Mabel para o
-item e leva o motivo ao humano, sem gastar tentativas. `impedimento` fica vazio quando não
-há bloqueio de ambiente.
+fontes de `fonts.googleapis.com`, fora da `rede` do `.mabel/config.json`"). O Mabel roda
+os comandos de verificação fora do sandbox: se passarem, o item segue; se falharem também,
+ele para o item e leva o motivo ao humano, sem gastar tentativas. `impedimento` fica vazio
+quando não há bloqueio de ambiente.
 
 Numa retentativa em que o código já está certo, não invente mudança: termine sem alterar
 nada e o Mabel verifica de novo o que já foi feito.

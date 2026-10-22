@@ -152,7 +152,7 @@ permitidos fica em código e é comparada pelo nome.
     "enabled": true,
     "failIfUnavailable": true,
     "allowUnsandboxedCommands": false,
-    "network": { "allowedDomains": ["<domínios da stack e do projeto>"], "strictAllowlist": true },
+    "network": { "allowedDomains": ["<domínios da stack e do projeto>"], "strictAllowlist": true, "allowLocalBinding": true },
     "filesystem": { "denyWrite": ["<raiz do projeto>/.git"] }
   },
   "hooks": {
@@ -187,6 +187,9 @@ Isso resolve o achado do teste em que o planejador rodou `cat` e `git status`.
 - `config.json` ganha `"rede": ["…"]`. O `init` grava nele os domínios da stack escolhida ou
   detectada (o projeto vazio ainda não tem os arquivos que a detecção lê), e o humano
   acrescenta os do projeto. Config sem o campo usa os domínios das stacks detectadas na raiz.
+- Desde 2026-10-22: `allowLocalBinding` libera abrir porta local (o Turbopack sobe
+  processos auxiliares em localhost), e frameworks detectados somam domínios à `rede` (Next:
+  `fonts.googleapis.com` e `fonts.gstatic.com`, que o `next/font/google` baixa no build).
 - O `setup` e os comandos de `verify` rodam fora do sandbox (são do Mabel, não do agente).
 
 ### Worktree

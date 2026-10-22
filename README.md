@@ -42,12 +42,23 @@ desvios: needs_human (pergunta para você) · blocked · failed · cancelled
   fora do diretório do projeto. O Mabel faz os commits; os agentes não usam git.
 - **Retentativas:** falha de verificação ou de revisão volta para a execução. Depois de
   duas falhas, a próxima tentativa usa um modelo acima. Três falhas param o item para você.
+  Retentativa em que o código já está certo não reprova por falta de alteração: o Mabel
+  verifica de novo o que já foi commitado.
+- **Impedimento de ambiente:** quando a verificação não passa por causa do ambiente
+  (domínio fora da `rede`, bloqueio do sandbox), o executor o declara. O Mabel roda a
+  própria verificação, fora do sandbox: se passar, o item segue (o bloqueio era só do
+  sandbox do agente); se falhar, o item para para você na hora, com o trabalho commitado e
+  sem gastar tentativas. Ajuste o ambiente e responda o que mudou: a execução retoma e
+  verifica de novo.
 - **Planejamento em lote:** o `run` planeja todos os itens prontos antes de executar, para
   que as perguntas cheguem juntas no começo e a execução siga sem você.
 - **Saldo:** antes de cada etapa, o Mabel confere as janelas de uso de 5 horas e de 7 dias
   e estima o consumo da etapa. Se não houver folga, pergunta ou espera o reset. Um rodapé
   fixo mostra as duas janelas.
 - **Avisos:** no macOS, uma notificação do sistema avisa quando a fila termina ou espera você.
+- **Mabel atualizado:** se o código do Mabel mudar com o `mabel` aberto (um `git pull`, um
+  merge), a fila pausa antes da próxima etapa e pede para abrir o `mabel` de novo. O
+  processo aberto continuaria com o código antigo e os prompts novos.
 
 ### Travas
 
@@ -61,13 +72,17 @@ pedido no prompt:
 - **Ferramentas por etapa:** o planejador só lê; o revisor lê e roda `git diff`, `git log`
   e `git show`; só o executor edita e usa o terminal.
 - **Escopo de arquivos:** um hook nega a escrita fora do escopo do plano, em `.git/`, em
-  `.mabel/` e em caminhos críticos sem a sua aprovação. Se o executor precisar de um
+  `.mabel/` e em caminhos críticos sem a sua aprovação. O `.mabel/config.json` é seu: o
+  plano que o inclui no escopo volta ao planejador, e a mudança sugerida chega a você como
+  recomendação. Se o executor precisar de um
   caminho a mais, ele o declara: o Mabel amplia o escopo sozinho, ou pede a sua aprovação
   quando o caminho é crítico.
 - **Sandbox no terminal:** os comandos do executor só escrevem no worktree do item (e nos
   caches de pacotes da stack), não conseguem fazer commit nem mover branches, e a rede só
-  alcança o registro de pacotes da stack e os domínios que você liberar em `rede`. Sem
-  sandbox no sistema, o `run` não inicia.
+  alcança o registro de pacotes da stack e os domínios que você liberar em `rede`. Abrir
+  porta local é permitido (bundlers como o Turbopack precisam). Em projeto Next, o `init`
+  já libera `fonts.googleapis.com` e `fonts.gstatic.com`, que o `next/font/google` usa no
+  build. Sem sandbox no sistema, o `run` não inicia.
 - **Auditoria das negações:** cada decisão do hook fica na run, e `mabel item <n>` lista o
   que foi negado.
 
@@ -102,7 +117,8 @@ No modo Mabel, os comandos começam com `/`:
 
 1. **`/init`** prepara o projeto: escolhe a stack, detecta os comandos de instalação e de
    verificação, cria o `.mabel/` e faz o commit dele. Projeto sem testes ganha como
-   primeiro item "Estabelecer base de testes".
+   primeiro item "Estabelecer base de testes". Depois do merge dele, inclua o comando de
+   teste em `verify` no `.mabel/config.json`: o agente não altera o config.
 2. **`/add`** acrescenta itens ao backlog, ou edite `.mabel/backlog.md` direto.
    **`/refinar`** pede a um agente uma proposta de critérios, decisões e limites para um
    item; você revisa e só o que aceitar entra no backlog.

@@ -591,21 +591,24 @@ async function executeStep(env: PipelineEnv, item: Item): Promise<Step> {
   const committed = commitAll(worktree, commitMessage(item, attemptNo));
   const unchanged = !committed && git(worktree, 'rev-parse', 'HEAD') === startHead;
   const blocker = result.output.impedimento?.trim();
-  if (unchanged && !blocker) {
+  if (unchanged) {
     // Retentativa sem nada a mudar: o código das tentativas anteriores volta à verificação,
     // que reprova (e conta a tentativa) se o problema continuar.
     if (!hasOwnCommits(worktree, originBranch(env.project.config))) {
+      if (blocker) {
+        // Nada a verificar: o impedimento vai direto ao humano.
+        updateItem(env.db, item.id, { attempts: cycleAttempt });
+        recordGate(env.db, item.id, attemptNo, 'environment', false, blocker);
+        return stopForHuman(env, item, 'environment_block', { reason: blocker, sessionId }, `impedimento de ambiente: ${blocker}`, runId);
+      }
       recordGate(env.db, item.id, attemptNo, 'changes', false, 'execução sem nenhuma alteração');
       return attemptFailed(env, item, cycleAttempt, 'A execução não alterou nenhum arquivo.');
     }
     recordGate(env.db, item.id, attemptNo, 'changes', true, 'sem alteração nova: verifica de novo o que já foi commitado');
   }
+  // Com impedimento declarado, a verificação do Mabel (fora do sandbox) decide: o bloqueio
+  // costuma ser só do sandbox do agente. Ela para o item se também falhar.
   updateItem(env.db, item.id, { attempts: cycleAttempt, nextInput: null });
-  if (blocker) {
-    // Impedimento de ambiente: outra tentativa não muda o ambiente, então o item para já.
-    recordGate(env.db, item.id, attemptNo, 'environment', false, blocker);
-    return stopForHuman(env, item, 'environment_block', { reason: blocker, sessionId }, `impedimento de ambiente: ${blocker}`, runId);
-  }
   move(env, item, 'verifying', committed ? `execução ${attemptNo} commitada` : `execução ${attemptNo} sem alteração nova`, runId);
   return undefined;
 }
@@ -739,6 +742,7 @@ function verifyStep(env: PipelineEnv, item: Item): Step {
   }
   const logDir = join(itemDir(env.home, item.id), `verificacao-${attemptNo}`);
   mkdirSync(logDir, { recursive: true });
+  const blocker = execution.impedimento?.trim();
 
   for (const command of env.project.config.verify) {
     const { code, output } = shell(command.command, worktree);
@@ -746,6 +750,18 @@ function verifyStep(env: PipelineEnv, item: Item): Step {
     writeFileSync(logPath, output);
     const passed = code === 0;
     recordGate(env.db, item.id, attemptNo, command.name, passed, passed ? null : `\`${command.command}\` saiu com ${code}`, logPath);
+    if (!passed && blocker) {
+      // O impedimento se confirmou fora do sandbox: outra tentativa não muda o ambiente.
+      const reason = `${blocker} A verificação do Mabel, fora do sandbox, também falhou em \`${command.command}\` (log: ${logPath}).`;
+      recordGate(env.db, item.id, attemptNo, 'environment', false, reason);
+      return stopForHuman(
+        env,
+        item,
+        'environment_block',
+        { reason, sessionId: lastExecuteSession(env.db, item.id) ?? null },
+        `impedimento de ambiente: ${reason}`,
+      );
+    }
     if (!passed) {
       return attemptFailed(
         env,
@@ -754,6 +770,11 @@ function verifyStep(env: PipelineEnv, item: Item): Step {
         `O comando de verificação \`${command.command}\` falhou (código ${code}). Últimas linhas:\n${tail(output, 200)}`,
       );
     }
+  }
+
+  if (blocker) {
+    recordGate(env.db, item.id, attemptNo, 'environment', true, `não se confirmou fora do sandbox: ${blocker}`);
+    env.log?.(`#${item.number} ${item.title}: impedimento do executor não se confirmou; a verificação do Mabel passou`);
   }
 
   const missing = criteriaWithoutTests(plan, execution, worktree);

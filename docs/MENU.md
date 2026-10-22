@@ -143,9 +143,12 @@ Códigos de saída: 0 sucesso, 1 erro de uso ou de estado, 130 interrompido (Ctr
      abre o editor de comandos. Sair do menu cancela o `init`.
 4. Grava `config.json` com padrões: branch base = branch atual, modelos e limites padrão,
    `autonomia: "sugestoes"`, `integracao: "mabel/integracao"`, sandbox ligado, domínios de
-   rede da stack.
+   rede da stack e dos frameworks detectados (Next: `fonts.googleapis.com` e
+   `fonts.gstatic.com`).
 5. Sem comando de teste em `verify`: o backlog nasce com o item 1 "Estabelecer base de
-   testes", concreto quando a stack é do catálogo.
+   testes", concreto quando a stack é do catálogo. O item não altera o `.mabel/config.json`;
+   a intenção traz a nota de que o comando de teste entra em `verify` pelo humano, depois
+   do merge.
 6. Cria `regras-criticas.md`, `backlog.md`, `.gitignore` (quadro e integração) e por último
    `config.json`. Repositório que já foi projeto reaproveita o id antigo (mantém histórico).
 7. Oferece `Commitar o .mabel/ na branch <base>? [S/n]`; fora de TTY só imprime o comando.
@@ -279,6 +282,10 @@ integrar os itens.
   janela de 5h ou o ritmo de 7 dias (com contagem regressiva), ou **pausar** (7 dias
   baixo, sem leitura). Fora de TTY, nunca pergunta: espera ou pausa.
 - Saldo esgotado no meio da etapa: espera o reset e retoma pela mesma sessão.
+- Antes de cada etapa com agente, confere se o código do Mabel (`src/`, `prompts/`,
+  `hooks/`) mudou desde que o processo abriu. Se mudou, **pausa** com o motivo `o código do
+  Mabel mudou desde que este processo abriu; saia e abra o mabel de novo…`, gravado em
+  `queue_events` (causa `code`).
 - Mostra cada ferramenta usada pelo agente (`→ Edit arquivo ✓`).
 - Notificação do sistema quando para, pausa ou espera você.
 - Ctrl+C interrompe a run atual e encerra (sai com 130).
@@ -318,7 +325,8 @@ Sem parâmetros (argumentos são ignorados).
 | (só execução) próximo passo | — | Enter retoma a execução · `r` replaneja com as respostas · `p` pula |
 | Plano incompleto | Motivo | texto orienta o plano · `c` cancela (confirma) · `p` pula |
 | Aprovação de item crítico | Motivos, critérios, escopo, suposições | `a` aprova · texto ajusta os critérios · `c` cancela · `p` pula (`d` recusado) |
-| Tentativas esgotadas | Resumo das tentativas | texto orienta novo ciclo (modelo escalonado) · `r <texto>` replaneja · `c` cancela · `p` pula |
+| Tentativas esgotadas | O que reprovou em cada tentativa, em português; "Causa provável: bloqueio do ambiente" com o caminho do log quando ele mostra bloqueio do sandbox ou da rede; diagnóstico do executor na última tentativa | texto orienta novo ciclo (modelo escalonado) · `r <texto>` replaneja · `c` cancela · `p` pula |
+| Impedimento de ambiente | O motivo declarado pelo executor, confirmado pela verificação do Mabel fora do sandbox (com o log), e o que ajustar | texto diz o que mudou no ambiente e retoma · `r <texto>` replaneja · `c` cancela · `p` pula |
 | Conflito com a integração | Arquivos em conflito | texto orienta a resolução · `r <texto>` replaneja · `c` cancela · `p` pula |
 
 Cada item vira uma decisão, gravada no fim do item. Ctrl+C descarta só o item em
@@ -394,6 +402,7 @@ outro estado ou pendência: erro "não está aguardando aprovação de critério
 | Perguntas do planejamento, plano incompleto, aprovação crítica | `planning`, retoma a mesma sessão com a resposta | **ignorado** (mesmo efeito) |
 | Perguntas da execução | `executing`, mesma sessão e mesma tentativa | `planning`, ciclo novo |
 | Tentativas esgotadas | `executing`, ciclo novo com modelo escalonado | `planning`, ciclo novo |
+| Impedimento de ambiente | `executing`, ciclo novo, retoma a sessão da execução; sem alteração nova, verifica de novo | `planning`, ciclo novo |
 | Conflito com a integração | `executing`, sessão nova que refaz o merge e resolve os conflitos | `planning`, ciclo novo |
 
 No REPL sem argumentos pergunta: número, resposta e `Replanejar? [s/N]`.
