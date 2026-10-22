@@ -325,6 +325,7 @@ const CAUSE_LABELS: Record<QueueEventCause, string> = {
   usage_limit: 'saldo esgotado',
   integration: 'integração',
   context: 'contexto do projeto',
+  code: 'Mabel atualizado',
 };
 
 /** `pausa · saldo de 7 dias — …`, `espera até 14/10 18:00 · …`, `você: continuar · …`. */

@@ -102,6 +102,10 @@ dados do Mabel; o repositório do projeto não é alterado.
   O escalonamento vale só para aquela tentativa; a tabela de roteamento não muda.
 - Falha também com o modelo escalonado: o item vai para `needs_human` com o
   resumo das tentativas.
+- Retentativa sem alteração nova, num item que já tem commits, volta à verificação com o
+  código já commitado; a tentativa conta se ela reprovar de novo.
+- Impedimento de ambiente declarado pelo executor (rede, sandbox, permissão) leva o item a
+  `needs_human` na hora, com o trabalho commitado e sem gastar tentativas.
 - A tabela de roteamento só é alterada com base em amostragem relevante da auditoria. O
   Mabel sugere a mudança; o humano decide.
 

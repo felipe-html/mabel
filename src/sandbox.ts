@@ -3,7 +3,7 @@ import { existsSync, realpathSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { tryGit } from './git.ts';
 import type { Project } from './project.ts';
-import { STACKS, detectCommands } from './stacks.ts';
+import { STACKS, detectCommands, frameworkDomains } from './stacks.ts';
 
 /**
  * Sandbox do Claude Code nas etapas (G4, terminal e rede): o `Bash` só escreve no worktree
@@ -11,10 +11,14 @@ import { STACKS, detectCommands } from './stacks.ts';
  * validação de 2026-10-13 (`docs/specs/passo-5.md`).
  */
 
-/** Domínios liberados: os do config ou, sem o campo, os das stacks detectadas no projeto. */
+/**
+ * Domínios liberados: os do config ou, sem o campo, os das stacks e frameworks detectados
+ * no projeto.
+ */
 export function allowedDomains(project: Project): string[] {
   if (project.config.rede) return [...project.config.rede];
-  return [...new Set(detectCommands(project.root).stacks.flatMap((stack) => stack.rede))];
+  const stacks = detectCommands(project.root).stacks.flatMap((stack) => stack.rede);
+  return [...new Set([...stacks, ...frameworkDomains(project.root)])];
 }
 
 /**
@@ -44,7 +48,7 @@ export interface SandboxSettings {
   enabled: true;
   failIfUnavailable: true;
   allowUnsandboxedCommands: false;
-  network: { allowedDomains: string[]; strictAllowlist: true };
+  network: { allowedDomains: string[]; strictAllowlist: true; allowLocalBinding: true };
   filesystem: { allowWrite: string[]; denyWrite: string[] };
 }
 
@@ -53,7 +57,8 @@ export function sandboxSettings(project: Project): SandboxSettings {
     enabled: true,
     failIfUnavailable: true,
     allowUnsandboxedCommands: false,
-    network: { allowedDomains: allowedDomains(project), strictAllowlist: true },
+    // Porta local: bundlers (Turbopack, loaders do Next) sobem processos auxiliares em localhost.
+    network: { allowedDomains: allowedDomains(project), strictAllowlist: true, allowLocalBinding: true },
     filesystem: { allowWrite: packageCaches(project), denyWrite: [gitCommonDir(project.root)] },
   };
 }

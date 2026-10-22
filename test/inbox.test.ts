@@ -135,6 +135,19 @@ test('perguntas da execução: suposição crítica confirmada e r replaneja com
   assert.match(p.reasons(1)[0] ?? '', /^humano: inbox responder --replanejar:/);
 });
 
+test('impedimento de ambiente: mostra o motivo e o texto retoma a execução', async () => {
+  const blocked = { ...EXECUTION, impedimento: 'o build baixa fontes de fonts.googleapis.com, fora da rede' };
+  const p = inboxProject('\n## Soma\nsoma\n', [{ structured_output: PLAN }, { structured_output: blocked, files: EXECUTION_FILES, session_id: 'exec-1' }]);
+  assert.equal(p.item(1).pendingKind, 'environment_block');
+  const { io, out } = scripted(['Liberei fonts.googleapis.com na rede.']);
+  await runInbox(p.db, p.home, p.project, io);
+  assert.ok(out.some((line) => line.includes('impedimento de ambiente')));
+  assert.ok(out.includes(`      ${blocked.impedimento}`));
+  assert.ok(out.some((line) => line.includes('texto diz o que mudou no ambiente e retoma')));
+  assert.equal(p.item(1).status, 'executing');
+  assert.equal(p.item(1).nextInput?.resumeSessionId, 'exec-1');
+});
+
 test('fim da inbox pergunta se retoma a esteira; sem respostas não pergunta', async () => {
   const p = inboxProject('\n## A\nprimeiro\n\n## B\nsegundo\n', [QUESTIONS, QUESTIONS]);
   const yes = scripted(['', 'x', 'y', 'p', '']);

@@ -71,6 +71,11 @@ export interface ExecuteOutput {
   perguntas: Question[];
   /** Obrigatório no esquema; execuções anteriores ao 5.3 não têm o campo. */
   escopoAdicional?: ScopeRequest[];
+  /**
+   * Motivo pelo qual a verificação não passa por causa do ambiente (rede, sandbox,
+   * permissão), não do código; vazio quando não há. Execuções anteriores não têm o campo.
+   */
+  impedimento?: string;
 }
 
 /** Proposta de refinamento de um item do backlog; o humano revisa antes de gravar. */
@@ -125,6 +130,7 @@ export const executeSchema: Schema = object({
   suposicoes: assumptions,
   perguntas: questions,
   escopoAdicional: { type: 'array', items: object({ glob: str, motivo: str }) },
+  impedimento: str,
 });
 
 export const reviewSchema: Schema = object({

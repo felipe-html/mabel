@@ -19,6 +19,10 @@ e devolve o plano na saída estruturada.
 - Declare o **escopo**: os arquivos que a execução pode criar ou alterar, **só globs**
   relativos à raiz do repositório (ex.: `src/pedidos/**`, `test/pedidos.test.ts`), sem
   frases. Seja específico; o escopo é usado para barrar alterações fora dele.
+- `.mabel/` e `.git/` **nunca** entram no escopo: o Mabel barra toda escrita neles. O config
+  do Mabel (`.mabel/config.json`: `verify`, `setup`, `rede`...) é do humano. Se o item pedir
+  mudança nele, não a planeje: registre em `suposicoes` a recomendação ao humano (ex.:
+  "incluir `npm test` em `verify` depois do merge").
 - Liste **toda suposição** que você fizer. Marque `regraCritica: true` em toda suposição
   que toque uma regra de negócio crítica do projeto.
 - Em `conceitosCriticos`, copie literalmente os conceitos da seção "Regras críticas do

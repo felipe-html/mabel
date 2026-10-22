@@ -85,6 +85,17 @@ export function respond(
         nextInput: { resumeSessionId: sessionId, answer, sameAttempt: true },
       });
       return 'executing';
+    case 'environment_block':
+      if (replan) {
+        decide(db, project, item, 'planning', reason, replanFresh);
+        return 'planning';
+      }
+      // O ambiente mudou: ciclo novo, na mesma sessão, que verifica de novo o que já foi feito.
+      decide(db, project, item, 'executing', reason, {
+        attempts: 0,
+        nextInput: { resumeSessionId: sessionId, answer },
+      });
+      return 'executing';
     case 'integration_conflict': {
       if (replan) {
         decide(db, project, item, 'planning', reason, replanFresh);

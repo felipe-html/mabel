@@ -4,7 +4,7 @@ import { dataDir, openDb } from './db.ts';
 import { type DecisionOptions, approve, cancel, respond } from './decisions.ts';
 import { renderItemDetail } from './decide.ts';
 import { type Item, type ItemStatus, type PendingKind, listItems } from './items.ts';
-import { attemptsSummary } from './pipeline.ts';
+import { humanAttemptsSummary } from './pipeline.ts';
 import { type Project, ProjectError, resolveProject } from './project.ts';
 import { run } from './run.ts';
 import type { PlanOutput, Question } from './schemas/stages.ts';
@@ -40,6 +40,7 @@ const KIND_LABELS: Record<PendingKind, string> = {
   plan_incomplete: 'plano incompleto',
   critical_approval: 'aprovação de item crítico',
   attempts_exhausted: 'tentativas esgotadas',
+  environment_block: 'impedimento de ambiente',
   integration_conflict: 'conflito com a integração',
 };
 
@@ -191,17 +192,35 @@ async function criticalFlow(
   }
 }
 
-/** Tentativas esgotadas ou conflito com a integração: orientar, replanejar ou cancelar. */
-async function exhaustedFlow(db: DatabaseSync, project: Project, io: InboxIO, item: Item): Promise<Decision> {
-  const conflict = item.pendingKind === 'integration_conflict';
-  const summary = conflict
-    ? `arquivos em conflito: ${(item.pending?.files ?? []).join(', ')}`
-    : item.pending?.summary || attemptsSummary(db, item.id);
-  for (const line of summary.split('\n')) io.write(`${INDENT}${line}`);
+/** O que o texto livre faz em cada pendência que pede orientação. */
+const GUIDANCE: Partial<Record<PendingKind, string>> = {
+  attempts_exhausted: 'texto orienta um novo ciclo',
+  environment_block: 'texto diz o que mudou no ambiente e retoma',
+  integration_conflict: 'texto orienta a resolução do conflito',
+};
+
+/**
+ * Tentativas esgotadas, impedimento de ambiente ou conflito com a integração: orientar,
+ * replanejar ou cancelar.
+ */
+async function exhaustedFlow(db: DatabaseSync, home: string, project: Project, io: InboxIO, item: Item): Promise<Decision> {
+  const kind = item.pendingKind as PendingKind;
+  const lines =
+    kind === 'integration_conflict'
+      ? [`arquivos em conflito: ${(item.pending?.files ?? []).join(', ')}`]
+      : kind === 'environment_block'
+        ? [
+            `O executor diz que a verificação não passa por causa do ambiente, não do código:`,
+            `${item.pending?.reason ?? ''}`,
+            '',
+            'Ajuste o ambiente (ex.: o domínio em `rede` no .mabel/config.json) e responda o que mudou.',
+          ]
+        : humanAttemptsSummary(db, home, item);
+  for (const line of lines) io.write(line ? `${INDENT}${line}` : '');
   for (;;) {
     const input = await choose<string>(
       io,
-      `texto orienta ${conflict ? 'a resolução do conflito' : 'um novo ciclo'} · r <texto> replaneja · c cancela · p pula`,
+      `${GUIDANCE[kind]} · r <texto> replaneja · c cancela · p pula`,
       (text) => text || { retry: 'Digite a orientação, r <texto>, c ou p.' },
     );
     if (input === 'p') return SKIP;
@@ -229,8 +248,9 @@ function itemFlow(db: DatabaseSync, home: string, project: Project, io: InboxIO,
     case 'critical_approval':
       return criticalFlow(db, home, project, io, item);
     case 'attempts_exhausted':
+    case 'environment_block':
     case 'integration_conflict':
-      return exhaustedFlow(db, project, io, item);
+      return exhaustedFlow(db, home, project, io, item);
   }
 }
 

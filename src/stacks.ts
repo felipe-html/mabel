@@ -178,6 +178,16 @@ export const STACKS: Stack[] = [
   },
 ];
 
+/**
+ * Domínios que o build de frameworks conhecidos busca além do registro de pacotes. O
+ * `next/font/google` do template do Next baixa as fontes do Google no build.
+ */
+export function frameworkDomains(root: string): string[] {
+  const pkg = readPackage(root);
+  const next = 'next' in (pkg.dependencies ?? {}) || 'next' in (pkg.devDependencies ?? {});
+  return next ? ['fonts.googleapis.com', 'fonts.gstatic.com'] : [];
+}
+
 export function findStack(id: string): Stack | undefined {
   return STACKS.find((stack) => stack.id === id);
 }

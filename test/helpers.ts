@@ -102,6 +102,7 @@ export const EXECUTION = {
   suposicoes: [],
   perguntas: [],
   escopoAdicional: [],
+  impedimento: '',
 };
 
 export const EXECUTION_FILES = {
