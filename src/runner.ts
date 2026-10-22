@@ -94,6 +94,16 @@ export interface RunHandle {
   done: Promise<RunOutcome>;
 }
 
+/** Variáveis que o Mabel usa fora das runs e o agente não deve ver (tokens de captura). */
+export const PRIVATE_ENV = ['FIGMA_TOKEN'];
+
+/** Ambiente da run: o do Mabel sem as variáveis privadas. */
+export function agentEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const result = { ...env };
+  for (const name of PRIVATE_ENV) delete result[name];
+  return result;
+}
+
 export function claudeBin(): string {
   return process.env.MABEL_CLAUDE_BIN || 'claude';
 }
@@ -181,7 +191,7 @@ export function startRun(
   let stderrFd: number;
   let settingsPath: string | undefined;
   const hookLog = join(dir, 'hook.jsonl');
-  const childEnv: NodeJS.ProcessEnv = { ...process.env };
+  const childEnv = agentEnv(process.env);
   try {
     mkdirSync(dir, { recursive: true });
     if (isHermetic(request)) {

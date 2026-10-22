@@ -65,7 +65,7 @@ export function setupProject(backlog?: string, options: { integracao?: string } 
 }
 
 /** Aponta o `claude` falso (no processo atual) para um cenário com as respostas dadas. */
-export function useScenario(dir: string, responses: unknown[]): { log: () => { argv: string[]; session_id: string; cwd: string }[] } {
+export function useScenario(dir: string, responses: unknown[]): { log: () => { argv: string[]; session_id: string; cwd: string; figmaToken?: boolean }[] } {
   const scenario = join(dir, `cenario-${Math.random().toString(36).slice(2)}.json`);
   const log = `${scenario}.log`;
   writeFileSync(scenario, JSON.stringify({ responses }));

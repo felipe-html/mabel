@@ -7,8 +7,8 @@ import { refinePrompt } from '../src/refine.ts';
 import { extractOperation, parseReference, referencesRoot } from '../src/references.ts';
 import { claudeArgs } from '../src/runner.ts';
 import type { PlanOutput } from '../src/schemas/stages.ts';
-import { executePrompt, planPrompt, reviewPrompt, stageRequest } from '../src/stages.ts';
-import { EXECUTION, PLAN, setupProject } from './helpers.ts';
+import { executePrompt, planPrompt, reviewPrompt, runStage, stageRequest } from '../src/stages.ts';
+import { EXECUTION, PLAN, setupProject, useScenario } from './helpers.ts';
 
 const SPEC = {
   openapi: '3.0.3',
@@ -155,4 +155,21 @@ test('refinamento: sem cópia nem --add-dir; o prompt lista os arquivos da raiz'
   assert.equal(request.addDirs, undefined);
   assert.equal(existsSync(join(home, 'items', item.id, 'referencias')), false);
   assert.match(refinePrompt(item, root), /- tela: cadastro\n {2}- `\.mabel\/referencias\/telas\/cadastro\/tela\.png`/);
+});
+
+test('runs: o FIGMA_TOKEN do Mabel não chega ao agente', async () => {
+  const { db, home, project, root } = setupProject(ITEM('- docs/cpf.md'));
+  const { log } = useScenario(root, [{ result: 'ok' }]);
+  const previous = process.env.FIGMA_TOKEN;
+  process.env.FIGMA_TOKEN = 'segredo';
+  try {
+    syncBacklog(db, project);
+    const item = getItem(db, project.id, 1);
+    assert.ok(item);
+    await runStage(db, { home, project, item, worktree: root }, 'refine', 'r');
+    assert.equal(log()[0]?.figmaToken, false);
+  } finally {
+    if (previous === undefined) delete process.env.FIGMA_TOKEN;
+    else process.env.FIGMA_TOKEN = previous;
+  }
 });
