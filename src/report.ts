@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { formatCost } from './format.ts';
 import { tryGit } from './git.ts';
+import { openDelivery } from './delivery.ts';
 import { integratedItems } from './integration.ts';
 import { type Item, itemCost } from './items.ts';
 import { MABEL_DIR, type Project, mabelPath } from './project.ts';
@@ -114,23 +115,46 @@ function itemSection(db: DatabaseSync, project: Project, { item, plan, execution
   return lines;
 }
 
-/** Conteúdo do `.mabel/integracao.md`. */
-export function renderIntegrationReport(db: DatabaseSync, home: string, project: Project): string {
+export interface ReportOptions {
+  /** Entrega (`mabel entregar`): o relatório vira o corpo do PR, só com os itens até o commit dela. */
+  delivery?: { branch: string; commit: string };
+  /** Limite de caracteres: as seções dos itens são cortadas do fim para o começo. */
+  maxChars?: number;
+}
+
+/** Linhas do "Olhe primeiro" dos itens integrados (até `upTo`, se dado). */
+export function lookFirstLines(db: DatabaseSync, home: string, project: Project, upTo?: string): string[] {
+  return integratedItems(db, project, upTo).flatMap((item) => lookFirst(entry(home, item)));
+}
+
+/** Conteúdo do `.mabel/integracao.md` ou, com `delivery`, do corpo do PR da entrega. */
+export function renderIntegrationReport(db: DatabaseSync, home: string, project: Project, options: ReportOptions = {}): string {
   const integration = project.config.integracao;
   const base = project.config.baseBranch;
   if (!integration) return '# Integração desligada\n\nCom `integracao: null` no config, cada item fica na própria branch.\n';
-  const entries = integratedItems(db, project).map((item) => entry(home, item));
-  const lines = [
-    '<!-- Gerado pelo Mabel. Edições aqui são descartadas. -->',
-    `# Integração · ${integration} · ${plural(entries.length, 'item', 'itens')} desde a ${base}`,
-  ];
+  const { delivery, maxChars } = options;
+  const entries = integratedItems(db, project, delivery?.commit).map((item) => entry(home, item));
+  const lines = delivery
+    ? [`# Entrega · ${delivery.branch} · ${plural(entries.length, 'item', 'itens')} desde a ${base}`]
+    : ['<!-- Gerado pelo Mabel. Edições aqui são descartadas. -->', `# Integração · ${integration} · ${plural(entries.length, 'item', 'itens')} desde a ${base}`];
   if (entries.length === 0) return `${[...lines, '', `Nada a levar para a ${base}.`].join('\n')}\n`;
-  lines.push('', `Para levar à ${base}: git merge --no-ff ${integration}`);
+  if (delivery) {
+    lines.push('', 'Faça o merge com "Create a merge commit": squash e rebase impedem o Mabel de dar os itens como concluídos.');
+  } else {
+    lines.push('', `Para levar à ${base}: git merge --no-ff ${integration}`, 'ou: mabel entregar');
+    const open = openDelivery(db, project.id);
+    if (open) lines.push(`Entrega aberta: ${open.branch} · ${open.prUrl ?? 'sem PR'}`);
+  }
   lines.push(`Para devolver um item: mabel rejeitar <n> "<motivo>"`);
   const first = entries.flatMap(lookFirst);
   lines.push('', '## Olhe primeiro', ...(first.length > 0 ? first.map((line) => `- ${line}`) : ['Nada: todos os critérios provados.']));
-  for (const e of entries) lines.push('', ...itemSection(db, project, e));
-  return `${lines.join('\n')}\n`;
+  const sections = entries.map((e) => ['', ...itemSection(db, project, e)].join('\n'));
+  const head = lines.join('\n');
+  let kept = sections.length;
+  const cut = (n: number) => (n < sections.length ? `\n\n… ${plural(sections.length - n, 'item', 'itens')} sem detalhe aqui; rode mabel integracao.` : '');
+  const size = (n: number) => head.length + sections.slice(0, n).reduce((sum, section) => sum + section.length + 1, 0) + cut(n).length;
+  while (maxChars !== undefined && kept > 0 && size(kept) > maxChars) kept--;
+  return `${head}${sections.slice(0, kept).map((section) => `\n${section}`).join('')}${cut(kept)}\n`;
 }
 
 /**

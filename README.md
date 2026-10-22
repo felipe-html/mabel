@@ -124,7 +124,11 @@ No modo Mabel, os comandos começam com `/`:
    item; você revisa e só o que aceitar entra no backlog.
 3. **`/run`** consome a fila: planeja tudo, oferece a inbox se houver perguntas e executa
    item a item até cada um chegar a `awaiting_merge`.
-4. **Revise e faça o merge** da branch de cada item. No próximo `/run`, o item vira `done`.
+4. **Revise e entregue.** Cada item aprovado entra sozinho na branch `mabel/integracao`, e
+   `/integracao` mostra o relatório. **`/entregar`** publica um snapshot dela
+   (`mabel/entrega/<data>`), abre o PR com o relatório (pelo `gh`; sem ele, mostra a URL e
+   o texto) e volta o seu checkout para a base. Faça o merge com "Create a merge commit" e
+   dê `git pull` na base: no próximo `/run`, os itens viram `done`.
 
 ### Escrevendo itens
 
@@ -185,6 +189,9 @@ Todos funcionam no modo Mabel (`/comando`) e no shell (`mabel comando`).
 | `aprovar <n>` | Aprova os critérios de um item crítico |
 | `responder <n> "<resposta>" [--replanejar]` | Responde a um item parado em `needs_human` |
 | `cancelar <n>` | Cancela um item |
+| `integracao` | Relatório da branch de integração: o que levar à base e o que olhar primeiro |
+| `entregar [--substituir] [--rascunho]` | Publica um snapshot da integração, abre o PR com o relatório e volta o checkout para a base; `--substituir` troca a entrega aberta pela integração atual |
+| `rejeitar <n> "<motivo>" [--cancelar]` | Reverte um item na integração e o devolve ao planejamento (ou o cancela) |
 | `status [--atualizar]` | Saldo, resumo da fila e runs recentes; `--atualizar` lê o saldo agora |
 | `exec "<prompt>"` | Executa um prompt avulso no Claude Code, com auditoria |
 | `completion zsh` | Script de autocompletar do shell |
@@ -204,6 +211,7 @@ No modo Mabel: `/` abre a lista de comandos, Tab completa, ↑/↓ percorrem o h
 | `~/.mabel/runs/<id>/` | Saída bruta, stderr e transcript de cada execução |
 | `~/.mabel/items/<id>/` | Plano, execuções, verificações e revisões de cada item |
 | `~/.mabel/worktrees/` | Worktrees dos itens em andamento |
+| `~/.mabel/entregas/<projeto>/` | Corpo do PR de cada entrega |
 
 | Variável | Efeito |
 |---|---|

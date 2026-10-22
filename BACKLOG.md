@@ -27,3 +27,4 @@
 - **`add` com `--decisao` e `--regra-critica`.** Hoje esses campos entram só pelo `refinar` ou editando o arquivo.
 - **Refinar em lote.** `mabel refinar --todos` para rodar o agente em todos os itens não refinados e revisar as propostas em sequência, como a inbox.
 - **Preservar comentários dentro do bloco do item.** A gravação do refinamento regrava o trecho do item e perde comentários HTML no meio dele (os de depois do item ficam).
+- **PR da entrega fechado sem merge.** Hoje a entrega continua `open` até o `mabel entregar --substituir`. A abertura do `run` poderia perguntar ao `gh` e marcá-la como fechada, liberando uma entrega nova sem a flag.

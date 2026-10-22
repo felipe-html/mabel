@@ -14,7 +14,7 @@ comportamento parece não ter sido intencional, o texto diz "a confirmar".
 - [Mapa rápido](#mapa-rápido)
 - Comandos: [init](#init) · [add](#add) · [refinar](#refinar) · [run](#run) · [inbox](#inbox) · [item](#item) ·
   [aprovar](#aprovar) · [responder](#responder) · [cancelar](#cancelar) ·
-  [integracao](#integracao) · [rejeitar](#rejeitar) · [status](#status) · [runs](#runs) ·
+  [integracao](#integracao) · [entregar](#entregar) · [rejeitar](#rejeitar) · [status](#status) · [runs](#runs) ·
   [projetos](#projetos) · [projeto](#projeto) · [exec](#exec) · [completion](#completion)
 - [Problemas transversais](#problemas-transversais)
 - [Perguntas](#perguntas)
@@ -107,6 +107,7 @@ Ordem em que aparecem na lista (a mesma de `src/commands.ts`).
 | `responder` | `responder <n> "<resposta>" [--replanejar]` | sim | número, resposta, replanejar? | não | igual |
 | `cancelar` | `cancelar <n>` | sim | número + confirmação | não | igual, **sem confirmação** |
 | `integracao` | `integracao` | sim | não | não | igual |
+| `entregar` | `entregar [--substituir] [--rascunho]` | sim | não | não | igual |
 | `rejeitar` | `rejeitar <n> "<motivo>" [--cancelar]` | sim | número, motivo, cancelar? | **sim** | igual |
 | `exec` | `exec "<prompt>" [--model] [--max-turns] [--max-budget-usd] [--allowed-tools] [--cwd]` | não | prompt | não | igual |
 | `status` | `status [--atualizar]` | não (mostra o quadro se houver) | não | não | igual |
@@ -452,12 +453,35 @@ custo.
 
 **Pontos a refinar**
 
-- É só leitura: **levar a integração à base** é manual (`git merge` fora do Mabel). O
-  README ainda manda "fazer o merge da branch de cada item", texto de antes da
-  integração.
+- É só leitura: para levar a integração à base, `entregar` (abaixo) ou `git merge`.
 - Não atualiza estados: itens já levados à base só viram `done` no próximo `run` (a
   confirmar se o relatório os mostra até lá).
 - Não tem atalho para abrir o diff de um item.
+
+### entregar
+
+**Para quê:** levar a integração à base por PR (`docs/specs/entregar.md`).
+
+| Parâmetro | Efeito |
+|---|---|
+| `--substituir` | Com uma entrega aberta, abre outra com a integração atual e fecha o PR anterior |
+| `--rascunho` | Abre o PR como rascunho |
+
+Cria `mabel/entrega/<data>` no commit atual da integração (o `run` pode seguir integrando
+sem mudar o PR), publica no remoto da base e abre o PR pelo `gh`, com o relatório como
+corpo. Recusa se o repositório não permitir merge commit (squash e rebase impedem o `done`).
+Sem `gh`, mostra a URL de comparação e o arquivo do corpo; sem remoto, o `git merge --no-ff`.
+Volta o checkout da raiz para a base só se ele estiver na integração ou numa entrega e sem
+alteração versionada. Uma entrega aberta por projeto; a que ficou sem PR é retomada ao
+rodar de novo. Não pega a trava do projeto: lê a integração uma vez.
+
+Na abertura do `run`: entrega na base vira `merged` (branch local apagada); integrada só
+no remoto ou por squash, o `run` avisa o que fazer.
+
+**Pontos a refinar**
+
+- PR fechado sem merge no GitHub não é detectado: a entrega continua aberta até o
+  `--substituir`.
 
 ### rejeitar
 

@@ -179,11 +179,14 @@ export function setIntegrated(db: DatabaseSync, item: Item, commit: string | nul
   item.integratedCommit = commit;
 }
 
-/** Itens na integração e ainda fora da base, na ordem em que foram integrados. */
-export function integratedItems(db: DatabaseSync, project: Project): Item[] {
+/**
+ * Itens na integração e ainda fora da base, na ordem em que foram integrados. Com `upTo`
+ * (o commit de uma entrega), só os integrados até ele.
+ */
+export function integratedItems(db: DatabaseSync, project: Project, upTo?: string): Item[] {
   const integration = project.config.integracao;
   if (!integration || !branchExists(project.root, integration)) return [];
-  const order = (tryGit(project.root, 'rev-list', '--first-parent', '--reverse', `${project.config.baseBranch}..${integration}`) ?? '')
+  const order = (tryGit(project.root, 'rev-list', '--first-parent', '--reverse', `${project.config.baseBranch}..${upTo ?? integration}`) ?? '')
     .split('\n')
     .filter(Boolean);
   const position = new Map(order.map((commit, i) => [commit, i]));

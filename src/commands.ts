@@ -1,5 +1,6 @@
 import { add, addUsage } from './add.ts';
 import { zshCompletion } from './completion.ts';
+import { deliverCommand, deliverUsage } from './delivery.ts';
 import { askPrompt, exec, execUsage } from './exec.ts';
 import {
   approveCommand,
@@ -105,6 +106,12 @@ export const commands: Command[] = [
     usage: rejectUsage,
     promptArgs: askReject,
     run: rejectCommand,
+  },
+  {
+    name: 'entregar',
+    description: 'Publica um snapshot da integração e abre o PR com o relatório; volta o checkout para a base',
+    usage: deliverUsage,
+    run: deliverCommand,
   },
   {
     name: 'exec',
