@@ -12,7 +12,7 @@ comportamento parece não ter sido intencional, o texto diz "a confirmar".
 
 - [Como o menu aparece](#como-o-menu-aparece)
 - [Mapa rápido](#mapa-rápido)
-- Comandos: [init](#init) · [add](#add) · [refinar](#refinar) · [run](#run) · [inbox](#inbox) · [item](#item) ·
+- Comandos: [init](#init) · [add](#add) · [refinar](#refinar) · [referencia](#referencia) · [run](#run) · [inbox](#inbox) · [item](#item) ·
   [aprovar](#aprovar) · [responder](#responder) · [cancelar](#cancelar) ·
   [integracao](#integracao) · [entregar](#entregar) · [rejeitar](#rejeitar) · [status](#status) · [runs](#runs) ·
   [projetos](#projetos) · [projeto](#projeto) · [exec](#exec) · [completion](#completion)
@@ -101,6 +101,7 @@ Ordem em que aparecem na lista (a mesma de `src/commands.ts`).
 | `init` | `init [--stack node\|python\|go\|rust]` | não (cria) | — (o próprio comando pergunta) | não | sem perguntas |
 | `add` | `add "<título>" [--intencao] [--criterio]… [--fora-do-escopo]… [--depende]… [--restricoes]` | sim | — (o próprio comando pergunta) | não | exige título e `--intencao` |
 | `refinar` | `refinar [<n>] [--refazer] [--aceitar \| --descartar]` | sim | — (o próprio comando abre o menu de itens) | não | sem `<n>` lista; com `<n>` mostra a proposta; `--aceitar` grava |
+| `referencia` | `referencia` · `referencia api <nome> <url>` | sim | não | não | igual |
 | `run` | `run [--item <n>] [--uma] [--sem-lote]` | sim | não | **sim** | sem perguntas; política decide |
 | `item` | `item <n>` | sim | número | não | igual |
 | `aprovar` | `aprovar <n>` | sim | número | não | igual |
@@ -252,6 +253,25 @@ revisão deixa a proposta pendente.
 - Comentários HTML no meio do bloco do item somem quando a proposta é gravada.
 - `--aceitar` e `--descartar` exigem o número; não há "aceitar todas as pendentes".
 - O `run` não avisa sobre itens `ready` nunca refinados.
+
+### referencia
+
+**Para quê:** guardar cópias de telas e APIs para os itens citarem em `Referências:`
+(`docs/specs/referencias.md`). O agente não abre links; lê essas cópias.
+
+| Forma | Efeito |
+|---|---|
+| (nenhum) | Lista as APIs (operações) e as telas (arquivos) de `.mabel/referencias/`, com os itens que citam cada uma |
+| `api <nome> <url>` | Baixa o OpenAPI em JSON e grava `api/<nome>.openapi.json` e `api/<nome>.md` (origem, data, notas abaixo de `<!-- notas -->` ficam) |
+
+A URL do swagger-ui do Quarkus (`…/q/swagger-ui/`) vira `…/q/openapi?format=json`.
+Recapturando, mostra as operações novas e removidas e os itens não iniciados que citam uma
+operação que saiu. Não versiona: lembra o `git add .mabel/referencias`.
+
+**Pontos a refinar**
+
+- OpenAPI em YAML não é aceito; só JSON.
+- Sem autenticação: API que exige token não é capturada.
 
 ### run
 
