@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { checkDeliveries, deliver, deliveryBodyPath, deliveryTitle, githubRepo, listDeliveries } from '../src/delivery.ts';
+import { checkDeliveries, deliver, deliveryBodyPath, deliveryTitle, type RemoteRepo, listDeliveries, newPrUrl, remoteRepo } from '../src/delivery.ts';
 import { git, tryGit } from '../src/git.ts';
 import { getItem, syncBacklog } from '../src/items.ts';
 import { renderIntegrationReport } from '../src/report.ts';
@@ -113,7 +113,7 @@ test('entregar critério 1: snapshot da integração, push, PR com o relatório 
   assert.equal(row?.status, 'open');
   assert.equal(row?.remote, 'origin');
   assert.match(result.lines.join('\n'), /PR aberto: https:\/\/github\.com\/dono\/app\/pull\/42/);
-  assert.match(result.lines.join('\n'), /Create a merge commit"\. Depois, na main: git pull/);
+  assert.match(result.lines.join('\n'), /Faça o merge com merge commit, sem squash nem rebase\. Depois, na main: git pull/);
 
   // O relatório da integração aponta a entrega aberta.
   assert.match(renderIntegrationReport(q.db, q.home, q.project), new RegExp(`ou: mabel entregar\nEntrega aberta: ${delivery.branch} · ${PR}`));
@@ -191,11 +191,38 @@ test('entregar critério 4: sem gh publica e mostra o corpo; sem remoto, só a b
   assert.equal(local.ref(offline.delivery!.branch), local.ref(INTEGRATION));
 });
 
-test('entregar: URL de comparação e repositório do GitHub pelo remoto', () => {
-  assert.equal(githubRepo('https://github.com/dono/app.git'), 'dono/app');
-  assert.equal(githubRepo('git@github.com:dono/app.git'), 'dono/app');
-  assert.equal(githubRepo('ssh://git@github.com/dono/app'), 'dono/app');
-  assert.equal(githubRepo('/tmp/origin'), undefined);
+test('entregar: remoto no Bitbucket publica, mostra o link do PR e não chama o gh', async () => {
+  const q = await integrated(1);
+  git(q.root, 'remote', 'set-url', 'origin', 'git@ssh.bitbucket.org:seasolutions/app.git');
+  git(q.root, 'remote', 'set-url', '--push', 'origin', q.origin);
+  const calls = useGh(q.root, GH_OK);
+  const result = deliver(q.db, q.home, q.project);
+  assert.equal(result.code, 0, result.lines.join('\n'));
+  const branch = result.delivery!.branch;
+  assert.equal(q.remoteRef(branch), q.ref(INTEGRATION));
+  const out = result.lines.join('\n');
+  assert.match(out, /sem PR automático \(o remoto origin está no Bitbucket; o gh só abre PR no GitHub\)/);
+  assert.match(out, new RegExp(`Abra o PR: https://bitbucket\\.org/seasolutions/app/pull-requests/new\\?source=${encodeURIComponent(branch)}&dest=main`));
+  assert.match(out, /Corpo do PR: /);
+  assert.match(out, /no merge, escolha "Merge commit"/);
+  assert.deepEqual(calls(), []);
+});
+
+test('entregar: URL do PR e repositório pelo remoto', () => {
+  const github: RemoteRepo = { host: 'github', repo: 'dono/app' };
+  const bitbucket: RemoteRepo = { host: 'bitbucket', repo: 'seasolutions/app' };
+  assert.deepEqual(remoteRepo('https://github.com/dono/app.git'), github);
+  assert.deepEqual(remoteRepo('git@github.com:dono/app.git'), github);
+  assert.deepEqual(remoteRepo('ssh://git@github.com/dono/app'), github);
+  assert.deepEqual(remoteRepo('git@ssh.bitbucket.org:seasolutions/app.git'), bitbucket);
+  assert.deepEqual(remoteRepo('git@bitbucket.org:seasolutions/app.git'), bitbucket);
+  assert.deepEqual(remoteRepo('https://felipe@bitbucket.org/seasolutions/app.git'), bitbucket);
+  assert.equal(remoteRepo('/tmp/origin'), undefined);
+  assert.equal(newPrUrl(github, 'mabel/entrega/2026-10-22', 'main'), 'https://github.com/dono/app/compare/main...mabel/entrega/2026-10-22?expand=1');
+  assert.equal(
+    newPrUrl(bitbucket, 'mabel/entrega/2026-10-22', 'main'),
+    'https://bitbucket.org/seasolutions/app/pull-requests/new?source=mabel%2Fentrega%2F2026-10-22&dest=main',
+  );
   assert.equal(deliveryTitle([3]), 'Mabel: 1 item (#3)');
   const long = deliveryTitle(Array.from({ length: 30 }, (_, i) => i + 100));
   assert.ok(long.length <= 70, long);

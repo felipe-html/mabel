@@ -126,8 +126,8 @@ No modo Mabel, os comandos começam com `/`:
    item a item até cada um chegar a `awaiting_merge`.
 4. **Revise e entregue.** Cada item aprovado entra sozinho na branch `mabel/integracao`, e
    `/integracao` mostra o relatório. **`/entregar`** publica um snapshot dela
-   (`mabel/entrega/<data>`), abre o PR com o relatório (pelo `gh`; sem ele, mostra a URL e
-   o texto) e volta o seu checkout para a base. Faça o merge com "Create a merge commit" e
+   (`mabel/entrega/<data>`), abre o PR com o relatório (pelo `gh` no GitHub; sem ele ou no
+   Bitbucket, mostra o link do PR e o texto) e volta o seu checkout para a base. Faça o merge com "Create a merge commit" e
    dê `git pull` na base: no próximo `/run`, os itens viram `done`.
 
 ### Escrevendo itens

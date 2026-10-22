@@ -139,7 +139,7 @@ export function renderIntegrationReport(db: DatabaseSync, home: string, project:
     : ['<!-- Gerado pelo Mabel. Edições aqui são descartadas. -->', `# Integração · ${integration} · ${plural(entries.length, 'item', 'itens')} desde a ${base}`];
   if (entries.length === 0) return `${[...lines, '', `Nada a levar para a ${base}.`].join('\n')}\n`;
   if (delivery) {
-    lines.push('', 'Faça o merge com "Create a merge commit": squash e rebase impedem o Mabel de dar os itens como concluídos.');
+    lines.push('', 'Faça o merge com merge commit ("Create a merge commit" no GitHub, "Merge commit" no Bitbucket): squash e rebase impedem o Mabel de dar os itens como concluídos.');
   } else {
     lines.push('', `Para levar à ${base}: git merge --no-ff ${integration}`, 'ou: mabel entregar');
     const open = openDelivery(db, project.id);

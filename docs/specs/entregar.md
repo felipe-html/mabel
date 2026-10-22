@@ -19,7 +19,7 @@ commit.
 | E2 | Commit | Nenhum. Cada item já entra na integração por um commit de merge do Mabel, e o relatório não é versionado (D10). O "o que foi feito" vai no corpo do PR. |
 | E3 | Merge do PR | Só merge commit. Squash e rebase tiram os `integrated_commit` da história da base, e os itens nunca chegam a `done`. O comando recusa abrir o PR num repositório que não permite merge commit, e o corpo do PR avisa. |
 | E4 | Checkout | Troca para a base só o checkout da raiz do projeto, só se ele estiver na integração ou numa entrega, e só se não houver alteração em arquivo versionado. Fora disso, não mexe e diz por quê. |
-| E5 | `gh` | Usado se estiver instalado e autenticado e o remoto for do GitHub. Sem ele: publica a branch (se houver remoto), mostra a URL de comparação e o arquivo do corpo do PR. Sem remoto: só cria o snapshot e mostra o `git merge --no-ff`. |
+| E5 | `gh` | Usado se estiver instalado e autenticado e o remoto for do GitHub. Sem ele, ou com o remoto no Bitbucket Cloud (o `gh` nem é chamado): publica a branch (se houver remoto), mostra o endereço para abrir o PR à mão (comparação no GitHub, `pull-requests/new` no Bitbucket) e o arquivo do corpo do PR; fora do GitHub, lembra de escolher "Merge commit", que o Mabel não confere. Sem remoto: só cria o snapshot e mostra o `git merge --no-ff`. |
 | E6 | Entrega aberta | Uma por projeto. Com uma aberta, o comando mostra o PR e sai; `--substituir` fecha o PR anterior e abre outro com a integração atual. |
 
 ## Comando
@@ -76,9 +76,11 @@ mabel entregar
 10. PR: `gh pr create --base <base> --head mabel/entrega/<data> --title "<título>" --body-file <arquivo>`
     (`--draft` com `--rascunho`). Título: `Mabel: <n> itens (#3, #5, #7, #9)`, com os
     números cortados em `…` acima de 70 caracteres.
-11. Sem `gh` (E5): mostra `https://github.com/<dono>/<repo>/compare/<base>...<branch>?expand=1`
-    quando o remoto é do GitHub e o caminho do arquivo do corpo, para copiar. Remoto que
-    não é do GitHub: só o caminho do arquivo.
+11. Sem `gh` (E5): mostra o endereço para abrir o PR, com a branch e a base, quando o
+    remoto é do GitHub (`https://github.com/<dono>/<repo>/compare/<base>...<branch>?expand=1`)
+    ou do Bitbucket Cloud (`https://bitbucket.org/<workspace>/<repo>/pull-requests/new?source=<branch>&dest=<base>`),
+    e o caminho do arquivo do corpo, para copiar. Remoto de outra hospedagem: só o caminho
+    do arquivo. Fora do GitHub, avisa que a estratégia de merge não foi conferida.
 12. Checkout (E4), na raiz do projeto:
     - HEAD na integração ou numa `mabel/entrega/*` e `git status --porcelain --untracked-files=no`
       vazio → `git switch <base>`;
