@@ -161,11 +161,36 @@ negócio já estão decididas (`Decisões:`) e o que fica de fora (`Fora do esco
 | Com regra de negócio | Intenção, critérios, decisões e fora do escopo | O planejador não pergunta o que já está decidido; o revisor julga contra o que você espera |
 | Toca regra crítica | Também `Regras críticas:` com os conceitos | Só fica pronto com critérios e sempre passa pela sua aprovação |
 | Encadeado ou com limite técnico | `Depende de:` e `Restrições:` | Ordem e limites da implementação |
+| Usa tela ou API | `Referências:` com `tela: <nome>` e `api: <nome> <MÉTODO> <caminho>` | Só fica pronto com as referências capturadas; o agente lê uma cópia congelada |
 
 O `mabel projeto <nome>` mostra quantas perguntas e suposições cada item gerou, separando
 os refinados dos não refinados: é o sinal de quanto detalhe falta no backlog.
 
 A ordem no arquivo é a prioridade. O Mabel acrescenta a linha `id:` em cada item.
+
+### Referências de tela e de API
+
+O agente não abre links (Figma, Swagger): as runs são herméticas. Guarde cópias em
+`.mabel/referencias/`, versionadas, e cite-as no item:
+
+```
+.mabel/referencias/
+  api/<nome>.openapi.json     # OpenAPI 3 em JSON
+  telas/<nome>/               # tela.png, estados, tela.md com textos e medidas
+```
+
+```
+Referências:
+- tela: cadastro-acesso
+- api: wego-acessos POST /v1/acessos
+- api: wego-acessos listarPerfis
+- docs/regras-de-cpf.md
+```
+
+A operação vem do snapshot, literal (`MÉTODO /caminho` ou `operationId`). Referência que
+não confere deixa o item no backlog com o motivo. Atualizar um snapshot faz o item não
+iniciado ser relido; o iniciado segue com a cópia feita no começo do planejamento, que
+traz a operação já extraída com os esquemas que ela usa. Spec: `docs/specs/referencias.md`.
 
 ### Regras críticas
 

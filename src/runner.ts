@@ -47,6 +47,8 @@ export interface RunRequest {
    * todas. O `init` precisa listar exatamente estas.
    */
   tools?: string[];
+  /** Diretórios só de leitura além do cwd (`--add-dir`): a cópia das referências do item. */
+  addDirs?: string[];
   /** Conteúdo do `settings.json` da run (`--settings`), gravado no diretório dela. */
   settings?: object;
   /** Etapa sem sandbox (`"sandbox": false` no config): fica registrado na run. */
@@ -101,6 +103,7 @@ export function claudeArgs(request: RunRequest, settingsPath?: string): string[]
   if (isHermetic(request)) {
     args.push('--restricted', '--strict-mcp-config', '--disable-slash-commands');
     args.push('--tools', (request.tools ?? []).join(','));
+    if (request.addDirs?.length) args.push('--add-dir', ...request.addDirs);
     if (settingsPath) args.push('--settings', settingsPath);
   }
   if (request.model) args.push('--model', request.model);

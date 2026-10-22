@@ -13,6 +13,8 @@ export interface ItemFields {
   decisions: string[];
   /** Conceitos de `regras-criticas.md` que o item toca, declarados no backlog. */
   criticalConcepts: string[];
+  /** Telas, operações de API e arquivos de `.mabel/referencias/` (`docs/specs/referencias.md`). */
+  references?: string[];
 }
 
 export const BACKLOG_TEMPLATE = `# Backlog
@@ -30,6 +32,9 @@ Campos de um item:
 - Decisões: lista "- ..." com as regras de negócio já decididas.
 - Regras críticas: lista "- ..." com os conceitos de regras-criticas.md que o item toca.
   Item com regras críticas só fica pronto com critérios.
+- Referências: lista "- ..." com o que o item usa de .mabel/referencias/:
+  "tela: <nome>", "api: <nome> <MÉTODO> <caminho>" (ou "api: <nome> <operationId>")
+  ou um caminho de arquivo. Item com referência que não existe fica no backlog.
 - Depende de: <n>, <n> — itens que precisam estar concluídos antes.
 - Restrições: <texto> — limites para a implementação, numa linha.
 
@@ -71,6 +76,7 @@ export function renderItemBlock(item: ItemFields): string {
   list('Fora do escopo', item.outOfScope);
   list('Decisões', item.decisions);
   list('Regras críticas', item.criticalConcepts);
+  list('Referências', item.references ?? []);
   const tail: string[] = [];
   if (item.dependsOn.length > 0) tail.push(`Depende de: ${item.dependsOn.join(', ')}`);
   if (item.restrictions) tail.push(`Restrições: ${item.restrictions}`);
@@ -92,6 +98,7 @@ export function appendBlocks(text: string, blocks: string[]): string {
 // Parser ---------------------------------------------------------------------------------
 
 export interface ParsedItem extends ItemFields {
+  references: string[];
   /** Ordem no arquivo, a partir de 0. */
   position: number;
   /** Erros de formato; item com erro fica `blocked`. */
@@ -116,17 +123,19 @@ const CRITERIA_LINE = /^crit[ée]rios:\s*$/i;
 const OUT_OF_SCOPE_LINE = /^fora do escopo:\s*(.*?)\s*$/i;
 const DECISIONS_LINE = /^decis[õo]es:\s*(.*?)\s*$/i;
 const CRITICAL_LINE = /^regras? cr[íi]ticas?:\s*(.*?)\s*$/i;
+const REFERENCES_LINE = /^refer[êe]ncias:\s*(.*?)\s*$/i;
 const DEPENDS_LINE = /^depende de:\s*(.*?)\s*$/i;
 const RESTRICTIONS_LINE = /^restri[çc][õo]es:\s*(.*?)\s*$/i;
 const LIST_ITEM = /^\s*[-*]\s+(.+?)\s*$/;
 
-type ListField = 'criteria' | 'outOfScope' | 'decisions' | 'criticalConcepts';
+type ListField = 'criteria' | 'outOfScope' | 'decisions' | 'criticalConcepts' | 'references';
 
 /** Campos em lista: rótulo numa linha e itens `- …` abaixo (ou o valor na mesma linha). */
 const LIST_LINES: [RegExp, ListField][] = [
   [OUT_OF_SCOPE_LINE, 'outOfScope'],
   [DECISIONS_LINE, 'decisions'],
   [CRITICAL_LINE, 'criticalConcepts'],
+  [REFERENCES_LINE, 'references'],
 ];
 
 /** Lê o `backlog.md`. Erros de formato ficam no item, nunca lançam. */
@@ -154,6 +163,7 @@ export function parseBacklog(text: string): ParsedItem[] {
         outOfScope: [],
         decisions: [],
         criticalConcepts: [],
+        references: [],
         position: items.length,
         errors: [],
         headingEnd: Math.min(lineEnd + 1, text.length),

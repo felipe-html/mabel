@@ -5,6 +5,7 @@ import { latestReadings } from './balance.ts';
 import { type ItemFields, insertIds, parseBacklog, validateBacklog } from './backlog.ts';
 import { type BoardItem, renderBoard, writeBoardFile } from './board.ts';
 import { type Project, mabelPath } from './project.ts';
+import { referenceProblem, referencesDigest } from './references.ts';
 import type { Question } from './schemas/stages.ts';
 
 export const ITEM_STATES = [
@@ -121,6 +122,7 @@ interface ItemRow {
   out_of_scope: string;
   decisions: string;
   critical_concepts: string;
+  item_references: string;
   content_hash: string;
   status: ItemStatus;
   status_reason: string | null;
@@ -170,6 +172,7 @@ function fromRow(row: ItemRow): Item {
     outOfScope: JSON.parse(row.out_of_scope) as string[],
     decisions: JSON.parse(row.decisions) as string[],
     criticalConcepts: JSON.parse(row.critical_concepts) as string[],
+    references: JSON.parse(row.item_references) as string[],
     contentHash: row.content_hash,
     status: row.status,
     statusReason: row.status_reason,
@@ -253,11 +256,18 @@ export function isStarted(db: DatabaseSync, itemId: string): boolean {
   );
 }
 
-export function contentHash(fields: ItemFields): string {
+/**
+ * Hash do conteúdo do item. `referencesDigest` é o hash dos arquivos referenciados
+ * (`referencesDigest` de `references.ts`), calculado por quem tem a raiz do projeto.
+ */
+export function contentHash(fields: ItemFields, referencesDigest?: string): string {
   const content: unknown[] = [fields.title, fields.intent, fields.criteria, fields.dependsOn, fields.restrictions];
   // Campos do refinamento só entram quando usados: o hash dos itens anteriores não muda.
   const { outOfScope, decisions, criticalConcepts } = fields;
   if (outOfScope.length + decisions.length + criticalConcepts.length > 0) content.push({ outOfScope, decisions, criticalConcepts });
+  // Idem para as referências, que levam junto o conteúdo dos arquivos.
+  const references = fields.references ?? [];
+  if (references.length > 0) content.push({ references, files: referencesDigest ?? null });
   return createHash('sha256').update(JSON.stringify(content)).digest('hex');
 }
 
@@ -327,13 +337,17 @@ export function satisfiedNumbers(items: Item[], integration: boolean): Set<numbe
   );
 }
 
-/** Motivo pelo qual o item não está pronto para planejar, ou `null` quando está. */
-export function notReadyReason(item: Item, satisfied: Set<number>): string | null {
+/**
+ * Motivo pelo qual o item não está pronto para planejar, ou `null` quando está.
+ * `referenceProblem`: a primeira referência que não confere (`references.ts`).
+ */
+export function notReadyReason(item: Item, satisfied: Set<number>, referenceProblem: string | null = null): string | null {
   if (!item.title || !item.intent) return 'sem intenção';
   // Item declarado crítico: os critérios vêm do humano (escritos ou aceitos no refinamento).
   if (item.criticalConcepts.length > 0 && item.criteria.length === 0) {
     return `regra crítica sem critérios: escreva os critérios ou rode \`mabel refinar ${item.number}\``;
   }
+  if (referenceProblem) return referenceProblem;
   if (!item.dependsOn.every((dep) => satisfied.has(dep))) return 'dependências pendentes';
   return null;
 }
@@ -449,14 +463,15 @@ export function syncBacklog(db: DatabaseSync, project: Project): SyncResult {
       outOfScope: entry.outOfScope,
       decisions: entry.decisions,
       criticalConcepts: entry.criticalConcepts,
+      references: entry.references,
     };
-    const hash = contentHash(fields);
+    const hash = contentHash(fields, entry.references.length > 0 ? referencesDigest(project.root, entry.references) : undefined);
     let item = getItem(db, project.id, entry.number);
     if (!item) {
       db.prepare(
         `INSERT INTO items (id, project_id, number, position, title, intent, criteria, depends_on, restrictions,
-           out_of_scope, decisions, critical_concepts, content_hash, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'backlog', ?, ?)`,
+           out_of_scope, decisions, critical_concepts, item_references, content_hash, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'backlog', ?, ?)`,
       ).run(
         randomUUID(),
         project.id,
@@ -470,6 +485,7 @@ export function syncBacklog(db: DatabaseSync, project: Project): SyncResult {
         JSON.stringify(fields.outOfScope),
         JSON.stringify(fields.decisions),
         JSON.stringify(fields.criticalConcepts),
+        JSON.stringify(entry.references),
         hash,
         now,
         now,
@@ -490,7 +506,8 @@ export function syncBacklog(db: DatabaseSync, project: Project): SyncResult {
       } else {
         db.prepare(
           `UPDATE items SET title = ?, intent = ?, criteria = ?, depends_on = ?, restrictions = ?,
-             out_of_scope = ?, decisions = ?, critical_concepts = ?, content_hash = ?, updated_at = ? WHERE id = ?`,
+             out_of_scope = ?, decisions = ?, critical_concepts = ?, item_references = ?, content_hash = ?, updated_at = ?
+           WHERE id = ?`,
         ).run(
           fields.title,
           fields.intent,
@@ -500,6 +517,7 @@ export function syncBacklog(db: DatabaseSync, project: Project): SyncResult {
           JSON.stringify(fields.outOfScope),
           JSON.stringify(fields.decisions),
           JSON.stringify(fields.criticalConcepts),
+          JSON.stringify(entry.references),
           hash,
           now,
           item.id,
@@ -534,7 +552,8 @@ export function syncBacklog(db: DatabaseSync, project: Project): SyncResult {
   const done = satisfiedNumbers(items, project.config.integracao !== null);
   for (const item of items) {
     if (item.status !== 'backlog' && item.status !== 'ready') continue;
-    const missing = notReadyReason(item, done);
+    const references = item.references.length > 0 ? referenceProblem(project.root, item.references) : null;
+    const missing = notReadyReason(item, done, references);
     if (item.status === 'backlog' && !missing) move(item, 'ready', null);
     else if (missing) move(item, 'backlog', missing);
   }

@@ -209,6 +209,9 @@ const migrations: string[] = [
   );
   CREATE INDEX deliveries_project ON deliveries(project_id, id);
   `,
+  `
+  ALTER TABLE items ADD COLUMN item_references TEXT NOT NULL DEFAULT '[]';
+  `,
 ];
 
 function migrate(db: DatabaseSync): void {

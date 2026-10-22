@@ -88,6 +88,11 @@ achados do teste orientam a especificação dos passos seguintes.
 - [x] Entrega da integração (`docs/specs/entregar.md`): `mabel entregar` cria um snapshot
       da integração, publica, abre o PR com o relatório (`gh`, com alternativa sem ele) e
       volta o checkout da raiz para a base; o `run` acompanha o merge da entrega.
+- [ ] Referências de tela e de API (`docs/specs/referencias.md`):
+  - [x] Campo `Referências:`, gate do `ready`, hash com os arquivos, cópia congelada do
+        item, `--add-dir` e seção nos prompts.
+  - [ ] `mabel referencia` (lista) e `mabel referencia api`.
+  - [ ] `mabel referencia tela` (Figma e `--png`), em commit separado.
 
 ## Histórico
 
@@ -159,3 +164,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-22 | Decisões do usuário sobre os desvios da entrega: mantidos a retomada da entrega sem PR, a anterior `replaced` logo que a nova é criada, a branch local da substituída apagada quando a nova a contém, o remoto do GitHub pelo `gh repo view`, a saída 0 para "nada a entregar" e "já tem tudo", e o PR fechado sem merge no `BACKLOG.md`. |
 | 2026-10-22 | Primeira entrega real (`wego-acessos-frontend-novo`, remoto `git@ssh.bitbucket.org:…`): o push funcionou, mas a mensagem culpava o `gh` e não havia link. `remoteRepo` reconhece GitHub e Bitbucket Cloud (`bitbucket.org` e `ssh.bitbucket.org`); com Bitbucket, o `gh` não é chamado, a saída mostra `Abra o PR: https://bitbucket.org/<workspace>/<repo>/pull-requests/new?source=<branch>&dest=<base>` e, fora do GitHub, avisa para escolher "Merge commit". O aviso do corpo do PR e a última linha deixam de citar só o texto do GitHub. Spec (E5 e passo 11) atualizada. Desvio: abrir o PR pela API do Bitbucket (exige token) ficou de fora. |
 | 2026-10-22 | `mabel entregar` confere a entrega aberta antes de decidir, com o mesmo `checkDeliveries` da abertura do `run`: merge seguido de `git pull` e de outra entrega, sem `run` no meio, recusava com "Já há uma entrega aberta". As notas da conferência abrem a saída. |
+| 2026-10-22 | Spec das referências de tela e de API (`docs/specs/referencias.md`), com as decisões do usuário: `.mabel/referencias/` versionado, hash do item com os arquivos, backend dev fora da `rede`, Figma por último e em commit separado. Campo `Referências:` (`tela:`, `api: <nome> <MÉTODO> <caminho>` ou `<operationId>`, caminho de arquivo), coluna `item_references`, gate do `ready` (`referência inválida: …`, fica em `backlog`), hash com o conteúdo dos arquivos só quando o campo é usado, cópia congelada em `items/<id>/referencias/` no primeiro uso pelas etapas (com a operação extraída e os `$ref` alcançados), `--add-dir` no planejamento, execução e revisão, seção "Referências" nos prompts e no do refinamento (caminhos da raiz, sem cópia), linha no `mabel item`, README. Desvio: a cópia é feita na montagem da primeira run de etapa (o planejamento), não na transição para `planning`; o efeito é o mesmo e fica num lugar só. |
