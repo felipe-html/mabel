@@ -26,6 +26,7 @@ import { sandboxUnavailable } from './sandbox.ts';
 import { probeRequest } from './status.ts';
 import { style } from './style.ts';
 import { mabelCodeChanged } from './version.ts';
+import { checkDeliveries } from './delivery.ts';
 import { deleteBranch, isMerged, removeOrphanWorktrees, removeWorktree } from './worktree.ts';
 
 export const runUsage = 'mabel run [--item <n>] [--uma] [--sem-lote]';
@@ -377,6 +378,7 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
       record({ kind: 'pause', cause: 'integration', detail: opened.pause });
       return opened.pause;
     }
+    for (const note of checkDeliveries(db, project)) log.write(note);
     const cleaned = removeOrphanWorktrees(db, home, project, listItems(db, project.id));
     if (cleaned.length > 0) log.write(style.dim(`worktrees removidos: ${cleaned.map((n) => `#${n}`).join(', ')}`));
     finishIntegrated(db, project, listItems(db, project.id)).forEach(markDone);

@@ -194,6 +194,21 @@ const migrations: string[] = [
   );
   CREATE INDEX refinements_item ON refinements(item_id, id);
   `,
+  `
+  CREATE TABLE deliveries (
+    id          INTEGER PRIMARY KEY,
+    project_id  TEXT NOT NULL REFERENCES projects(id),
+    branch      TEXT NOT NULL,
+    commit_sha  TEXT NOT NULL,
+    items       TEXT NOT NULL,
+    remote      TEXT,
+    pr_url      TEXT,
+    status      TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    closed_at   TEXT
+  );
+  CREATE INDEX deliveries_project ON deliveries(project_id, id);
+  `,
 ];
 
 function migrate(db: DatabaseSync): void {

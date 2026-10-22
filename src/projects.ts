@@ -5,6 +5,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
 import { ask, interactive } from './ask.ts';
 import { dataDir, openDb, runDir } from './db.ts';
+import { type DeliveryStatus, listDeliveries } from './delivery.ts';
 import { formatCost, formatTokens, formatWhen, truncate } from './format.ts';
 import { tryGit } from './git.ts';
 import { ITEM_STATES } from './items.ts';
@@ -41,6 +42,7 @@ export const tableScope: Record<string, TableScope> = {
   runs: { scope: 'project', where: `item_id IN (${PROJECT_ITEMS})` },
   items: { scope: 'project', where: 'project_id = ?' },
   queue_events: { scope: 'project', where: 'project_id = ?' },
+  deliveries: { scope: 'project', where: 'project_id = ?' },
   projects: { scope: 'project', where: 'id = ?' },
   removals: { scope: 'global' },
 };
@@ -60,6 +62,7 @@ export const dirScope: Record<string, DirScope> = {
   items: { scope: 'project', paths: (home, t) => t.itemIds.map((id) => itemDir(home, id)) },
   worktrees: { scope: 'project', paths: (home, t) => [join(home, 'worktrees', t.projectId)] },
   locks: { scope: 'project', paths: (home, t) => [lockPath(home, t.projectId)] },
+  entregas: { scope: 'project', paths: (home, t) => [join(home, 'entregas', t.projectId)] },
   'mabel.db': { scope: 'global' },
   'mabel.db-wal': { scope: 'global' },
   'mabel.db-shm': { scope: 'global' },
@@ -301,6 +304,15 @@ export function renderProjectDetail(db: DatabaseSync, project: ProjectRow): stri
     for (const event of events) lines.push(`  ${formatWhen(event.at.toISOString())}  ${queueEventText(event)}`);
   }
 
+  const deliveries = listDeliveries(db, project.id);
+  if (deliveries.length > 0) {
+    lines.push('', style.bold('Entregas'));
+    for (const d of deliveries) {
+      const items = d.items.map((n) => `#${n}`).join(', ');
+      lines.push(`  ${formatWhen(d.createdAt)}  ${d.branch} · ${DELIVERY_LABELS[d.status]} · ${items} · ${d.prUrl ?? 'sem PR'}`);
+    }
+  }
+
   const transitions = db
     .prepare(
       `SELECT i.number, t.from_state, t.to_state, t.reason, t.at FROM item_transitions t JOIN items i ON i.id = t.item_id
@@ -316,6 +328,8 @@ export function renderProjectDetail(db: DatabaseSync, project: ProjectRow): stri
   }
   return lines;
 }
+
+const DELIVERY_LABELS: Record<DeliveryStatus, string> = { open: 'aberta', merged: 'na base', replaced: 'substituída' };
 
 const CAUSE_LABELS: Record<QueueEventCause, string> = {
   five_hour: 'saldo de 5h',
