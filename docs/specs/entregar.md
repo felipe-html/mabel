@@ -52,7 +52,8 @@ mabel entregar
 3. Itens: os de `integratedItems` calculados contra o snapshot (`<base>..<snapshot>`). Lista
    vazia → `Nada a entregar: a <integracao> não tem itens fora da <base>.` e sai sem criar
    nada.
-4. Entrega aberta (E6): mostra branch, itens e PR e sai com erro. Com `--substituir`, fecha
+4. Entrega aberta (E6): antes, a mesma conferência da abertura do `run` ("Depois do
+   merge"); a que já está na base vira `merged` e não conta. Ainda aberta: mostra branch, itens e PR e sai com erro. Com `--substituir`, fecha
    o PR anterior (`gh pr close --comment "Substituído por <url nova>"`, depois de abrir o
    novo) e marca a entrega como `replaced`. Se o snapshot for igual ao da entrega aberta,
    não substitui: `A entrega aberta já tem tudo o que está na integração.`

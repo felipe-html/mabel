@@ -273,6 +273,13 @@ test('entregar critérios 7 e 8: merge só no remoto avisa; merge na base leva a
   assert.equal(listDeliveries(q.db, q.project.id)[0]?.status, 'open');
 
   git(q.root, 'pull', '-q', '--ff-only');
+  // Sem `run` no meio: a próxima entrega já vê a anterior na base e não recusa.
+  const next = deliver(q.db, q.home, q.project);
+  assert.equal(next.code, 0, next.lines.join('\n'));
+  assert.deepEqual(next.lines, [
+    `entrega ${delivery.branch} na main; branch local apagada`,
+    'Nada a entregar: a mabel/integracao não tem itens fora da main.',
+  ]);
   useScenario(q.root, []);
   await q.start();
   assert.equal(listDeliveries(q.db, q.project.id)[0]?.status, 'merged');

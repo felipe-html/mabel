@@ -251,9 +251,16 @@ export interface DeliverResult {
 
 /**
  * Entrega a integração: snapshot `mabel/entrega/<data>`, push, PR com o relatório e o
- * checkout da raiz de volta à base. Retoma a entrega aberta que ficou sem PR.
+ * checkout da raiz de volta à base. Retoma a entrega aberta que ficou sem PR. Antes, confere
+ * a entrega aberta como a abertura do `run`: a que já chegou à base não impede a próxima.
  */
 export function deliver(db: DatabaseSync, home: string, project: Project, options: DeliverOptions = {}): DeliverResult {
+  const notes = project.config.integracao ? checkDeliveries(db, project) : [];
+  const result = deliverChecked(db, home, project, options);
+  return { ...result, lines: [...notes, ...result.lines] };
+}
+
+function deliverChecked(db: DatabaseSync, home: string, project: Project, options: DeliverOptions): DeliverResult {
   const integration = project.config.integracao;
   const base = project.config.baseBranch;
   const out: string[] = [];
