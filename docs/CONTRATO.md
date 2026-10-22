@@ -52,7 +52,7 @@ humano o rejeita, a `planning` ou `cancelled`.
 | G7 | **Ambiguidade em regra crítica para o item.** Suposição declarada sobre regra crítica leva o item a `needs_human`. | Saída estruturada (`--json-schema`) com campo `suposicoes`, validada pelo runner. |
 | G8 | **Contexto hermético.** O agente recebe apenas as regras do Mabel (versionadas), a configuração do projeto-alvo e os artefatos da etapa anterior. Nada da configuração pessoal do usuário. | `--restricted`, `--strict-mcp-config`, `--disable-slash-commands`, `--tools` por etapa e `--settings` por run; contexto do projeto (`CLAUDE.md`, `AGENTS.md`, regras críticas) injetado pelo Mabel, com orçamento; o runner confere o `init` de cada run e interrompe a que trouxer memória, MCP, skills ou ferramentas fora das pedidas. |
 | G9 | **Estado sobrevive à sessão.** Interromper o Mabel a qualquer momento e reiniciá-lo retoma do último estado gravado. | Estado no banco e em arquivos; sessão nova por etapa. |
-| G10 | **A integração só recebe item com "done" calculado.** O Mabel faz o merge na branch de integração só depois do G3 e da revisão. A branch principal só recebe o merge feito pelo humano. | O runner cria o commit de merge; o agente continua sem git de escrita (G4). |
+| G10 | **A integração só recebe item com "done" calculado.** O Mabel faz o merge na branch de integração só depois do G3 e da revisão. A branch principal só recebe o merge feito pelo humano. | O runner cria o commit de merge; o agente continua sem git de escrita (G4). A pedido do humano (`mabel entregar`), o Mabel publica um snapshot da integração (`mabel/entrega/*`) e abre o PR; não faz merge nem push na base. |
 
 ## Política de saldo
 
@@ -147,7 +147,7 @@ mostrar crítico, ele sobe para garantia.
 - Aprovar critérios de aceite de itens que tocam regra crítica.
 - Responder a inbox.
 - Rejeitar um item integrado (`mabel rejeitar`).
-- Fazer merge na branch principal.
+- Pedir a entrega (`mabel entregar`) e fazer o merge na branch principal.
 - Alterar este contrato.
 
 ## Fora da v0

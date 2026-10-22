@@ -49,7 +49,7 @@ Decididas pelo usuário em 2026-10-13.
 | D3 | Prova com agente | Por fases. Os incrementos P.1 a P.5 entregam só a prova mecânica, sem agente. A prova por mutação fica especificada nesta spec ("Fase 2") e registrada no `BACKLOG.md`, para mais assertividade depois. |
 | D4 | Critério sem prova mecânica | Não bloqueia: é listado em destaque no relatório ("olhe primeiro"), como já acontece com os critérios `verificacao: "humano"`. |
 | D5 | Rejeição | `mabel rejeitar <n> "<motivo>"` reverte o item na integração e o leva a replanejar com o motivo; `--cancelar` o cancela. |
-| D6 | Merge na branch principal | Continua com o humano, por `git merge` ou PR. O Mabel não ganha comando para isso. |
+| D6 | Merge na branch principal | Continua com o humano, por `git merge` ou PR. Revista em 2026-10-22: o Mabel abre o PR de um snapshot da integração com `mabel entregar` (`docs/specs/entregar.md`); o merge segue com o humano. |
 | D7 | Contrato | Mudanças abaixo autorizadas. |
 | D8 | Ordem | Depois do passo 5. |
 | D9 | Teste único em Node | Vitest detectado pelo `package.json`; senão, node:test. Jest fica para quando um projeto real pedir. |
