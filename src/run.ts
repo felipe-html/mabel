@@ -25,6 +25,7 @@ import { type RunHandle, type RunStage, startRun } from './runner.ts';
 import { sandboxUnavailable } from './sandbox.ts';
 import { probeRequest } from './status.ts';
 import { style } from './style.ts';
+import { mabelCodeChanged } from './version.ts';
 import { deleteBranch, isMerged, removeOrphanWorktrees, removeWorktree } from './worktree.ts';
 
 export const runUsage = 'mabel run [--item <n>] [--uma] [--sem-lote]';
@@ -69,6 +70,8 @@ export interface QueueOptions {
   inbox?: () => Promise<void>;
   /** Aviso do sistema quando a fila para ou espera o humano. */
   notify?: Notify;
+  /** O código do Mabel mudou desde que o processo abriu; os testes trocam o vigia. */
+  codeChanged?: () => boolean;
 }
 
 export type QueueEnd = 'empty' | 'once' | 'interrupted' | 'paused' | 'not_found';
@@ -90,7 +93,19 @@ export interface QueueResult {
  * da política de saldo (`approved`: seguir mesmo assim).
  */
 export type QueueEventKind = 'pause' | 'wait' | 'answer';
-export type QueueEventCause = 'five_hour' | 'seven_day' | 'pace' | 'no_reading' | 'usage_limit' | 'integration' | 'context';
+export type QueueEventCause =
+  | 'five_hour'
+  | 'seven_day'
+  | 'pace'
+  | 'no_reading'
+  | 'usage_limit'
+  | 'integration'
+  | 'context'
+  | 'code';
+
+/** Pausa quando o Mabel foi atualizado com o processo aberto. */
+export const CODE_CHANGED =
+  'o código do Mabel mudou desde que este processo abriu; saia e abra o mabel de novo para usar a versão atual';
 
 export interface QueueEvent {
   at: Date;
@@ -278,6 +293,12 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
     project,
     log: (line: string) => log.write(line),
     beforeAgentStage: async (stage: RunStage, item: Item) => {
+      // Código antigo na memória com prompts novos do disco: a etapa rodaria meio a meio.
+      if ((options.codeChanged ?? mabelCodeChanged)()) {
+        pauseReason = CODE_CHANGED;
+        record({ kind: 'pause', cause: 'code', detail: pauseReason });
+        return false;
+      }
       if (!(await ensureBalance(stage))) return false;
       currentStage = stage;
       if (item.worktree) log.setCwd(item.worktree);

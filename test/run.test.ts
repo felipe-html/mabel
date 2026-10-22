@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { git, tryGit } from '../src/git.ts';
 import { getItem, listItems, syncBacklog, transition } from '../src/items.ts';
 import { lockPath } from '../src/lock.ts';
 import { writeConfig } from '../src/project.ts';
-import { type Clock, listQueueEvents, startQueue } from '../src/run.ts';
+import { CODE_CHANGED, type Clock, listQueueEvents, startQueue } from '../src/run.ts';
+import { codeWatcher } from '../src/version.ts';
 import { deleteBranch, prepareWorktree, worktreePath } from '../src/worktree.ts';
 import { CLI, EXECUTION, EXECUTION_FILES, PLAN, REVIEW_OK, setupProject, useScenario } from './helpers.ts';
 
@@ -292,6 +294,30 @@ test('contexto acima do orçamento pausa a fila e a pausa fica gravada', async (
   assert.equal(result.end, 'paused');
   assert.deepEqual(q.events(), [['pause', 'context']]);
   assert.equal(listQueueEvents(q.db, q.project.id)[0]?.detail, result.message);
+});
+
+test('Mabel atualizado com o processo aberto pausa a fila antes da próxima etapa', async () => {
+  const q = queueProject('\n## A\nprimeiro\n', [PLAN_OK]);
+  syncBacklog(q.db, q.project);
+  const result = await startQueue({ db: q.db, home: q.home, project: q.project, interactive: false, codeChanged: () => true }).done;
+  assert.equal(result.end, 'paused');
+  assert.equal(result.message, CODE_CHANGED);
+  assert.deepEqual(q.calls(), [], 'nenhuma run começa com código misturado');
+  assert.deepEqual(q.events(), [['pause', 'code']]);
+});
+
+test('vigia do código: arquivo novo ou alterado em src, prompts ou hooks', () => {
+  const root = mkdtempSync(join(tmpdir(), 'mabel-codigo-'));
+  for (const dir of ['src', 'prompts']) mkdirSync(join(root, dir));
+  writeFileSync(join(root, 'src', 'a.ts'), 'x');
+  const old = new Date(Date.now() - 60_000);
+  utimesSync(join(root, 'src', 'a.ts'), old, old);
+  const changed = codeWatcher(root);
+  assert.equal(changed(), false);
+  writeFileSync(join(root, 'README.md'), 'fora das pastas do Mabel');
+  assert.equal(changed(), false);
+  writeFileSync(join(root, 'prompts', 'executar.md'), 'novo');
+  assert.equal(changed(), true);
 });
 
 test('aprovar e cancelar pela linha de comando', () => {
