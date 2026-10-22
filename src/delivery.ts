@@ -129,20 +129,39 @@ export function deliveryRemote(project: Project): string | undefined {
   return remotes.includes('origin') ? 'origin' : undefined;
 }
 
-/** `dono/repo` de um remoto do GitHub (https, ssh ou scp), ou `undefined`. */
-export function githubRepo(url: string): string | undefined {
-  const match = /github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?\/?$/.exec(url.trim());
-  return match ? `${match[1]}/${match[2]}` : undefined;
+export interface RemoteRepo {
+  host: 'github' | 'bitbucket';
+  /** `dono/repo` (no Bitbucket, `workspace/repo`). */
+  repo: string;
+}
+
+/** Hospedagem e repositório de um remoto do GitHub ou do Bitbucket Cloud (https, ssh ou scp). */
+export function remoteRepo(url: string): RemoteRepo | undefined {
+  const path = '[:/]([^/]+)\\/([^/]+?)(?:\\.git)?\\/?$';
+  const github = new RegExp(`github\\.com${path}`).exec(url.trim());
+  if (github) return { host: 'github', repo: `${github[1]}/${github[2]}` };
+  const bitbucket = new RegExp(`(?:^|[@/])(?:ssh\\.)?bitbucket\\.org${path}`).exec(url.trim());
+  if (bitbucket) return { host: 'bitbucket', repo: `${bitbucket[1]}/${bitbucket[2]}` };
+  return undefined;
+}
+
+/** Endereço para abrir o PR à mão, já com a branch da entrega e a base. */
+export function newPrUrl({ host, repo }: RemoteRepo, branch: string, base: string): string {
+  return host === 'github'
+    ? `https://github.com/${repo}/compare/${base}...${branch}?expand=1`
+    : `https://bitbucket.org/${repo}/pull-requests/new?source=${encodeURIComponent(branch)}&dest=${encodeURIComponent(base)}`;
 }
 
 type GhState = { kind: 'ready'; repo?: string; mergeCommitAllowed: boolean } | { kind: 'unavailable'; reason: string };
 
 /** O `gh` pode abrir o PR neste remoto: instalado, autenticado e reconhecendo o repositório. */
 function ghState(project: Project, remote: string): GhState {
+  const hosted = remoteRepo(tryGit(project.root, 'remote', 'get-url', remote) ?? '');
+  if (hosted?.host === 'bitbucket') return { kind: 'unavailable', reason: `o remoto ${remote} está no Bitbucket; o gh só abre PR no GitHub` };
   const auth = gh(project.root, ['auth', 'status']);
   if (!auth) return { kind: 'unavailable', reason: 'gh não instalado' };
   if (!auth.ok) return { kind: 'unavailable', reason: 'gh sem login (gh auth login)' };
-  const repo = githubRepo(tryGit(project.root, 'remote', 'get-url', remote) ?? '');
+  const repo = hosted?.repo;
   const view = gh(project.root, ['repo', 'view', ...(repo ? [repo] : []), '--json', 'mergeCommitAllowed']);
   if (!view?.ok) return { kind: 'unavailable', reason: `o remoto ${remote} não é um repositório do GitHub para o gh` };
   let allowed = true;
@@ -232,9 +251,16 @@ export interface DeliverResult {
 
 /**
  * Entrega a integração: snapshot `mabel/entrega/<data>`, push, PR com o relatório e o
- * checkout da raiz de volta à base. Retoma a entrega aberta que ficou sem PR.
+ * checkout da raiz de volta à base. Retoma a entrega aberta que ficou sem PR. Antes, confere
+ * a entrega aberta como a abertura do `run`: a que já chegou à base não impede a próxima.
  */
 export function deliver(db: DatabaseSync, home: string, project: Project, options: DeliverOptions = {}): DeliverResult {
+  const notes = project.config.integracao ? checkDeliveries(db, project) : [];
+  const result = deliverChecked(db, home, project, options);
+  return { ...result, lines: [...notes, ...result.lines] };
+}
+
+function deliverChecked(db: DatabaseSync, home: string, project: Project, options: DeliverOptions): DeliverResult {
   const integration = project.config.integracao;
   const base = project.config.baseBranch;
   const out: string[] = [];
@@ -351,9 +377,10 @@ export function deliver(db: DatabaseSync, home: string, project: Project, option
         }
       } else {
         if (ghNow) out.push(`sem PR automático (${ghNow.reason})`);
-        const repo = githubRepo(tryGit(project.root, 'remote', 'get-url', remote) ?? '');
-        if (repo) out.push(`Abra o PR: https://github.com/${repo}/compare/${base}...${delivery.branch}?expand=1`);
+        const hosted = remoteRepo(tryGit(project.root, 'remote', 'get-url', remote) ?? '');
+        if (hosted) out.push(`Abra o PR: ${newPrUrl(hosted, delivery.branch, base)}`);
         out.push(`Corpo do PR: ${bodyPath}`);
+        if (hosted?.host !== 'github') out.push('O Mabel não confere a estratégia de merge fora do GitHub: no merge, escolha "Merge commit".');
       }
     }
   }
@@ -370,7 +397,7 @@ export function deliver(db: DatabaseSync, home: string, project: Project, option
 
   if (code === 0) {
     switchToBase(project, out);
-    out.push('', `Faça o merge com "Create a merge commit". Depois, na ${base}: git pull`);
+    out.push('', `Faça o merge com merge commit, sem squash nem rebase. Depois, na ${base}: git pull`);
   }
   return { code, lines: out, delivery };
 }
