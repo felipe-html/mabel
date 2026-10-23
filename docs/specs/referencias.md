@@ -129,7 +129,11 @@ mabel referencia tela <nome> --png <arquivo>              grava um PNG exportado
   frame, textos (nós `TEXT`, na ordem do documento) e cores sólidas usadas, com contagem.
 - Erros do Figma (403 sem acesso, 404 nó inexistente) aparecem com o status e a mensagem.
 - `--png`: copia o arquivo para `telas/<nome>/tela.png` e cria o `tela.md` mínimo.
-- O token nunca é gravado nem registrado.
+- O token nunca é gravado nem registrado, e não chega ao agente: o runner tira de toda
+  run as variáveis de `PRIVATE_ENV` (`FIGMA_TOKEN`), que o agente leria pelo `Bash`.
+- Teste real (2026-10-22): frame `WO-01 — HOME · OPERADOR` de um arquivo de terceiro, com
+  token de quem tem acesso de leitura; PNG de 2880×2124 e `tela.md` com 70 textos e 17
+  cores. O nome da tela é do humano e descreve a tela (`home-operador`), não o item.
 
 ## Critérios de aceite
 

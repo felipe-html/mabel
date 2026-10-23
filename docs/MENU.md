@@ -88,7 +88,8 @@ de runs em `runs` e lista de projetos em `projetos`/`projeto`.
 ### Variáveis de ambiente
 
 `MABEL_HOME` (dados no lugar de `~/.mabel`), `MABEL_BANNER=0`, `MABEL_RODAPE=0`,
-`MABEL_NOTIFICAR=0`, `NO_COLOR`.
+`MABEL_NOTIFICAR=0`, `NO_COLOR`, `FIGMA_TOKEN` (captura de telas no `referencia tela`;
+nunca repassado às runs), `MABEL_FIGMA_API` (endereço da API do Figma, para testes).
 
 ---
 

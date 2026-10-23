@@ -192,6 +192,29 @@ não confere deixa o item no backlog com o motivo. Atualizar um snapshot faz o i
 iniciado ser relido; o iniciado segue com a cópia feita no começo do planejamento, que
 traz a operação já extraída com os esquemas que ela usa. Spec: `docs/specs/referencias.md`.
 
+Para capturar:
+
+```
+mabel referencia api wego-acessos https://…/q/swagger-ui/      # OpenAPI em JSON
+mabel referencia tela home-operador '<link do frame no Figma>'  # PNG e tela.md
+mabel referencia tela home-operador --png exportado.png         # sem token
+mabel referencia                                                # lista e quem cita
+```
+
+A captura do Figma usa um token pessoal (Settings › Security › Personal access tokens,
+leitura de arquivos) em `FIGMA_TOKEN`. Guarde-o num arquivo só seu e carregue-o no shell:
+
+```
+read -rs "t?Token do Figma: " && print -r -- "export FIGMA_TOKEN='$t'" > ~/.figma_token && chmod 600 ~/.figma_token && unset t
+echo '[ -f ~/.figma_token ] && source ~/.figma_token' >> ~/.zshrc
+```
+
+Abra um terminal novo (ou saia e entre de novo no modo Mabel): um processo só vê as
+variáveis que existiam quando ele abriu. O token não é gravado em lugar nenhum pelo Mabel
+e não chega ao agente. No `tela.md`, escreva abaixo de `<!-- notas -->` o que o agente
+precisa saber (por exemplo, que os textos dos cards são dados de exemplo); as notas
+ficam na recaptura.
+
 ### Regras críticas
 
 Em `.mabel/regras-criticas.md`, declare o que exige sua aprovação: **caminhos** (globs de
