@@ -10,6 +10,7 @@ import { formatWhen, truncate } from './format.ts';
 import { type Item, backlogPath, getItem, isStarted, listItems, syncBacklog } from './items.ts';
 import { select } from './menu.ts';
 import { type Project, ProjectError, resolveProject } from './project.ts';
+import { liveReferences, referencesSection } from './references.ts';
 import type { RefineOutput } from './schemas/stages.ts';
 import { ContextBudgetError, type StageContext, runStage, writeArtifact } from './stages.ts';
 import { runProbe } from './status.ts';
@@ -117,7 +118,8 @@ function bullets(entries: string[], empty: string): string {
   return entries.length > 0 ? entries.map((entry) => `- ${entry}`).join('\n') : empty;
 }
 
-export function refinePrompt(item: Item): string {
+/** `root`: raiz do projeto (cwd do refinamento), de onde as referências são lidas sem cópia. */
+export function refinePrompt(item: Item, root?: string): string {
   const section = (title: string, body: string) => (body.trim() ? [`## ${title}`, '', body.trim(), ''] : []);
   return [
     `# Item #${item.number}: ${item.title}`,
@@ -127,6 +129,7 @@ export function refinePrompt(item: Item): string {
     ...section('Fora do escopo declarado', bullets(item.outOfScope, 'Nada.')),
     ...section('Decisões já tomadas', bullets(item.decisions, 'Nenhuma.')),
     ...section('Regras críticas declaradas', bullets(item.criticalConcepts, 'Nenhuma.')),
+    ...section('Referências', root ? referencesSection(liveReferences(root, item.references), '') : ''),
     ...section('Restrições', item.restrictions ?? ''),
     '## Tarefa',
     '',
@@ -145,7 +148,7 @@ export async function runRefine(db: DatabaseSync, home: string, project: Project
   process.on('SIGINT', onSigint);
   let result;
   try {
-    result = await runStage<RefineOutput>(db, ctx, 'refine', refinePrompt(item), {
+    result = await runStage<RefineOutput>(db, ctx, 'refine', refinePrompt(item, project.root), {
       observer: {
         onInit: ({ model }) => log.write(style.dim(`  ▸ refinar · ${model ?? '?'}`)),
         onToolUse: (call) => log.use(call.id, call.name, call.input),
@@ -372,6 +375,7 @@ export function merge(fields: ItemFields, additions: Additions): ItemFields {
     outOfScope: union(fields.outOfScope, additions.outOfScope),
     decisions: union(fields.decisions, additions.decisions),
     criticalConcepts: union(fields.criticalConcepts, additions.criticalConcepts),
+    references: fields.references ?? [],
   };
 }
 

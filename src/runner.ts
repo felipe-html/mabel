@@ -47,6 +47,8 @@ export interface RunRequest {
    * todas. O `init` precisa listar exatamente estas.
    */
   tools?: string[];
+  /** Diretórios só de leitura além do cwd (`--add-dir`): a cópia das referências do item. */
+  addDirs?: string[];
   /** Conteúdo do `settings.json` da run (`--settings`), gravado no diretório dela. */
   settings?: object;
   /** Etapa sem sandbox (`"sandbox": false` no config): fica registrado na run. */
@@ -92,6 +94,16 @@ export interface RunHandle {
   done: Promise<RunOutcome>;
 }
 
+/** Variáveis que o Mabel usa fora das runs e o agente não deve ver (tokens de captura). */
+export const PRIVATE_ENV = ['FIGMA_TOKEN'];
+
+/** Ambiente da run: o do Mabel sem as variáveis privadas. */
+export function agentEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const result = { ...env };
+  for (const name of PRIVATE_ENV) delete result[name];
+  return result;
+}
+
 export function claudeBin(): string {
   return process.env.MABEL_CLAUDE_BIN || 'claude';
 }
@@ -101,6 +113,7 @@ export function claudeArgs(request: RunRequest, settingsPath?: string): string[]
   if (isHermetic(request)) {
     args.push('--restricted', '--strict-mcp-config', '--disable-slash-commands');
     args.push('--tools', (request.tools ?? []).join(','));
+    if (request.addDirs?.length) args.push('--add-dir', ...request.addDirs);
     if (settingsPath) args.push('--settings', settingsPath);
   }
   if (request.model) args.push('--model', request.model);
@@ -178,7 +191,7 @@ export function startRun(
   let stderrFd: number;
   let settingsPath: string | undefined;
   const hookLog = join(dir, 'hook.jsonl');
-  const childEnv: NodeJS.ProcessEnv = { ...process.env };
+  const childEnv = agentEnv(process.env);
   try {
     mkdirSync(dir, { recursive: true });
     if (isHermetic(request)) {

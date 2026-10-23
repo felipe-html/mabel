@@ -103,6 +103,7 @@ export function renderItemDetail(db: DatabaseSync, home: string, item: Item): st
   if (item.outOfScope.length > 0) lines.push(`  fora do escopo: ${item.outOfScope.join('; ')}`);
   if (item.decisions.length > 0) lines.push(`  decisões: ${item.decisions.join('; ')}`);
   if (item.criticalConcepts.length > 0) lines.push(`  regras críticas: ${item.criticalConcepts.join('; ')}`);
+  if (item.references.length > 0) lines.push(`  referências: ${item.references.join('; ')}`);
   if (item.branch) lines.push(`  branch: ${item.branch}`);
   if (item.integratedCommit) lines.push(`  integrado em: ${item.integratedCommit.slice(0, 12)}`);
   if (item.worktree) lines.push(`  worktree: ${item.worktree}`);

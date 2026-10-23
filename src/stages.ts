@@ -5,6 +5,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { Item } from './items.ts';
 import { projectContext } from './hermetic.ts';
 import { type Project, readCriticalRules } from './project.ts';
+import { type FrozenReference, freezeReferences, frozenDir, referencesSection } from './references.ts';
 import { sandboxSettings } from './sandbox.ts';
 import { type RunHandle, type RunObserver, type RunOutcome, type RunRequest, type RunStage, startRun } from './runner.ts';
 import {
@@ -140,6 +141,10 @@ export function stageRequest(ctx: StageContext, stage: RunStage, prompt: string,
       criticosAprovados: ctx.item.approvedAt !== null,
     },
   };
+  if (stage !== 'refine' && ctx.item.references.length > 0) {
+    frozenReferences(ctx);
+    request.addDirs = [frozenDir(itemDir(ctx.home, ctx.item.id))];
+  }
   if (!config.sandbox) request.sandboxDisabled = true;
   if (stage === 'execute') request.disallowedTools = EXECUTE_DISALLOWED;
   if (options.resumeSessionId) request.resumeSessionId = options.resumeSessionId;
@@ -204,6 +209,16 @@ export function renderPlanMarkdown(item: Pick<Item, 'number' | 'title'>, plan: P
   return `${lines.join('\n')}\n`;
 }
 
+/** Cópia congelada das referências do item, criada no primeiro uso (`docs/specs/referencias.md`). */
+export function frozenReferences(ctx: Pick<StageContext, 'home' | 'project' | 'item'>): FrozenReference[] {
+  if (ctx.item.references.length === 0) return [];
+  return freezeReferences(ctx.project.root, itemDir(ctx.home, ctx.item.id), ctx.item.references);
+}
+
+function referencesPrompt(ctx: StageContext): string {
+  return referencesSection(frozenReferences(ctx), frozenDir(itemDir(ctx.home, ctx.item.id)));
+}
+
 // Prompts das runs -----------------------------------------------------------------------
 
 function section(title: string, body: string | string[]): string[] {
@@ -264,6 +279,7 @@ export function planPrompt(ctx: StageContext, input: PlanPromptInput = {}): stri
         ? [bullet(item.criticalConcepts, ''), '', 'O humano declarou que o item toca estes conceitos: copie-os em `conceitosCriticos`.']
         : '',
     ),
+    ...section('Referências', referencesPrompt(ctx)),
     ...section('Restrições', item.restrictions ?? ''),
     ...section('Comandos de verificação', verifyCommands(project)),
     ...(input.previousPlan
@@ -320,6 +336,7 @@ export function executePrompt(ctx: StageContext, input: ExecutePromptInput): str
     ...section('Plano', renderPlanMarkdown(ctx.item, input.plan).replace(/^# .*\n/, '')),
     ...section('Fora do escopo', bullet(ctx.item.outOfScope, '')),
     ...section('Decisões já tomadas pelo humano', bullet(ctx.item.decisions, '')),
+    ...section('Referências', referencesPrompt(ctx)),
     ...section('Restrições', ctx.item.restrictions ?? ''),
     ...section('Comandos de verificação', verifyCommands(ctx.project)),
     ...section('Tentativas anteriores', input.attemptsSummary ?? ''),
@@ -348,6 +365,7 @@ export function reviewPrompt(ctx: StageContext, input: ReviewPromptInput): strin
     '',
     ...section('Plano', renderPlanMarkdown(ctx.item, input.plan).replace(/^# .*\n/, '')),
     ...section('Fora do escopo do item', bullet(ctx.item.outOfScope, '')),
+    ...section('Referências', referencesPrompt(ctx)),
     ...section('Resumo da execução', input.execution.resumo),
     ...section('Testes declarados por critério', bullet(tests, 'Nenhum.')),
     '## Tarefa',

@@ -28,3 +28,9 @@
 - **Refinar em lote.** `mabel refinar --todos` para rodar o agente em todos os itens não refinados e revisar as propostas em sequência, como a inbox.
 - **Preservar comentários dentro do bloco do item.** A gravação do refinamento regrava o trecho do item e perde comentários HTML no meio dele (os de depois do item ficam).
 - **PR da entrega fechado sem merge.** Hoje a entrega continua `open` até o `mabel entregar --substituir`. A abertura do `run` poderia perguntar ao `gh` e marcá-la como fechada, liberando uma entrega nova sem a flag.
+- **Refinamento propondo referências.** O agente do `refinar` poderia sugerir `tela:` e `api:` a partir da intenção e dos snapshots em `.mabel/referencias/`, conferidos antes de gravar.
+- **`add --referencia`.** Hoje o campo entra só editando o arquivo.
+- **Validação visual na inbox.** Captura do Playwright da tela implementada ao lado do `tela.png`, como rota de validação humana do critério visual.
+- **Mocks do snapshot no `setup`.** Gerar fixtures ou handlers (MSW) a partir de `api/<nome>.openapi.json`, para o executor não escrever dados de teste à mão.
+- **Telas com vários frames.** `referencia tela` com vários `node-id` (estados de erro, vazio, carregando) num comando só, e fontes e espaçamentos no `tela.md`.
+- **OpenAPI em YAML e API autenticada.** `referencia api` só aceita JSON público.

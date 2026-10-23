@@ -69,7 +69,7 @@ if (env.FAKE_CLAUDE_SCENARIO) {
   const sessionId = resumeAt >= 0 ? argv[resumeAt + 1] : (response.session_id ?? randomUUID());
   const modelAt = argv.indexOf('--model');
   const model = modelAt >= 0 ? argv[modelAt + 1] : 'claude-default';
-  log({ argv, cwd: process.cwd(), session_id: sessionId, response: index });
+  log({ argv, cwd: process.cwd(), session_id: sessionId, response: index, figmaToken: 'FIGMA_TOKEN' in env });
   writeTranscript(sessionId);
 
   const emit = (event) => process.stdout.write(`${JSON.stringify(event)}\n`);
