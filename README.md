@@ -209,6 +209,13 @@ read -rs "t?Token do Figma: " && print -r -- "export FIGMA_TOKEN='$t'" > ~/.figm
 echo '[ -f ~/.figma_token ] && source ~/.figma_token' >> ~/.zshrc
 ```
 
+Registre a data de vencimento que você escolheu ao criar o token; o `mabel status` e o
+`referencia tela` avisam a partir de 14 dias do fim:
+
+```
+mabel credencial figma --expira 2027-01-20
+```
+
 Abra um terminal novo (ou saia e entre de novo no modo Mabel): um processo só vê as
 variáveis que existiam quando ele abriu. O token não é gravado em lugar nenhum pelo Mabel
 e não chega ao agente. No `tela.md`, escreva abaixo de `<!-- notas -->` o que o agente

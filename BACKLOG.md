@@ -34,4 +34,3 @@
 - **Mocks do snapshot no `setup`.** Gerar fixtures ou handlers (MSW) a partir de `api/<nome>.openapi.json`, para o executor não escrever dados de teste à mão.
 - **Telas com vários frames.** `referencia tela` com vários `node-id` (estados de erro, vazio, carregando) num comando só, e fontes e espaçamentos no `tela.md`.
 - **OpenAPI em YAML e API autenticada.** `referencia api` só aceita JSON público.
-- **Validade do `FIGMA_TOKEN`.** O token pessoal do Figma vence em até 90 dias e a API não informa quando. Guardar a data (recomendação: `FIGMA_TOKEN_EXPIRA` no mesmo `~/.figma_token`; alternativa: comando do Mabel com a data em `~/.mabel`), avisar no `referencia tela` e no `status` a 14 dias do fim e trocar o 403 depois do vencimento por um erro claro. O token atual do usuário vence em 2027-01-20. Aguardando a escolha de onde guardar a data.

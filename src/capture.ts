@@ -2,6 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFi
 import { dirname, join, relative } from 'node:path';
 import { parseArgs } from 'node:util';
 import type { DatabaseSync } from 'node:sqlite';
+import { expired, expiryWarning } from './credentials.ts';
 import { dataDir, openDb } from './db.ts';
 import { type Item, isStarted, listItems, syncBacklog } from './items.ts';
 import { type Project, ProjectError, resolveProject } from './project.ts';
@@ -354,7 +355,9 @@ export async function referenceCommand(args: string[]): Promise<number> {
     return 1;
   }
 
-  const db = openDb(dataDir());
+  const home = dataDir();
+  const db = openDb(home);
+  const figma = kind === 'tela' && values.png === undefined;
   try {
     const project = resolveProject(db);
     syncBacklog(db, project);
@@ -363,6 +366,8 @@ export async function referenceCommand(args: string[]): Promise<number> {
       return 0;
     }
     if (kind === 'tela') {
+      const warning = figma ? expiryWarning(home, 'figma') : null;
+      if (warning) process.stderr.write(`${style.dim(`Aviso: ${warning}`)}\n`);
       const screen = values.png
         ? captureScreenFile(project.root, name as string, values.png)
         : await captureFigma(project.root, name as string, url as string, scale);
@@ -399,6 +404,10 @@ export async function referenceCommand(args: string[]): Promise<number> {
   } catch (error) {
     if (error instanceof ProjectError || error instanceof CaptureError) {
       process.stderr.write(`${error.message}\n`);
+      // 403 com o token vencido pela data registrada: o motivo provável, dito com todas as letras.
+      if (figma && /respondeu 403/.test(error.message) && expired(home, 'figma')) {
+        process.stderr.write(`${expiryWarning(home, 'figma')}\n`);
+      }
       return 1;
     }
     throw error;

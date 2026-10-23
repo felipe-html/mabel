@@ -67,6 +67,7 @@ export const dirScope: Record<string, DirScope> = {
   'mabel.db-wal': { scope: 'global' },
   'mabel.db-shm': { scope: 'global' },
   historico: { scope: 'global' },
+  'credenciais.json': { scope: 'global' },
 };
 
 /** Tabelas do banco que não estão em `tableScope`. */

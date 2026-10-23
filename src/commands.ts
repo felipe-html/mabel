@@ -1,5 +1,6 @@
 import { add, addUsage } from './add.ts';
 import { referenceCommand, referenceUsage } from './capture.ts';
+import { credentialCommand, credentialUsage } from './credentials.ts';
 import { zshCompletion } from './completion.ts';
 import { deliverCommand, deliverUsage } from './delivery.ts';
 import { askPrompt, exec, execUsage } from './exec.ts';
@@ -66,6 +67,12 @@ export const commands: Command[] = [
     description: 'Captura telas e APIs para os itens citarem em "Referências:"; sem argumentos, lista',
     usage: referenceUsage,
     run: referenceCommand,
+  },
+  {
+    name: 'credencial',
+    description: 'Registra e mostra a validade dos tokens usados na captura (FIGMA_TOKEN)',
+    usage: credentialUsage,
+    run: credentialCommand,
   },
   {
     name: 'run',

@@ -2,6 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
 import { latestReadings, renderBalanceHeader } from './balance.ts';
 import { renderBoardSummary } from './board.ts';
+import { expiryWarnings } from './credentials.ts';
 import { dataDir, openDb } from './db.ts';
 import { summaryLine } from './exec.ts';
 import { formatCost, formatWhen, truncate } from './format.ts';
@@ -109,6 +110,8 @@ export async function status(args: string[]): Promise<number> {
       if (outcome.status !== 'succeeded') code = 1;
     }
     const lines = [...renderBalanceHeader(latestReadings(db), new Date(), paint), ''];
+    const credentials = expiryWarnings(home);
+    if (credentials.length > 0) lines.push(...credentials.map((warning) => paint.warn(warning)), '');
     const summary = projectSummary(db);
     if (summary.length > 0) lines.push(...summary, '');
     lines.push(

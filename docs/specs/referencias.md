@@ -135,6 +135,18 @@ mabel referencia tela <nome> --png <arquivo>              grava um PNG exportado
   token de quem tem acesso de leitura; PNG de 2880×2124 e `tela.md` com 70 textos e 17
   cores. O nome da tela é do humano e descreve a tela (`home-operador`), não o item.
 
+### Validade do token (`mabel credencial`)
+
+Decisão do usuário (2026-10-23): a data fica num comando do Mabel, não no arquivo do token.
+
+- `mabel credencial figma --expira <AAAA-MM-DD>` grava `{ expira, registradoEm }` em
+  `~/.mabel/credenciais.json` (global, fora da remoção de projeto). O token não é gravado.
+- `mabel credencial` lista cada credencial conhecida: variável definida ou ausente, data e
+  dias que faltam (ou "validade não registrada").
+- Aviso a partir de 14 dias do fim (dias de calendário no fuso local): no `status` e antes
+  da captura pelo Figma no `referencia tela`. Vencido pela data registrada, o 403 do Figma
+  vem acompanhado do aviso de vencimento.
+
 ## Critérios de aceite
 
 1. O parser lê e o `renderItemBlock` grava `Referências:`; backlog sem o campo mantém o hash.
@@ -151,6 +163,8 @@ mabel referencia tela <nome> --png <arquivo>              grava um PNG exportado
 7. `referencia tela` com `FIGMA_TOKEN` grava `tela.png` e `tela.md`; sem token, erro com a
    alternativa; `--png` funciona sem rede.
 8. `referencia` sem argumentos lista as referências e os itens que as citam.
+9. `credencial figma --expira` registra a data; `status` e `referencia tela` avisam a 14
+   dias do fim e depois do vencimento.
 
 ## Fora desta entrega (vai para o `BACKLOG.md`)
 
