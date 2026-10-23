@@ -78,9 +78,22 @@ test('P.1: veredito da revisão calculado pelo Mabel', () => {
     approved: false,
     detail: 'revisão não avaliou o critério C2',
   });
-  // 3. `aprovado: true` com critério não atendido reprova.
-  const declared = { aprovado: true, criterios: [met('C1'), { id: 'C2', atendido: false, evidencia: 'sem tela' }], problemas: [] };
-  assert.deepEqual(reviewVerdict(two, declared), { approved: false, detail: 'critério C2 não atendido: sem tela' });
+  // 3. `aprovado: true` com critério de teste não atendido reprova.
+  const declared = { aprovado: true, criterios: [{ id: 'C1', atendido: false, evidencia: 'sem teste' }, met('C2')], problemas: [] };
+  assert.deepEqual(reviewVerdict(two, declared), { approved: false, detail: 'critério C1 não atendido: sem teste' });
+  // 4. Critério humano sem confirmação não reprova; fica registrado para a validação.
+  const pendingC2 = { id: 'C2', atendido: false, evidencia: 'conferir CORS em dev' };
+  const human = { criterios: [met('C1'), pendingC2], problemas: [] };
+  assert.deepEqual(reviewVerdict(two, human), {
+    approved: true,
+    detail: 'critério C2 fica para a validação humana: conferir CORS em dev',
+  });
+  // Na reprovação por outro motivo, a pendência humana acompanha o detalhe.
+  const both = { criterios: [{ id: 'C1', atendido: false, evidencia: 'sem teste' }, pendingC2], problemas: [] };
+  assert.deepEqual(reviewVerdict(two, both), {
+    approved: false,
+    detail: 'critério C1 não atendido: sem teste; critério C2 fica para a validação humana: conferir CORS em dev',
+  });
   // Bloqueante reprova; critério fora do plano é ignorado e registrado.
   const blocking = reviewVerdict(two, {
     criterios: [met('C1'), met('C2'), met('C9')],

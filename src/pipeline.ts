@@ -149,17 +149,19 @@ export interface ReviewVerdict {
 
 /**
  * Parecer calculado a partir dos critérios avaliados e dos problemas apontados: aprova só
- * com todo critério do plano avaliado e atendido e nenhum problema bloqueante. Um
- * `aprovado` gravado por pareceres antigos é ignorado.
+ * com todo critério do plano avaliado, os de teste atendidos e nenhum problema bloqueante.
+ * Critério de validação humana não reprova por falta de confirmação: ela vem do humano
+ * no `awaiting_merge` (G3); o que impede a validação o revisor aponta como bloqueante.
+ * Um `aprovado` gravado por pareceres antigos é ignorado.
  */
 export function reviewVerdict(plan: PlanOutput, review: ReviewOutput): ReviewVerdict {
   const planned = new Set(plan.criterios.map((c) => c.id));
+  const human = new Set(plan.criterios.filter((c) => c.verificacao === 'humano').map((c) => c.id));
   const evaluated = new Set(review.criterios.map((c) => c.id));
+  const unmet = review.criterios.filter((c) => planned.has(c.id) && !c.atendido);
   const reasons = [
     ...plan.criterios.filter((c) => !evaluated.has(c.id)).map((c) => `revisão não avaliou o critério ${c.id}`),
-    ...review.criterios
-      .filter((c) => planned.has(c.id) && !c.atendido)
-      .map((c) => `critério ${c.id} não atendido: ${c.evidencia}`),
+    ...unmet.filter((c) => !human.has(c.id)).map((c) => `critério ${c.id} não atendido: ${c.evidencia}`),
     ...review.problemas
       .filter((p) => p.gravidade === 'bloqueante')
       .map((p) => `bloqueante: ${p.descricao}${p.arquivo ? ` (${p.arquivo})` : ''}`),
@@ -170,7 +172,8 @@ export function reviewVerdict(plan: PlanOutput, review: ReviewOutput): ReviewVer
   const minor = approved
     ? []
     : review.problemas.filter((p) => p.gravidade === 'menor').map((p) => `menor: ${p.descricao}${p.arquivo ? ` (${p.arquivo})` : ''}`);
-  const detail = [...reasons, ...minor, ...ignored].join('; ');
+  const pending = unmet.filter((c) => human.has(c.id)).map((c) => `critério ${c.id} fica para a validação humana: ${c.evidencia}`);
+  const detail = [...reasons, ...minor, ...pending, ...ignored].join('; ');
   return { approved, detail: detail || null };
 }
 
