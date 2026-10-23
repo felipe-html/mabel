@@ -20,7 +20,7 @@ import { finishIntegrated, openIntegration } from './integration.ts';
 import { writeIntegrationReport } from './report.ts';
 import { LockError, acquireLock } from './lock.ts';
 import { type AdvanceResult, advanceItem, autonomousDecisions } from './pipeline.ts';
-import { type Project, ProjectError, mabelCommitted, resolveProject } from './project.ts';
+import { type Project, ProjectError, commitPendingMabel, mabelCommitted, resolveProject } from './project.ts';
 import { type RunHandle, type RunStage, startRun } from './runner.ts';
 import { sandboxUnavailable } from './sandbox.ts';
 import { probeRequest } from './status.ts';
@@ -514,10 +514,19 @@ export async function run(args: string[]): Promise<number> {
   let stopFooter: (() => void) | undefined;
   try {
     const project = resolveProject(db);
-    if (!mabelCommitted(project.root, project.config.baseBranch)) {
+    const base = project.config.baseBranch;
+    const pending = commitPendingMabel(project.root, base);
+    if (pending && 'files' in pending) {
+      process.stdout.write(style.dim(`.mabel/ commitado na ${base}: ${pending.files.join(', ')}`) + '\n');
+    } else if (pending) {
+      process.stdout.write(
+        `${style.bold('Aviso:')} o .mabel/ tem alterações sem commit que os worktrees dos itens não verão (${pending.skipped}).\n`,
+      );
+    }
+    if (!mabelCommitted(project.root, base)) {
       process.stderr.write(
-        `O .mabel/ não está commitado na branch ${project.config.baseBranch}; os worktrees dos itens nasceriam sem ele.\n` +
-          'Rode `mabel init` para commitar, ou `git add .mabel && git commit -m "mabel init" -- .mabel`.\n',
+        `O .mabel/ não está commitado na branch ${base}; os worktrees dos itens nasceriam sem ele.\n` +
+          `Rode o \`mabel run\` com a raiz na ${base}, ou commite o .mabel/ nela.\n`,
       );
       return 1;
     }

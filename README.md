@@ -119,7 +119,9 @@ No modo Mabel, os comandos começam com `/`:
    verificação, cria o `.mabel/` e faz o commit dele. Projeto sem testes ganha como
    primeiro item "Estabelecer base de testes". Depois do merge dele, inclua o comando de
    teste em `verify` no `.mabel/config.json`: o agente não altera o config.
-2. **`/add`** acrescenta itens ao backlog, ou edite `.mabel/backlog.md` direto.
+2. **`/add`** acrescenta itens ao backlog, ou edite `.mabel/backlog.md` direto. Specs e
+   referências também vão no `.mabel/`: não precisa commitar, o `/run` commita o que
+   estiver pendente nele na base (só esse diretório) antes de começar.
    **`/refinar`** pede a um agente uma proposta de critérios, decisões e limites para um
    item; você revisa e só o que aceitar entra no backlog.
 3. **`/run`** consome a fila: planeja tudo, oferece a inbox se houver perguntas e executa
