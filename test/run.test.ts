@@ -335,10 +335,37 @@ test('aprovar e cancelar pela linha de comando', () => {
   assert.equal(q.cli('responder', '9', 'x').status, 1);
 });
 
+test('run commita na base o que está pendente no .mabel/, sem levar o resto do índice', () => {
+  const ctx = setupProject();
+  mkdirSync(join(ctx.root, '.mabel', 'specs'));
+  writeFileSync(join(ctx.root, '.mabel', 'specs', 'a.md'), '# spec a\n');
+  git(ctx.root, 'add', '.mabel/specs/a.md');
+  writeFileSync(join(ctx.root, '.mabel', 'specs', 'b.md'), '# spec b\n');
+  writeFileSync(join(ctx.root, 'outro.md'), 'staged do humano\n');
+  git(ctx.root, 'add', 'outro.md');
+
+  const result = ctx.cli('run');
+  assert.match(result.stdout, /\.mabel\/ commitado na main: \.mabel\/specs\/a\.md, \.mabel\/specs\/b\.md/);
+  assert.equal(git(ctx.root, 'show', 'main:.mabel/specs/b.md'), '# spec b');
+  assert.equal(git(ctx.root, 'show', '--name-only', '--format=', 'main'), '.mabel/specs/a.md\n.mabel/specs/b.md');
+  assert.equal(git(ctx.root, 'status', '--porcelain'), 'A  outro.md');
+});
+
+test('run com a raiz fora da base não commita o .mabel/ e avisa', () => {
+  const ctx = setupProject();
+  git(ctx.root, 'switch', '-q', '-c', 'outra');
+  writeFileSync(join(ctx.root, '.mabel', 'spec.md'), '# spec\n');
+  const result = ctx.cli('run');
+  assert.match(result.stdout, /Aviso: o \.mabel\/ tem alterações sem commit .*a raiz está na branch outra, não na main/);
+  assert.equal(tryGit(ctx.root, 'cat-file', '-e', 'main:.mabel/spec.md'), undefined);
+  assert.equal(git(ctx.root, 'status', '--porcelain'), '?? .mabel/spec.md');
+});
+
 test('run recusa começar com o .mabel/ fora da branch base', () => {
   const ctx = setupProject('\n## Item\nfazer algo\n');
   spawnSync('git', ['rm', '-q', '-r', '--cached', '.mabel'], { cwd: ctx.root });
   spawnSync('git', ['commit', '-q', '-m', 'tira o .mabel'], { cwd: ctx.root });
+  git(ctx.root, 'switch', '-q', '-c', 'outra');
   const result = ctx.cli('run');
   assert.equal(result.status, 1);
   assert.match(result.stderr, /não está commitado na branch main/);

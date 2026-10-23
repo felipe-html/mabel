@@ -93,6 +93,7 @@ achados do teste orientam a especificação dos passos seguintes.
         item, `--add-dir` e seção nos prompts.
   - [x] `mabel referencia` (lista) e `mabel referencia api`.
   - [x] `mabel referencia tela` (Figma e `--png`), em commit separado.
+- [x] `run` commita na base o que está pendente no `.mabel/` (G10 ampliado, autorizado).
 
 ## Histórico
 
@@ -170,4 +171,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-22 | Teste real do `--add-dir` com o `claude` (Haiku, `--restricted`, `--tools Read`): lê o arquivo do diretório adicionado e nega o de fora ("is outside … --restricted confines the file tools"); o `init` continua sem memória, MCP, skills e comandos. Captura real do Figma pendente: o usuário não tem `FIGMA_TOKEN` (arquivo de terceiro). |
 | 2026-10-22 | As runs herdavam o ambiente inteiro do Mabel, inclusive o `FIGMA_TOKEN`: o agente podia lê-lo pelo `Bash`. `agentEnv` tira as variáveis de `PRIVATE_ENV` do ambiente de toda run (etapas, probe e `exec`). Decisão do usuário: mantida a cópia congelada criada na montagem da primeira run de etapa. |
 | 2026-10-23 | Validade do `FIGMA_TOKEN`, com a decisão do usuário de guardar a data num comando do Mabel: `mabel credencial` (lista) e `mabel credencial figma --expira <AAAA-MM-DD>`, data em `~/.mabel/credenciais.json` (classificado `global` na remoção), aviso a 14 dias do fim no `status` e no `referencia tela`, aviso de vencimento junto do 403 do Figma. Item removido do `BACKLOG.md`. Desvio: o caminho do 403 com token vencido não tem teste automatizado (o CLI roda em processo síncrono e o Figma falso do teste fica no mesmo processo); a decisão é uma condição de uma linha sobre `expired`, que tem teste. |
-
+| 2026-10-23 | Tarefas e specs escritas na main ficavam sem commit, e os worktrees dos itens nascem de commit. Decisões do usuário: o Mabel commita sozinho, só o que está dentro do `.mabel/`, sem opt-in. Contrato autorizado e atualizado (G10: a base recebe também o commit do que o humano escreveu no `.mabel/`). `commitPendingMabel`, no início do `run` e antes da conferência do `.mabel/` na base: `git add -A` e `git commit -- .mabel`, com a lista de arquivos na mensagem e na saída; o resto do índice fica como está. Com a raiz fora da base (ou sem branch), ou com o commit recusado pelo git (hook, merge em andamento), avisa e segue. As dicas de `git add .mabel/referencias` do `mabel referencia` passam a apontar o `run`. Desvio: o commit é só no início do `run`; o que mudar no `.mabel/` com a fila andando entra no próximo `run`. |

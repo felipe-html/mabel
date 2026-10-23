@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { tryGit } from './git.ts';
+import { git, tryGit } from './git.ts';
 
 export type Stage = 'refine' | 'plan' | 'execute' | 'review';
 
@@ -114,6 +114,30 @@ export function mabelCommitted(root: string, baseBranch: string): boolean {
 /** Arquivos do `.mabel/` não commitados (novos ou alterados), fora os ignorados. */
 export function mabelUncommitted(root: string): boolean {
   return (tryGit(root, 'status', '--porcelain', '--', MABEL_DIR) ?? '') !== '';
+}
+
+export type MabelCommit = { files: string[] } | { skipped: string };
+
+/**
+ * Commita na base o que está pendente no `.mabel/` (G10): tarefas, specs e referências que
+ * o humano escreveu entram nos worktrees dos itens. Só com a raiz na base; o que mais
+ * estiver no índice fica como está. `undefined` quando não há nada pendente.
+ */
+export function commitPendingMabel(root: string, baseBranch: string): MabelCommit | undefined {
+  if (!mabelUncommitted(root)) return undefined;
+  const branch = tryGit(root, 'symbolic-ref', '--short', 'HEAD');
+  if (branch !== baseBranch) {
+    return { skipped: `a raiz está ${branch ? `na branch ${branch}` : 'sem branch'}, não na ${baseBranch}` };
+  }
+  try {
+    git(root, 'add', '-A', '--', MABEL_DIR);
+    const files = git(root, 'diff', '--cached', '--name-only', '--no-renames', '--', MABEL_DIR).split('\n').filter(Boolean);
+    const message = `mabel: .mabel/ antes do run\n\n${files.map((file) => `- ${file}`).join('\n')}`;
+    git(root, 'commit', '-q', '-m', message, '--', MABEL_DIR);
+    return { files };
+  } catch (error) {
+    return { skipped: (error as Error).message };
+  }
 }
 
 /** Branch atual; funciona também em repositório sem commits. */

@@ -270,7 +270,7 @@ revisão deixa a proposta pendente.
 
 A URL do swagger-ui do Quarkus (`…/q/swagger-ui/`) vira `…/q/openapi?format=json`.
 Recapturando, mostra as operações novas e removidas e os itens não iniciados que citam uma
-operação que saiu. Não versiona: lembra o `git add .mabel/referencias`.
+operação que saiu. Não commita: o próximo `run` leva o `.mabel/` à base.
 
 **Pontos a refinar**
 
@@ -309,6 +309,8 @@ integrar os itens.
 
 **Antes de começar** (sai com 1 se falhar)
 
+- Commita na base o que está pendente no `.mabel/` (tarefas, specs, referências), só esse
+  diretório e só com a raiz na base; fora dela, avisa e segue.
 - `.mabel/` commitado na branch base.
 - Sandbox disponível, a menos que `"sandbox": false` (aí imprime um aviso).
 - Trava do projeto: um `run` por projeto de cada vez.

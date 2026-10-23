@@ -377,7 +377,7 @@ export async function referenceCommand(args: string[]): Promise<number> {
           `Tela ${relative(project.root, screen.dir)}/ gravada: ${screen.files.join(', ')}.`,
           ...warnings.map((warning) => `Aviso: ${warning}`),
           '',
-          style.dim('Confira o tela.md, acrescente estados e notas, e versione: git add .mabel/referencias'),
+          style.dim('Confira o tela.md e acrescente estados e notas; o próximo `mabel run` commita o .mabel/ na base.'),
           '',
         ].join('\n'),
       );
@@ -398,7 +398,7 @@ export async function referenceCommand(args: string[]): Promise<number> {
     }
     const { warnings } = syncBacklog(db, project);
     out.push(...warnings.map((warning) => `Aviso: ${warning}`));
-    out.push('', style.dim('Versione o snapshot: git add .mabel/referencias'));
+    out.push('', style.dim('O próximo `mabel run` commita o snapshot na base.'));
     process.stdout.write(`${out.join('\n')}\n`);
     return 0;
   } catch (error) {
