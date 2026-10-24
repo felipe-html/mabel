@@ -143,3 +143,64 @@ export const reviewSchema: Schema = object({
     ),
   },
 });
+
+/** Item do backlog inicial proposto pelo `nascer`; `dependeDe` são posições na própria lista. */
+export interface BirthItem {
+  titulo: string;
+  intencao: string;
+  criterios: string[];
+  foraDoEscopo: string[];
+  decisoes: string[];
+  /** Conceitos de `regrasCriticas.conceitos` que o item toca. */
+  regrasCriticas: string[];
+  dependeDe: number[];
+}
+
+/** Proposta de nascimento de um projeto; o humano revisa antes de o Mabel gravar. */
+export interface BirthProposal {
+  /** Id do catálogo de stacks ou `outra`. */
+  stack: string;
+  stackMotivo: string;
+  /** Vazio quando a raiz já tem `CLAUDE.md`. */
+  claudeMd: string;
+  /** Com `CLAUDE.md` existente: sugestões, mostradas na revisão e não gravadas. */
+  acrescimosClaudeMd: string[];
+  regrasCriticas: { caminhos: string[]; conceitos: string[] };
+  backlog: BirthItem[];
+}
+
+export interface BirthOutput {
+  entendimento: string;
+  /** Vazio quando a proposta está pronta. */
+  perguntas: Question[];
+  suposicoes: string[];
+  /** Ignorada enquanto houver perguntas. */
+  proposta: BirthProposal;
+}
+
+export const birthProposalSchema: Schema = object({
+  stack: str,
+  stackMotivo: str,
+  claudeMd: str,
+  acrescimosClaudeMd: strings,
+  regrasCriticas: object({ caminhos: strings, conceitos: strings }),
+  backlog: {
+    type: 'array',
+    items: object({
+      titulo: str,
+      intencao: str,
+      criterios: strings,
+      foraDoEscopo: strings,
+      decisoes: strings,
+      regrasCriticas: strings,
+      dependeDe: { type: 'array', items: { type: 'integer' } },
+    }),
+  },
+});
+
+export const birthSchema: Schema = object({
+  entendimento: str,
+  perguntas: questions,
+  suposicoes: strings,
+  proposta: birthProposalSchema,
+});

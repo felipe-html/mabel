@@ -31,7 +31,7 @@ export interface EventCursor {
   queueState: Map<string, QueueState>;
 }
 
-const STAGE_LABELS: Record<RunStage, string> = { refine: 'refinar', plan: 'planejar', execute: 'executar', review: 'revisar' };
+const STAGE_LABELS: Record<RunStage, string> = { refine: 'refinar', plan: 'planejar', execute: 'executar', review: 'revisar', birth: 'nascer' };
 const WINDOW_LABELS: Record<string, string> = { five_hour: '5h', seven_day: '7d' };
 /** Pausas por saldo; as outras (integração, contexto, código) aparecem como `parada` no fim da fila. */
 const BALANCE_PAUSES = new Set(['seven_day', 'no_reading']);
