@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, join, relative } from 'node:path';
+import type { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
 import { ask, confirm, interactive } from './ask.ts';
 import { BACKLOG_TEMPLATE, type ItemFields, appendBlocks, renderItemBlock } from './backlog.ts';
@@ -8,6 +9,7 @@ import { dataDir, openDb } from './db.ts';
 import { git } from './git.ts';
 import {
   CRITICAL_RULES_TEMPLATE,
+  type CriticalRules,
   DEFAULT_LIMITS,
   DEFAULT_CONTEXT_BUDGET,
   DEFAULT_INTEGRATION,
@@ -15,6 +17,8 @@ import {
   DEFAULT_TEST_GLOBS,
   MABEL_DIR,
   type ProjectConfig,
+  ProjectError,
+  criticalRulesText,
   type VerifyCommand,
   currentBranch,
   gitRoot,
@@ -162,7 +166,7 @@ async function editCommands(setup: string | null, verify: VerifyCommand[]) {
  * Cria no `.mabel/` os arquivos que ainda não existem (os do usuário são preservados).
  * Se uma gravação falhar, remove o que esta chamada criou e relança o erro.
  */
-export function createProjectFiles(root: string, files: [string, string][]): void {
+export function createProjectFiles(root: string, files: [string, string][]): string[] {
   const dir = join(root, MABEL_DIR);
   const created: string[] = [];
   const createdDir = !existsSync(dir);
@@ -179,6 +183,87 @@ export function createProjectFiles(root: string, files: [string, string][]): voi
     if (createdDir) rmSync(dir, { recursive: true, force: true });
     throw error;
   }
+  return created.map((path) => relative(root, path));
+}
+
+/** O que o `init` grava num projeto novo; o `nascer` acrescenta as regras e os itens aceitos. */
+export interface NewProject {
+  stack?: Stack;
+  /** Stack fora do catálogo, descrita pelo usuário. */
+  other?: string;
+  setup: string | null;
+  verify: VerifyCommand[];
+  criticalRules?: CriticalRules;
+  /**
+   * Itens além da base de testes, na ordem, com `dependsOn` em posições (1, 2, …) desta
+   * lista. Sem testes, a base de testes é o item 1 e os itens sem dependência dependem dela.
+   */
+  items?: ItemFields[];
+}
+
+export interface CreatedProject {
+  config: ProjectConfig;
+  /** Id de quando o repositório já foi um projeto Mabel. */
+  previousId?: string;
+  empty: boolean;
+  noTests: boolean;
+  /** Arquivos criados no `.mabel/`, relativos à raiz. */
+  files: string[];
+}
+
+/** Backlog do projeto novo: a base de testes (se faltar teste) e os itens, já numerados. */
+export function initialBacklog(items: ItemFields[], testBase: ItemFields | undefined): string {
+  const offset = testBase ? 1 : 0;
+  const numbered = items.map((item, i) => {
+    const dependsOn = item.dependsOn.map((position) => position + offset);
+    return { ...item, number: i + 1 + offset, dependsOn: testBase && dependsOn.length === 0 ? [1] : dependsOn };
+  });
+  return appendBlocks(BACKLOG_TEMPLATE, [...(testBase ? [testBase] : []), ...numbered].map(renderItemBlock));
+}
+
+/**
+ * Registra o projeto e cria o `.mabel/` (config, regras críticas, backlog e `.gitignore`).
+ * Lança se a gravação falhar, sem deixar arquivo criado.
+ */
+export function createProject(db: DatabaseSync, root: string, input: NewProject): CreatedProject {
+  const { stack, other, setup, verify } = input;
+  const empty = isEmptyProject(root);
+  const detected = detectCommands(root);
+  // Repositório que já foi projeto Mabel: o id anterior mantém o histórico no banco.
+  const previousId = registeredProjectId(db, root);
+  const config: ProjectConfig = {
+    projectId: previousId ?? newProjectId(),
+    baseBranch: currentBranch(root),
+    setup,
+    verify,
+    models: { ...DEFAULT_MODELS },
+    limits: structuredClone(DEFAULT_LIMITS),
+    autonomia: 'sugestoes',
+    // Sem stack do catálogo, a prova roda o comando de teste inteiro (modo por item).
+    testeUnico: stack?.proof(root, empty).testeUnico ?? null,
+    arquivosDeTeste: stack?.proof(root, empty).arquivosDeTeste ?? [...DEFAULT_TEST_GLOBS],
+    integracao: DEFAULT_INTEGRATION,
+    contexto: { maxCaracteres: DEFAULT_CONTEXT_BUDGET },
+    rede: [
+      ...new Set([...[...(stack ? [stack] : []), ...detected.stacks].flatMap((found) => found.rede), ...frameworkDomains(root)]),
+    ],
+    sandbox: true,
+  };
+
+  const noTests = !hasTestCommand(verify);
+  const backlog = initialBacklog(input.items ?? [], noTests ? testBaseItem({ empty, stack, other }) : undefined);
+
+  // Registrar antes de gravar: se a gravação falhar, um novo `init` reaproveita o id.
+  registerProject(db, root, config.projectId);
+  const files = createProjectFiles(root, [
+    ['regras-criticas.md', input.criticalRules ? criticalRulesText(input.criticalRules) : CRITICAL_RULES_TEMPLATE],
+    ['backlog.md', backlog],
+    ['.gitignore', 'quadro.md\nintegracao.md\n'],
+    // Por último: é o config que marca a pasta como projeto Mabel.
+    ['config.json', `${JSON.stringify(config, null, 2)}\n`],
+  ]);
+  syncBacklog(db, { id: config.projectId, root, name: basename(root), config });
+  return { config, ...(previousId ? { previousId } : {}), empty, noTests, files };
 }
 
 export async function init(args: string[]): Promise<number> {
@@ -246,46 +331,15 @@ export async function init(args: string[]): Promise<number> {
     }
     process.stdout.write('\n');
 
-    // Repositório que já foi projeto Mabel: o id anterior mantém o histórico no banco.
-    const previousId = registeredProjectId(db, root);
-    const config: ProjectConfig = {
-      projectId: previousId ?? newProjectId(),
-      baseBranch: currentBranch(root),
-      setup,
-      verify,
-      models: { ...DEFAULT_MODELS },
-      limits: structuredClone(DEFAULT_LIMITS),
-      autonomia: 'sugestoes',
-      // Sem stack do catálogo, a prova roda o comando de teste inteiro (modo por item).
-      testeUnico: stack?.proof(root, empty).testeUnico ?? null,
-      arquivosDeTeste: stack?.proof(root, empty).arquivosDeTeste ?? [...DEFAULT_TEST_GLOBS],
-      integracao: DEFAULT_INTEGRATION,
-      contexto: { maxCaracteres: DEFAULT_CONTEXT_BUDGET },
-      rede: [
-        ...new Set([...[...(stack ? [stack] : []), ...detected.stacks].flatMap((found) => found.rede), ...frameworkDomains(root)]),
-      ],
-      sandbox: true,
-    };
-
-    let backlog = BACKLOG_TEMPLATE;
-    const noTests = !hasTestCommand(verify);
-    if (noTests) backlog = appendBlocks(backlog, [renderItemBlock(testBaseItem({ empty, stack, other }))]);
-
-    // Registrar antes de gravar: se a gravação falhar, um novo `init` reaproveita o id.
-    registerProject(db, root, config.projectId);
+    let created: CreatedProject;
     try {
-      createProjectFiles(root, [
-        ['regras-criticas.md', CRITICAL_RULES_TEMPLATE],
-        ['backlog.md', backlog],
-        ['.gitignore', 'quadro.md\nintegracao.md\n'],
-        // Por último: é o config que marca a pasta como projeto Mabel.
-        ['config.json', `${JSON.stringify(config, null, 2)}\n`],
-      ]);
+      created = createProject(db, root, { ...(stack ? { stack } : {}), ...(other !== undefined ? { other } : {}), setup, verify });
     } catch (error) {
+      if (error instanceof ProjectError) throw error;
       process.stderr.write(`Não foi possível criar o .mabel/: ${(error as Error).message}\nNenhum arquivo foi criado.\n`);
       return 1;
     }
-    syncBacklog(db, { id: config.projectId, root, name: basename(root), config });
+    const { config, previousId, noTests } = created;
 
     const notes = [`${style.bold('.mabel/ criado')} em ${root} · branch base ${config.baseBranch}`];
     if (previousId) notes.push('Este repositório já foi um projeto Mabel: o histórico anterior foi mantido.');

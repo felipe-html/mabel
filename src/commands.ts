@@ -1,4 +1,5 @@
 import { add, addUsage } from './add.ts';
+import { birthCommand, birthUsageFull } from './birth.ts';
 import { referenceCommand, referenceUsage } from './capture.ts';
 import { credentialCommand, credentialUsage } from './credentials.ts';
 import { zshCompletion } from './completion.ts';
@@ -51,6 +52,12 @@ export const commands: Command[] = [
     description: 'Prepara o projeto atual para o Mabel',
     usage: initUsage,
     run: init,
+  },
+  {
+    name: 'nascer',
+    description: 'Conversa com um agente que propõe stack, CLAUDE.md, regras críticas e backlog de um projeto novo',
+    usage: birthUsageFull,
+    run: birthCommand,
   },
   {
     name: 'add',

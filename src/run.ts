@@ -158,7 +158,7 @@ export function listQueueEvents(db: DatabaseSync, projectId: string, limit = 20)
   }));
 }
 
-const STAGE_LABELS: Record<RunStage, string> = { refine: 'refinar', plan: 'planejar', execute: 'executar', review: 'revisar' };
+const STAGE_LABELS: Record<RunStage, string> = { refine: 'refinar', plan: 'planejar', execute: 'executar', review: 'revisar', birth: 'nascer' };
 const IN_PROGRESS: ItemStatus[] = ['planning', 'executing', 'verifying', 'reviewing'];
 const PLANNING: ItemStatus[] = ['ready', 'planning'];
 const EXECUTING: ItemStatus[] = ['planned', 'executing', 'verifying', 'reviewing'];

@@ -80,3 +80,17 @@ export function sandboxUnavailable(platform: NodeJS.Platform = process.platform)
   }
   return `o sandbox do Claude Code não roda em ${platform}`;
 }
+
+/**
+ * Sandbox da run de nascimento: sem projeto nem config, nada liberado além do padrão. A
+ * etapa só lê (sem `Bash`); o sandbox fica ligado pelas mesmas travas das outras etapas.
+ */
+export function birthSandbox(root: string): SandboxSettings {
+  return {
+    enabled: true,
+    failIfUnavailable: true,
+    allowUnsandboxedCommands: false,
+    network: { allowedDomains: [], strictAllowlist: true, allowLocalBinding: true },
+    filesystem: { allowWrite: [], denyWrite: [gitCommonDir(root)] },
+  };
+}

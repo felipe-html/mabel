@@ -136,7 +136,7 @@ function withoutFlag<T extends { saldo: boolean }>(pause: T): Omit<T, 'saldo'> {
 
 export type QueueState = 'parada' | 'rodando' | 'pausada_por_saldo' | 'aguardando_humano';
 
-export const STAGE_VALUES: Record<string, string> = { refine: 'refinar', plan: 'planejar', execute: 'executar', review: 'revisar' };
+export const STAGE_VALUES: Record<string, string> = { refine: 'refinar', plan: 'planejar', execute: 'executar', review: 'revisar', birth: 'nascer' };
 
 const ROLES: Record<string, string> = { refine: 'refinador', plan: 'planejador', execute: 'executor', review: 'revisor' };
 

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import type { DatabaseSync } from 'node:sqlite';
 import type { Item } from './items.ts';
 import { projectContext } from './hermetic.ts';
-import { type Project, readCriticalRules } from './project.ts';
+import { type Project, type Stage, readCriticalRules } from './project.ts';
 import { type FrozenReference, freezeReferences, frozenDir, referencesSection } from './references.ts';
 import { sandboxSettings } from './sandbox.ts';
 import { type RunHandle, type RunObserver, type RunOutcome, type RunRequest, type RunStage, startRun } from './runner.ts';
@@ -12,6 +12,7 @@ import {
   type ExecuteOutput,
   type PlanOutput,
   type ReviewOutput,
+  birthSchema,
   executeSchema,
   planSchema,
   refineSchema,
@@ -23,6 +24,7 @@ import { originBranch } from './worktree.ts';
 /** Ferramentas que existem na etapa (`--tools`); o `init` precisa listar exatamente estas. */
 export const STAGE_TOOLS: Record<RunStage, string[]> = {
   refine: ['Read', 'Glob', 'Grep'],
+  birth: ['Read', 'Glob', 'Grep'],
   plan: ['Read', 'Glob', 'Grep'],
   execute: ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'Bash'],
   review: ['Read', 'Glob', 'Grep', 'Bash'],
@@ -31,6 +33,7 @@ export const STAGE_TOOLS: Record<RunStage, string[]> = {
 /** Ferramentas liberadas sem pedir (`--allowedTools`); no `dontAsk`, o resto é negado. */
 export const STAGE_ALLOWED: Record<RunStage, string[]> = {
   refine: STAGE_TOOLS.refine,
+  birth: STAGE_TOOLS.birth,
   plan: STAGE_TOOLS.plan,
   execute: STAGE_TOOLS.execute,
   review: ['Read', 'Glob', 'Grep', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git show:*)'],
@@ -52,8 +55,9 @@ export const EXECUTE_DISALLOWED = [
   'Bash(wget:*)',
 ];
 
-const SCHEMAS: Record<RunStage, Schema> = {
+export const SCHEMAS: Record<RunStage, Schema> = {
   refine: refineSchema,
+  birth: birthSchema,
   plan: planSchema,
   execute: executeSchema,
   review: reviewSchema,
@@ -61,6 +65,7 @@ const SCHEMAS: Record<RunStage, Schema> = {
 
 const PROMPT_FILES: Record<RunStage, string> = {
   refine: 'refinar.md',
+  birth: 'nascer.md',
   plan: 'planejar.md',
   execute: 'executar.md',
   review: 'revisar.md',
@@ -113,7 +118,7 @@ export interface StageResult<T> {
 }
 
 /** Argumentos da run de cada etapa: ferramentas, modo, modelo, limites, esquema e sessão. */
-export function stageRequest(ctx: StageContext, stage: RunStage, prompt: string, options: StageOptions = {}): RunRequest {
+export function stageRequest(ctx: StageContext, stage: Stage, prompt: string, options: StageOptions = {}): RunRequest {
   const { config } = ctx.project;
   const limits = config.limits[stage];
   const context = projectContext(ctx.worktree, config.contexto.maxCaracteres);
@@ -154,7 +159,7 @@ export function stageRequest(ctx: StageContext, stage: RunStage, prompt: string,
 export async function runStage<T>(
   db: DatabaseSync,
   ctx: StageContext,
-  stage: RunStage,
+  stage: Stage,
   prompt: string,
   options: StageOptions = {},
 ): Promise<StageResult<T>> {

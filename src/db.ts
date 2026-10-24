@@ -212,6 +212,23 @@ const migrations: string[] = [
   `
   ALTER TABLE items ADD COLUMN item_references TEXT NOT NULL DEFAULT '[]';
   `,
+  `
+  CREATE TABLE births (
+    id          TEXT PRIMARY KEY,
+    root        TEXT NOT NULL,
+    description TEXT NOT NULL,
+    options     TEXT NOT NULL DEFAULT '{}',
+    session_id  TEXT,
+    rounds      INTEGER NOT NULL DEFAULT 0,
+    output      TEXT,
+    status      TEXT NOT NULL,
+    decision    TEXT,
+    project_id  TEXT REFERENCES projects(id),
+    created_at  TEXT NOT NULL,
+    decided_at  TEXT
+  );
+  CREATE INDEX births_root ON births(root, created_at);
+  `,
 ];
 
 function migrate(db: DatabaseSync): void {

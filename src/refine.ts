@@ -13,6 +13,7 @@ import { type Project, ProjectError, resolveProject } from './project.ts';
 import { liveReferences, referencesSection } from './references.ts';
 import type { RefineOutput } from './schemas/stages.ts';
 import { ContextBudgetError, type StageContext, runStage, writeArtifact } from './stages.ts';
+import type { RunStage } from './runner.ts';
 import { runProbe } from './status.ts';
 import { style } from './style.ts';
 
@@ -177,18 +178,22 @@ export async function runRefine(db: DatabaseSync, home: string, project: Project
 /**
  * Política de saldo numa chamada só: sem leitura recente, faz a chamada mínima; abaixo do
  * piso ou acima do ritmo, pergunta (TTY) ou recusa. Não espera reset: o comando é interativo.
+ * `stage` é a etapa cuja estimativa de consumo entra na conta (`refine`, `birth`).
  */
 export async function ensureRefineBalance(
   db: DatabaseSync,
   home: string,
+  stage: RunStage,
   confirmLow: ((notice: string) => Promise<boolean>) | undefined,
+  /** Para onde vai o aviso da chamada mínima (stderr quando o stdout é só JSON). */
+  progress: NodeJS.WritableStream = process.stdout,
 ): Promise<string | undefined> {
-  let decision = checkBalance(latestReadings(db), new Date(), stageEstimate(db, 'refine'));
+  let decision = checkBalance(latestReadings(db), new Date(), stageEstimate(db, stage));
   if (decision.action === 'refresh') {
-    process.stdout.write(style.dim('  Atualizando o saldo com uma chamada mínima (haiku)…\n'));
+    progress.write(style.dim('  Atualizando o saldo com uma chamada mínima (haiku)…\n'));
     const outcome = await runProbe(db, home);
     if (outcome.status === 'interrupted') return 'interrompido';
-    decision = checkBalance(latestReadings(db), new Date(), stageEstimate(db, 'refine'));
+    decision = checkBalance(latestReadings(db), new Date(), stageEstimate(db, stage));
     if (decision.action === 'refresh') return 'sem leitura de saldo depois da chamada mínima';
   }
   if (decision.action === 'proceed') return undefined;
@@ -262,7 +267,7 @@ async function reviewList(io: ReviewIO, title: string, entries: string[]): Promi
   }
 }
 
-async function editList(io: ReviewIO, entries: string[]): Promise<string[]> {
+export async function editList(io: ReviewIO, entries: string[]): Promise<string[]> {
   io.write(style.dim(`${INDENT}enter mantém · - remove · texto novo substitui`));
   const kept: string[] = [];
   for (const [i, entry] of entries.entries()) {
@@ -536,7 +541,7 @@ export async function refineItem(
           return answer.startsWith('s') || answer.startsWith('y');
         }
       : undefined;
-    const blocked = await ensureRefineBalance(db, home, confirmLow);
+    const blocked = await ensureRefineBalance(db, home, 'refine', confirmLow);
     if (blocked) {
       process.stderr.write(`Refinamento não iniciado: ${blocked}.\n`);
       return blocked === 'interrompido' ? 130 : 1;
