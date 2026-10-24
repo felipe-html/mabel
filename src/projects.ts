@@ -333,6 +333,7 @@ export function renderProjectDetail(db: DatabaseSync, project: ProjectRow): stri
 const DELIVERY_LABELS: Record<DeliveryStatus, string> = { open: 'aberta', merged: 'na base', replaced: 'substituída' };
 
 const CAUSE_LABELS: Record<QueueEventCause, string> = {
+  queue: 'fila',
   five_hour: 'saldo de 5h',
   seven_day: 'saldo de 7 dias',
   pace: 'ritmo de 7 dias',
