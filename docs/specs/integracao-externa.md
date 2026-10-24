@@ -3,7 +3,10 @@
 O que a CLI precisa oferecer para ser usada por outros programas, a começar pela
 interface gráfica (repositório `mabel-ui`: app macOS e, depois, o controle remoto no iOS).
 Esta spec é o contrato entre os dois repositórios: o formato nasce aqui, com teste aqui, e
-o `mabel-ui` só o consome. Mudança de formato muda a versão.
+o `mabel-ui` só o consome. Remover ou mudar o sentido de um campo muda a versão; campo
+novo, não (ver "Compatibilidade").
+Pedidos entre os dois repositórios seguem `docs/INTEGRACAO.md` (issues com o rótulo
+`integracao`).
 
 Base no contrato: "Vários projetos-alvo em paralelo, cada um com a sua fila" e "A fila de
 um projeto roda em segundo plano" (`docs/CONTRATO.md`, escopo da v0), e a política de
