@@ -16,6 +16,7 @@
 //   is_error, subtype, result, errors   campos do result (padrão: sucesso)
 //   exit                código de saída (padrão: 0)
 //   hang                true: emite init e espera um SIGINT (sai com 130)
+//   delay_ms            espera antes de responder (etapa demorada que termina sozinha)
 //   cost                total_cost_usd (padrão: 0.01)
 //   rate_limit          { five_hour, seven_day, status } (utilização 0–1)
 //   session_id          id da sessão nova (padrão: aleatório); com --resume, usa o retomado
@@ -91,9 +92,7 @@ if (env.FAKE_CLAUDE_SCENARIO) {
     agents: ['Explore', 'general-purpose', 'Plan'],
     ...response.init,
   });
-  if (response.hang) {
-    waitForSigint();
-  } else {
+  const respond = () => {
     for (const [path, content] of Object.entries(response.files ?? {})) {
       const target = join(process.cwd(), path);
       if (content === null) {
@@ -133,7 +132,10 @@ if (env.FAKE_CLAUDE_SCENARIO) {
       ...(response.errors ? { errors: response.errors } : {}),
     });
     process.exitCode = response.exit ?? 0;
-  }
+  };
+  if (response.hang) waitForSigint();
+  else if (response.delay_ms) setTimeout(respond, response.delay_ms);
+  else respond();
 } else {
   const fixture = env.FAKE_CLAUDE_FIXTURE ?? new URL('./stream-read-file.jsonl', import.meta.url);
   const stream = readFileSync(fixture, 'utf8');
