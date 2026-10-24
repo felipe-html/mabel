@@ -24,13 +24,13 @@ O `nascer` é um comando avulso, como o `refinar`: sem item e fora do ciclo de v
 auditada (G1), hermética (G8) e passa pela política de saldo (G6). O agente não escreve
 nada (G4): quem grava é o Mabel, depois da revisão.
 
-Um ponto mexe no contrato e **precisa de autorização** antes de implementar (pergunta 1):
-commitar o `CLAUDE.md` que o `nascer` criou. O G10 hoje só deixa o Mabel commitar na base
-"o que o humano escreveu no `.mabel/`".
+Um ponto mexe no contrato, **autorizado pelo usuário em 2026-10-24** (pergunta 1): o
+commit do `CLAUDE.md` que o `nascer` criou. O G10 passa a incluir, além do que o humano
+escreveu no `.mabel/`, o que ele aceitou na revisão do `mabel nascer`.
 
-## Decisões
+## Decisões (aceitas pelo usuário em 2026-10-24)
 
-| Tema | Recomendação |
+| Tema | Decisão |
 |---|---|
 | Forma | Comando `mabel nascer`, rodadas de pergunta e resposta na mesma sessão (`--resume`), proposta no fim. |
 | Rodadas | No máximo 3 rodadas de perguntas, com até 5 perguntas cada, todas com sugestão. Na terceira, o agente propõe com suposições. |
@@ -187,7 +187,8 @@ definir" no item da base de testes) e:
 - `CLAUDE.md` na raiz, se aceito e se ainda não existir (conferido de novo na gravação);
 - `births.status = accepted`, com a proposta gravada e o projeto.
 
-Depois, o commit (pergunta 1) e o resumo: arquivos criados, itens, regras críticas, custo
+Depois, um commit "mabel nascer" na branch atual só com o `.mabel/` e o `CLAUDE.md` criado
+(o resto do índice fica como está, como no `commitMabelDir`), e o resumo: arquivos criados, itens, regras críticas, custo
 das rodadas e o próximo passo (`mabel refinar` para os itens críticos, depois `mabel run`).
 
 ## Saída `--json`
@@ -208,7 +209,7 @@ vem `projeto` (`id`, `nome`, `raiz`) e `arquivos`.
 1. **Rodadas**: etapa `birth`, prompt, esquema, validação, tabela `births`, saldo e as
    perguntas no TTY; no fim, a proposta é mostrada, sem gravar.
 2. **Revisão e gravação**: revisão no TTY, gravação pelo `init`, `git init` no diretório
-   vazio e o commit (conforme a pergunta 1).
+   vazio, o commit do `.mabel/` e do `CLAUDE.md` e o G10 atualizado no contrato.
 3. **Sem TTY**: `--responder`, `--aceitar` (com `--proposta`), `--descartar`, `--lista`
    e `--json`.
 
@@ -238,7 +239,7 @@ vem `projeto` (`id`, `nome`, `raiz`) e `arquivos`.
 - Nascer a partir de um documento (`--de <arquivo>`) em vez da descrição.
 - Medir quanto do backlog proposto chegou a `done` sem replanejamento.
 
-## Perguntas para o usuário
+## Perguntas para o usuário (respondidas em 2026-10-24: todas as recomendações aceitas)
 
 1. **Commit do `CLAUDE.md`** (muda o G10). Recomendo: o aceite na revisão autoriza um
    commit "mabel nascer" com o `.mabel/` e o `CLAUDE.md` criado (só esses caminhos), e o
