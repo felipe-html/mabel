@@ -264,6 +264,15 @@ Itens que tocam estas regras exigem sua aprovação dos critérios de aceite.
 <!-- Uma regra de negócio por linha, em linguagem natural. -->
 `;
 
+/** `regras-criticas.md` do modelo com os caminhos e os conceitos dados. */
+export function criticalRulesText(rules: CriticalRules): string {
+  const fill = (text: string, heading: string, entries: string[]) =>
+    entries.length === 0 ? text : text.replace(new RegExp(`(## ${heading}\n\n<!--.*-->\n)`), `$1\n${entries.join('\n')}\n`);
+  let text = fill(CRITICAL_RULES_TEMPLATE, 'Caminhos', rules.paths.map((path) => `- \`${path}\``));
+  text = fill(text, 'Conceitos', rules.concepts.map((concept) => `- ${concept}`));
+  return text;
+}
+
 /** Itens de lista sob `## Caminhos` e `## Conceitos`; comentários HTML e linhas vazias ignorados. */
 export function parseCriticalRules(text: string): CriticalRules {
   const rules: CriticalRules = { paths: [], concepts: [] };

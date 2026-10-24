@@ -1,5 +1,7 @@
+import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, readdirSync, realpathSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
@@ -8,12 +10,15 @@ import { dataDir, openDb } from './db.ts';
 import { ToolLog, summaryLine } from './exec.ts';
 import { formatCost, formatWhen, truncate } from './format.ts';
 import { projectContext } from './hermetic.ts';
+import { type ItemFields, renderItemBlock } from './backlog.ts';
+import { git } from './git.ts';
 import { DELEGATE } from './inbox.ts';
-import { gitRoot, isEmptyProject, readConfig } from './project.ts';
-import { type ReviewIO, ensureRefineBalance, terminalReviewIO } from './refine.ts';
+import { TEST_BASE_TITLE, createProject } from './init.ts';
+import { MABEL_DIR, currentBranch, gitRoot, hasTestCommand, isEmptyProject, readConfig } from './project.ts';
+import { type ReviewIO, editList, ensureRefineBalance, terminalReviewIO } from './refine.ts';
 import { type RunOutcome, type RunRequest, startRun } from './runner.ts';
 import { birthSandbox } from './sandbox.ts';
-import type { BirthOutput, BirthProposal, Question } from './schemas/stages.ts';
+import type { BirthItem, BirthOutput, BirthProposal, Question } from './schemas/stages.ts';
 import { validate } from './schemas/validate.ts';
 import { STACKS, type Stack, detectCommands, findStack, stackLabel } from './stacks.ts';
 import { SCHEMAS, STAGE_ALLOWED, STAGE_TOOLS, scopeHooks, systemPrompt } from './stages.ts';
@@ -305,8 +310,11 @@ function relativeGlob(glob: string): boolean {
 
 const normalize = (text: string) => text.trim().replace(/\s+/g, ' ').toLowerCase();
 
-/** O que a proposta tem de errado além do esquema; vazio quando está boa. */
-export function proposalProblems(proposal: BirthProposal): string[] {
+/**
+ * O que a proposta tem de errado além do esquema; vazio quando está boa. Na gravação, o
+ * backlog pode estar vazio: o humano descartou os itens na revisão.
+ */
+export function proposalProblems(proposal: BirthProposal, { allowEmptyBacklog = false } = {}): string[] {
   const problems: string[] = [];
   if (proposal.stack !== OTHER_STACK && !findStack(proposal.stack)) {
     problems.push(`stack "${proposal.stack}" fora do catálogo (${[...STACKS.map((stack) => stack.id), OTHER_STACK].join(', ')})`);
@@ -314,7 +322,7 @@ export function proposalProblems(proposal: BirthProposal): string[] {
   for (const glob of proposal.regrasCriticas.caminhos) {
     if (!relativeGlob(glob)) problems.push(`caminho crítico "${glob}" não é um glob relativo à raiz`);
   }
-  if (proposal.backlog.length === 0) problems.push('backlog vazio');
+  if (proposal.backlog.length === 0 && !allowEmptyBacklog) problems.push('backlog vazio');
   if (proposal.backlog.length > MAX_ITEMS) problems.push(`backlog com ${proposal.backlog.length} itens; o máximo é ${MAX_ITEMS}`);
   const concepts = new Set(proposal.regrasCriticas.conceitos.map(normalize));
   proposal.backlog.forEach((item, i) => {
@@ -520,6 +528,387 @@ export async function askQuestions(io: ReviewIO, output: BirthOutput): Promise<A
   return pairs;
 }
 
+// Revisão --------------------------------------------------------------------------------
+
+/** Terminal da revisão; `edit` abre um texto no editor e devolve o texto salvo. */
+export interface BirthIO extends ReviewIO {
+  edit?: (text: string) => Promise<string>;
+}
+
+/** Abre o texto num arquivo temporário no `$EDITOR` (padrão `vi`) e lê de volta. */
+export async function editInEditor(text: string): Promise<string> {
+  const dir = mkdtempSync(join(tmpdir(), 'mabel-nascer-'));
+  const path = join(dir, 'CLAUDE.md');
+  try {
+    writeFileSync(path, text);
+    const editor = process.env.VISUAL || process.env.EDITOR || 'vi';
+    const result = spawnSync('sh', ['-c', `${editor} "$1"`, 'sh', path], { stdio: 'inherit' });
+    if (result.status !== 0) throw new BirthError(`o editor (${editor}) saiu com erro; o CLAUDE.md ficou como estava`);
+    return readFileSync(path, 'utf8');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+export const terminalBirthIO: BirthIO = { ...terminalReviewIO, edit: editInEditor };
+
+export type BirthReview = { kind: 'accept'; proposal: BirthProposal } | { kind: 'keep' } | { kind: 'discard' };
+
+/** O projeto ainda não tem comando de teste: a base de testes entra como item 1. */
+export function missingTests(root: string): boolean {
+  return !hasTestCommand(detectCommands(root).verify);
+}
+
+const PREVIEW_LINES = 12;
+
+async function choice(io: ReviewIO, prompt: string, valid: string[]): Promise<string> {
+  for (;;) {
+    const answer = (await io.ask(`${INDENT}› ${prompt}: `)).trim().toLowerCase();
+    if (valid.includes(answer)) return answer;
+    io.write(style.dim(`${INDENT}responda ${valid.map((entry) => entry || 'enter').join(', ')}`));
+  }
+}
+
+async function reviewStack(io: ReviewIO, proposal: BirthProposal, fixed: boolean): Promise<Pick<BirthProposal, 'stack' | 'stackMotivo'>> {
+  io.write('');
+  io.write(`${style.bold('Stack:')} ${stackText(proposal.stack)}${proposal.stackMotivo ? ` — ${proposal.stackMotivo}` : ''}`);
+  if (fixed) return proposal;
+  if ((await choice(io, 'enter aceita · s escolhe outra', ['', 's'])) === '') return proposal;
+  const options = [...STACKS.map((stack) => `${stack.id} — ${stack.label}`), `${OTHER_STACK} — fora do catálogo`];
+  options.forEach((option, i) => io.write(`${INDENT}${i + 1}. ${option}`));
+  for (;;) {
+    const answer = Number((await io.ask(`${INDENT}número: `)).trim());
+    const stack = Number.isInteger(answer) ? (STACKS[answer - 1]?.id ?? (answer === options.length ? OTHER_STACK : undefined)) : undefined;
+    if (stack) return { stack, stackMotivo: 'escolhida na revisão' };
+    io.write(style.dim(`${INDENT}escolha de 1 a ${options.length}`));
+  }
+}
+
+async function reviewClaudeMd(io: BirthIO, proposal: BirthProposal, existing: boolean): Promise<string> {
+  io.write('');
+  if (existing) {
+    io.write(style.bold('CLAUDE.md (existente, não é alterado)'));
+    if (proposal.acrescimosClaudeMd.length === 0) io.write(`${INDENT}nenhum acréscimo sugerido`);
+    else {
+      io.write(style.dim(`${INDENT}acréscimos sugeridos, que não serão gravados:`));
+      for (const entry of proposal.acrescimosClaudeMd) io.write(`${INDENT}- ${entry}`);
+    }
+    return '';
+  }
+  let text = proposal.claudeMd;
+  if (!text.trim()) {
+    io.write(style.bold('CLAUDE.md: nenhum proposto'));
+    return '';
+  }
+  const actions = io.edit ? 'enter aceita · v mostra tudo · e edita no $EDITOR · - não cria' : 'enter aceita · v mostra tudo · - não cria';
+  for (let full = false; ; ) {
+    const lines = text.trimEnd().split('\n');
+    io.write(style.bold(`CLAUDE.md (novo, ${lines.length} linhas)`));
+    const shown = full ? lines : lines.slice(0, PREVIEW_LINES);
+    for (const line of shown) io.write(`${INDENT}${line}`);
+    if (shown.length < lines.length) io.write(style.dim(`${INDENT}… mais ${lines.length - shown.length} linhas`));
+    const answer = await choice(io, actions, ['', 'v', '-', ...(io.edit ? ['e'] : [])]);
+    if (answer === '') return text;
+    if (answer === '-') return '';
+    if (answer === 'v') full = true;
+    if (answer === 'e' && io.edit) {
+      try {
+        text = await io.edit(text);
+      } catch (error) {
+        if (!(error instanceof BirthError)) throw error;
+        io.write(style.dim(`${INDENT}${error.message}`));
+      }
+      full = false;
+    }
+  }
+}
+
+/** Edição um a um que lembra o que foi trocado: os itens seguem o conceito renomeado. */
+async function editTracked(io: ReviewIO, entries: string[]): Promise<{ kept: string[]; renamed: Map<string, string> }> {
+  const renamed = new Map<string, string>();
+  io.write(style.dim(`${INDENT}enter mantém · - remove · texto novo substitui`));
+  const kept: string[] = [];
+  for (const [i, entry] of entries.entries()) {
+    io.write(`${INDENT}${i + 1}. ${entry}`);
+    const answer = (await io.ask(`${INDENT}   › `)).trim();
+    if (answer === '-') continue;
+    if (answer && answer !== entry) renamed.set(normalize(entry), answer);
+    kept.push(answer || entry);
+  }
+  io.write(style.dim(`${INDENT}acrescente outros, um por linha (linha vazia encerra)`));
+  for (;;) {
+    const extra = (await io.ask(`${INDENT}+ `)).trim();
+    if (!extra) return { kept, renamed };
+    kept.push(extra);
+  }
+}
+
+async function reviewRules(io: ReviewIO, proposal: BirthProposal): Promise<{ rules: BirthProposal['regrasCriticas']; renamed: Map<string, string> }> {
+  const rules = proposal.regrasCriticas;
+  io.write('');
+  io.write(style.bold('Regras críticas'));
+  if (rules.caminhos.length === 0 && rules.conceitos.length === 0) {
+    io.write(`${INDENT}nenhuma`);
+    return { rules, renamed: new Map() };
+  }
+  io.write(`${INDENT}Caminhos: ${rules.caminhos.length > 0 ? rules.caminhos.join(', ') : 'nenhum'}`);
+  io.write(`${INDENT}Conceitos: ${rules.conceitos.length > 0 ? rules.conceitos.join('; ') : 'nenhum'}`);
+  const answer = await choice(io, 'enter aceita · e edita um a um · - descarta', ['', 'e', '-']);
+  if (answer === '') return { rules, renamed: new Map() };
+  if (answer === '-') return { rules: { caminhos: [], conceitos: [] }, renamed: new Map() };
+  io.write(style.bold(`${INDENT}Caminhos`));
+  const caminhos = await editList(io, rules.caminhos);
+  io.write(style.bold(`${INDENT}Conceitos`));
+  const { kept, renamed } = await editTracked(io, rules.conceitos);
+  return { rules: { caminhos, conceitos: kept }, renamed };
+}
+
+/** Número do item no backlog gravado: a base de testes, quando entra, é o 1. */
+const itemNumber = (position: number, offset: number) => position + offset;
+
+function itemLines(item: BirthItem, position: number, offset: number): string[] {
+  const deps = item.dependeDe.map((dep) => itemNumber(dep, offset));
+  if (offset > 0 && deps.length === 0) deps.push(1);
+  const facts = [`critérios: ${item.criterios.length}`];
+  if (deps.length > 0) facts.push(`depende de: ${deps.join(', ')}`);
+  if (item.regrasCriticas.length > 0) facts.push(`regras críticas: ${item.regrasCriticas.join('; ')}`);
+  return [
+    `${INDENT}${itemNumber(position, offset)}. ${item.titulo}`,
+    `${INDENT}   intenção: ${truncate(item.intencao.replace(/\s+/g, ' '), 80)}`,
+    style.dim(`${INDENT}   ${facts.join(' · ')}`),
+  ];
+}
+
+/** Campos do backlog a partir do item proposto; `dependsOn` continua em posições. */
+export function itemFields(item: BirthItem): ItemFields {
+  return {
+    title: item.titulo.trim(),
+    intent: item.intencao.trim(),
+    criteria: item.criterios,
+    dependsOn: item.dependeDe,
+    restrictions: null,
+    outOfScope: item.foraDoEscopo,
+    decisions: item.decisoes,
+    criticalConcepts: item.regrasCriticas,
+  };
+}
+
+async function editItem(io: ReviewIO, item: BirthItem): Promise<BirthItem> {
+  const title = (await io.ask(`${INDENT}   título [${item.titulo}]: `)).trim();
+  const intent = (await io.ask(`${INDENT}   intenção [${truncate(item.intencao.replace(/\s+/g, ' '), 60)}]: `)).trim();
+  io.write(`${INDENT}   critérios`);
+  const criterios = await editList(io, item.criterios);
+  return { ...item, titulo: title || item.titulo, intencao: intent || item.intencao, criterios };
+}
+
+/**
+ * Tira os itens descartados: as posições e as dependências dos que ficam são refeitas, e
+ * cada dependência perdida vira um aviso.
+ */
+export function dropItems(backlog: BirthItem[], keep: boolean[]): { backlog: BirthItem[]; warnings: string[] } {
+  const positions = new Map<number, number>();
+  let next = 1;
+  backlog.forEach((_, i) => {
+    if (keep[i]) positions.set(i + 1, next++);
+  });
+  const warnings: string[] = [];
+  const result: BirthItem[] = [];
+  backlog.forEach((item, i) => {
+    if (!keep[i]) return;
+    const dependeDe: number[] = [];
+    for (const dep of item.dependeDe) {
+      const moved = positions.get(dep);
+      if (moved) dependeDe.push(moved);
+      else warnings.push(`"${item.titulo}" dependia de "${backlog[dep - 1]?.titulo ?? dep}", descartado; a dependência saiu`);
+    }
+    result.push({ ...item, dependeDe });
+  });
+  return { backlog: result, warnings };
+}
+
+async function reviewBacklog(io: ReviewIO, backlog: BirthItem[], offset: number): Promise<BirthItem[]> {
+  io.write('');
+  const head = `Backlog (${backlog.length} ${backlog.length === 1 ? 'item' : 'itens'}${offset > 0 ? `; "${TEST_BASE_TITLE}" entra antes, como item 1` : ''})`;
+  io.write(style.bold(head));
+  for (const [i, item] of backlog.entries()) for (const line of itemLines(item, i + 1, offset)) io.write(line);
+  for (;;) {
+    const answer = await choice(io, 'enter aceita · v detalha · e edita · - descarta', ['', 'v', 'e', '-']);
+    if (answer === '') return backlog;
+    if (answer === '-') return [];
+    if (answer === 'v') {
+      for (const [i, item] of backlog.entries()) {
+        const fields = itemFields(item);
+        const deps = fields.dependsOn.map((dep) => itemNumber(dep, offset));
+        const block = renderItemBlock({ ...fields, number: itemNumber(i + 1, offset), dependsOn: offset > 0 && deps.length === 0 ? [1] : deps });
+        io.write('');
+        for (const line of block.trimEnd().split('\n')) io.write(`${INDENT}${line}`);
+      }
+      io.write('');
+      continue;
+    }
+    const edited: BirthItem[] = [];
+    const keep: boolean[] = [];
+    for (const [i, item] of backlog.entries()) {
+      io.write(`${INDENT}${itemNumber(i + 1, offset)}. ${item.titulo}`);
+      const action = await choice(io, 'enter mantém · - descarta · e edita', ['', '-', 'e']);
+      keep.push(action !== '-');
+      edited.push(action === 'e' ? await editItem(io, item) : item);
+    }
+    const { backlog: kept, warnings } = dropItems(edited, keep);
+    for (const warning of warnings) io.write(style.dim(`${INDENT}aviso: ${warning}`));
+    return kept;
+  }
+}
+
+/** Itens só citam conceitos que ficaram nas regras críticas (com os renomeados trocados). */
+function relinkConcepts(backlog: BirthItem[], concepts: string[], renamed: Map<string, string>, io: ReviewIO): BirthItem[] {
+  const present = new Set(concepts.map(normalize));
+  return backlog.map((item) => {
+    const regrasCriticas: string[] = [];
+    for (const concept of item.regrasCriticas) {
+      const current = renamed.get(normalize(concept)) ?? concept;
+      if (present.has(normalize(current))) regrasCriticas.push(current);
+      else io.write(style.dim(`${INDENT}aviso: "${item.titulo}" deixa de citar a regra crítica "${concept}", que saiu`));
+    }
+    return { ...item, regrasCriticas };
+  });
+}
+
+/**
+ * Revisão no terminal, parte a parte: stack, `CLAUDE.md`, regras críticas e backlog, e a
+ * gravação. `n` deixa a proposta pendente; `d` a descarta.
+ */
+export async function reviewBirth(io: BirthIO, birth: Birth, site: BirthSite): Promise<BirthReview> {
+  const output = birth.output as BirthOutput;
+  const proposal = output.proposta;
+  io.write(style.bold(`Proposta para ${basename(birth.root)}`));
+  io.write('');
+  for (const line of understandingLines(output)) io.write(line);
+
+  const stack = await reviewStack(io, proposal, Boolean(birth.options.stack));
+  const claudeMd = await reviewClaudeMd(io, proposal, site.claudeMd);
+  const { rules, renamed } = await reviewRules(io, proposal);
+  const offset = missingTests(site.root) ? 1 : 0;
+  let backlog = relinkConcepts(proposal.backlog, rules.conceitos, renamed, io);
+  backlog = await reviewBacklog(io, backlog, offset);
+
+  io.write('');
+  for (;;) {
+    const answer = (await io.ask('Gravar? [S/n/d] (n deixa a proposta pendente · d descarta) ')).trim().toLowerCase();
+    if (!answer || answer.startsWith('s') || answer.startsWith('y')) {
+      return { kind: 'accept', proposal: { ...proposal, ...stack, claudeMd, regrasCriticas: rules, backlog } };
+    }
+    if (answer.startsWith('n')) return { kind: 'keep' };
+    if (answer.startsWith('d')) return { kind: 'discard' };
+  }
+}
+
+// Gravação -------------------------------------------------------------------------------
+
+export interface BirthSaved {
+  project: { id: string; name: string; root: string };
+  /** Arquivos criados, relativos à raiz. */
+  files: string[];
+  gitInit: boolean;
+  items: number;
+  noTests: boolean;
+  /** Números dos itens com regra crítica. */
+  criticalItems: number[];
+  rules: { paths: number; concepts: number };
+  /** Branch do commit "mabel nascer", ou o motivo de ele não ter saído. */
+  commit: { branch: string } | { error: string };
+  costUsd: number;
+}
+
+export const BIRTH_COMMIT = 'mabel nascer';
+
+/**
+ * Grava a proposta aceita pelo caminho do `init` (com a stack aceita), o `CLAUDE.md` só se
+ * ainda não existir, e commita na branch atual só o `.mabel/` e o `CLAUDE.md` criado (G10).
+ * Num diretório vazio sem git, roda `git init -b main` antes.
+ */
+export function saveBirth(db: DatabaseSync, birth: Birth, proposal: BirthProposal): BirthSaved {
+  if (birth.status !== 'proposed') throw new BirthError(`O nascimento ${shortId(birth.id)} não tem proposta pendente.`);
+  const problems = proposalProblems(proposal, { allowEmptyBacklog: true });
+  if (problems.length > 0) throw new BirthError(`Proposta inválida: ${problems.join('; ')}.`);
+  const { root } = birth;
+  if (!existsSync(root)) throw new BirthError(`${root} não existe mais.`);
+  let gitInit = false;
+  const repo = gitRoot(root);
+  if (repo && readConfig(repo)) throw new BirthError(`${basename(repo)} já é um projeto Mabel; nada foi gravado.`);
+  if (repo !== root) {
+    if (repo) throw new BirthError(`${root} passou a ficar dentro do repositório ${repo}; nada foi gravado.`);
+    if (readdirSync(root).some((name) => !IGNORED_ENTRIES.has(name))) {
+      throw new BirthError(`${root} ganhou arquivos e continua sem git; rode \`git init\` e depois \`mabel nascer\`.`);
+    }
+    git(root, 'init', '-q', '-b', 'main');
+    gitInit = true;
+  }
+
+  const stack = findStack(proposal.stack);
+  const { setup, verify } = detectCommands(root);
+  const created = createProject(db, root, {
+    ...(stack ? { stack } : { other: '' }),
+    setup,
+    verify,
+    criticalRules: { paths: proposal.regrasCriticas.caminhos, concepts: proposal.regrasCriticas.conceitos },
+    items: proposal.backlog.map(itemFields),
+  });
+  const files = [...created.files];
+  // Conferido de novo agora: o `CLAUDE.md` do humano nunca é sobrescrito.
+  const claudePath = join(root, 'CLAUDE.md');
+  if (proposal.claudeMd.trim() && !existsSync(claudePath)) {
+    writeFileSync(claudePath, `${proposal.claudeMd.trimEnd()}\n`);
+    files.push('CLAUDE.md');
+  }
+  decideBirth(db, birth.id, 'accepted', proposal, created.config.projectId);
+
+  const branch = currentBranch(root);
+  const paths = [MABEL_DIR, ...(files.includes('CLAUDE.md') ? ['CLAUDE.md'] : [])];
+  let commit: BirthSaved['commit'];
+  try {
+    git(root, 'add', '--', ...paths);
+    git(root, 'commit', '-q', '-m', BIRTH_COMMIT, '--', ...paths);
+    commit = { branch };
+  } catch (error) {
+    commit = { error: (error as Error).message.split('\n')[0] ?? 'git commit falhou' };
+  }
+
+  const offset = created.noTests ? 1 : 0;
+  return {
+    project: { id: created.config.projectId, name: basename(root), root },
+    files,
+    gitInit,
+    items: proposal.backlog.length + offset,
+    noTests: created.noTests,
+    criticalItems: proposal.backlog.flatMap((item, i) => (item.regrasCriticas.length > 0 ? [i + 1 + offset] : [])),
+    rules: { paths: proposal.regrasCriticas.caminhos.length, concepts: proposal.regrasCriticas.conceitos.length },
+    commit,
+    costUsd: birthCost(db, birth),
+  };
+}
+
+export function savedLines(saved: BirthSaved): string[] {
+  const lines = [`✓ ${style.bold(saved.project.name)} nasceu no Mabel · ${saved.project.root}`];
+  if (saved.gitInit) lines.push(`${INDENT}git init -b main: o diretório era vazio e não tinha git`);
+  lines.push(`${INDENT}arquivos: ${saved.files.join(', ')}`);
+  lines.push(`${INDENT}backlog: ${saved.items} ${saved.items === 1 ? 'item' : 'itens'}${saved.noTests ? ` (o 1 é "${TEST_BASE_TITLE}")` : ''}`);
+  lines.push(`${INDENT}regras críticas: ${saved.rules.paths} ${saved.rules.paths === 1 ? 'caminho' : 'caminhos'} · ${saved.rules.concepts} ${saved.rules.concepts === 1 ? 'conceito' : 'conceitos'}`);
+  if ('branch' in saved.commit) lines.push(`${INDENT}commit "${BIRTH_COMMIT}" na branch ${saved.commit.branch}`);
+  else {
+    lines.push(`${INDENT}aviso: o commit não saiu (${saved.commit.error})`);
+    lines.push(`${INDENT}commite com \`git add .mabel CLAUDE.md && git commit -m "${BIRTH_COMMIT}" -- .mabel CLAUDE.md\` antes do \`mabel run\``);
+  }
+  lines.push(`${INDENT}custo das rodadas: ${formatCost(saved.costUsd)}`);
+  lines.push('');
+  lines.push(
+    saved.criticalItems.length > 0
+      ? `Próximo passo: \`mabel refinar\` nos itens com regra crítica (${saved.criticalItems.map((n) => `#${n}`).join(', ')}), depois \`mabel run\`.`
+      : 'Próximo passo: `mabel refinar` nos itens que pedirem detalhe, depois `mabel run`.',
+  );
+  return lines;
+}
+
 // Fluxo ----------------------------------------------------------------------------------
 
 export interface BirthEnv {
@@ -583,7 +972,7 @@ export function siteOf(birth: Birth): BirthSite {
  * No terminal: perguntas de cada rodada até a proposta, que é mostrada no fim. Ctrl+C
  * deixa o nascimento em aberto.
  */
-export async function converse(env: BirthEnv, io: ReviewIO, start: Birth): Promise<number> {
+export async function converse(env: BirthEnv, io: BirthIO, start: Birth): Promise<number> {
   let birth = start;
   while (birth.status === 'asking' && birth.output) {
     let pairs: AnswerPair[];
@@ -608,9 +997,27 @@ export async function converse(env: BirthEnv, io: ReviewIO, start: Birth): Promi
   }
   if (birth.status !== 'proposed' || !birth.output) return 0;
   io.write('');
-  for (const line of proposalLines(basename(birth.root), birth.output, siteOf(birth))) io.write(line);
+  let review: BirthReview;
+  try {
+    review = await reviewBirth(io, birth, siteOf(birth));
+  } catch (error) {
+    if (!(error instanceof Interrupted)) throw error;
+    io.write('');
+    io.write(style.dim(`interrompido: a proposta ${shortId(birth.id)} continua pendente (mabel nascer --lista)`));
+    return 130;
+  }
+  if (review.kind === 'keep') {
+    io.write(style.dim(`Proposta ${shortId(birth.id)} mantida pendente; nada gravado. Custo das rodadas: ${formatCost(birthCost(env.db, birth))}.`));
+    return 0;
+  }
+  if (review.kind === 'discard') {
+    decideBirth(env.db, birth.id, 'discarded', { motivo: 'descartada na revisão' });
+    io.write(`Proposta ${shortId(birth.id)} descartada; nada gravado.`);
+    return 0;
+  }
+  const saved = saveBirth(env.db, birth, review.proposal);
   io.write('');
-  io.write(style.dim(`Proposta ${shortId(birth.id)} pendente; nada foi gravado. Custo das rodadas: ${formatCost(birthCost(env.db, birth))}.`));
+  for (const line of savedLines(saved)) io.write(line);
   return 0;
 }
 
@@ -659,7 +1066,7 @@ export async function birthCommand(args: string[]): Promise<number> {
   const home = dataDir();
   const db = openDb(home);
   try {
-    const io = interactive() ? terminalReviewIO : undefined;
+    const io = interactive() ? terminalBirthIO : undefined;
     const env: BirthEnv = { db, home, io, view: { log: new ToolLog(process.cwd(), '    ') } };
     const site = birthSite(process.cwd());
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -9,11 +9,18 @@ import { Interrupted } from '../src/ask.ts';
 import {
   type BirthEnv,
   BirthError,
+  type BirthIO,
   answerBirth,
+  dropItems,
+  reviewBirth,
+  saveBirth,
+  savedLines,
+  siteOf,
   answerPairs,
   birthSite,
   converse,
   findBirth,
+  getBirth,
   openBirths,
   outputProblems,
   proposalProblems,
@@ -23,7 +30,17 @@ import { openDb } from '../src/db.ts';
 import { tableScope } from '../src/projects.ts';
 import type { ReviewIO } from '../src/refine.ts';
 import type { BirthOutput, BirthProposal } from '../src/schemas/stages.ts';
+import { parseBacklog } from '../src/backlog.ts';
+import { readConfig, readCriticalRules } from '../src/project.ts';
 import { CLI, makeRepo, setupProject, useScenario } from './helpers.ts';
+
+// O commit do `nascer` num repositório recém-criado precisa de autor.
+Object.assign(process.env, {
+  GIT_AUTHOR_NAME: 'Teste',
+  GIT_AUTHOR_EMAIL: 'teste@example.com',
+  GIT_COMMITTER_NAME: 'Teste',
+  GIT_COMMITTER_EMAIL: 'teste@example.com',
+});
 
 const PROPOSAL: BirthProposal = {
   stack: 'node',
@@ -285,7 +302,8 @@ test('terminal: perguntas uma a uma, rodada seguinte e a proposta mostrada sem g
   assert.ok(interrupted.lines.some((line) => /continua em aberto/.test(line)));
   assert.equal(scenario.log().length, 1);
 
-  const io = scriptedIO(['', 'Nunca', 'd']);
+  // Depois das perguntas, a revisão: enter em cada parte e `n` deixa a proposta pendente.
+  const io = scriptedIO(['', 'Nunca', 'd', '', '', '', '', 'n']);
   assert.equal(await converse({ ...env, io }, io, first.birth), 0);
   assert.match(scenario.log()[1]?.argv.at(-1) ?? '', /R: O gestor direto\n\nP: Pode tirar férias com saldo negativo\?\nR: Nunca\n\nP: Qual o login\?\nR: decida e registre como suposição\./);
   const text = io.lines.join('\n');
@@ -294,8 +312,11 @@ test('terminal: perguntas uma a uma, rodada seguinte e a proposta mostrada sem g
   assert.match(text, /Stack:.*node \(Node\/TypeScript\) — o time já usa TypeScript/);
   assert.match(text, /CLAUDE\.md \(novo, 3 linhas\)/);
   assert.match(text, /Conceitos: Saldo de férias nunca fica negativo/);
-  assert.match(text, /2\. Pedido de férias[\s\S]*depende de: 1/);
+  assert.match(text, /Backlog \(2 itens; "Estabelecer base de testes" entra antes, como item 1\)/);
+  assert.match(text, /3\. Pedido de férias[\s\S]*depende de: 2/);
+  assert.match(text, /mantida pendente; nada gravado/);
   assert.equal((db.prepare('SELECT status FROM births').get() as { status: string }).status, 'proposed');
+  assert.equal(existsSync(join(root, '.mabel')), false);
 });
 
 test('cli sem TTY: diretório vazio sem descrição sai com 1; com descrição, escreve as perguntas e o id', () => {
@@ -322,4 +343,162 @@ test('births classificada para a remoção de projeto', () => {
   assert.deepEqual(tableScope.births, { scope: 'project', where: 'project_id = ?' });
   const order = Object.keys(tableScope);
   assert.ok(order.indexOf('births') < order.indexOf('projects'));
+});
+
+const git = (cwd: string, ...args: string[]) => spawnSync('git', args, { cwd, encoding: 'utf8' }).stdout.trim();
+
+/** Nascimento com a proposta pronta, num diretório vazio sem git. */
+async function proposed(output: BirthOutput = PROPOSED, dir?: string) {
+  const ctx = emptyDir();
+  const root = dir ?? ctx.root;
+  useScenario(scratch(), [{ structured_output: output, cost: 0.25 }]);
+  const result = await startBirth(ctx.env, birthSite(root), 'férias', {});
+  assert.ok('birth' in result, JSON.stringify(result));
+  return { ...ctx, root, birth: result.birth };
+}
+
+test('revisão aceita tudo: git init, .mabel/ pelo init, base de testes como item 1, CLAUDE.md e commit', async () => {
+  const { root, db, birth } = await proposed();
+  const io = scriptedIO(['', '', '', 'v', '', '']) as BirthIO & ReturnType<typeof scriptedIO>;
+  const review = await reviewBirth(io, birth, siteOf(birth));
+  assert.equal(review.kind, 'accept');
+  assert.ok(review.kind === 'accept');
+  const saved = saveBirth(db, birth, review.proposal);
+
+  assert.equal(saved.gitInit, true);
+  assert.equal(git(root, 'symbolic-ref', '--short', 'HEAD'), 'main');
+  assert.deepEqual(saved.files.sort(), ['.mabel/.gitignore', '.mabel/backlog.md', '.mabel/config.json', '.mabel/regras-criticas.md', 'CLAUDE.md']);
+  assert.equal(readFileSync(join(root, 'CLAUDE.md'), 'utf8'), PROPOSAL.claudeMd);
+  assert.deepEqual(readCriticalRules(root), { paths: ['src/aprovacoes/**'], concepts: ['Saldo de férias nunca fica negativo'] });
+  assert.equal(readConfig(root)?.projectId, saved.project.id);
+  assert.ok(readConfig(root)?.rede?.includes('registry.npmjs.org'));
+
+  const items = parseBacklog(readFileSync(join(root, '.mabel', 'backlog.md'), 'utf8'));
+  assert.deepEqual(
+    items.map((item) => [item.number, item.title, item.dependsOn]),
+    [
+      [1, 'Estabelecer base de testes', []],
+      [2, 'Cadastro de pessoas do time', [1]],
+      [3, 'Pedido de férias', [2]],
+    ],
+  );
+  assert.deepEqual(items[2]?.criticalConcepts, ['Saldo de férias nunca fica negativo']);
+  assert.deepEqual(items[2]?.outOfScope, ['Aprovação pelo gestor']);
+
+  // Só o `.mabel/` e o `CLAUDE.md` no commit.
+  assert.equal(git(root, 'log', '--format=%s'), 'mabel nascer');
+  assert.deepEqual(git(root, 'show', '--name-only', '--format=', 'HEAD').split('\n').sort(), [
+    '.mabel/.gitignore',
+    '.mabel/backlog.md',
+    '.mabel/config.json',
+    '.mabel/regras-criticas.md',
+    'CLAUDE.md',
+  ]);
+  assert.deepEqual(saved.commit, { branch: 'main' });
+  const row = getBirth(db, birth.id);
+  assert.equal(row?.status, 'accepted');
+  assert.equal(row?.projectId, saved.project.id);
+  assert.deepEqual((row?.decision as BirthProposal).backlog.length, 2);
+  assert.equal(saved.costUsd, 0.25);
+  assert.deepEqual(saved.criticalItems, [3]);
+  const summary = savedLines(saved).join('\n');
+  assert.match(summary, /git init -b main: o diretório era vazio/);
+  assert.match(summary, /backlog: 3 itens \(o 1 é "Estabelecer base de testes"\)/);
+  assert.match(summary, /regras críticas: 1 caminho · 1 conceito/);
+  assert.match(summary, /commit "mabel nascer" na branch main/);
+  assert.match(summary, /mabel refinar` nos itens com regra crítica \(#3\), depois `mabel run`/);
+  // `v` mostrou o bloco de cada item como ele vai para o backlog.
+  assert.match(io.lines.join('\n'), /## Pedido de férias\n {2}id: 3[\s\S]*Depende de: 2/);
+});
+
+test('revisão edita: outra stack, CLAUDE.md no editor, conceito renomeado e item descartado sai das dependências', async () => {
+  const { root, db, birth } = await proposed();
+  const answers = [
+    's', '2', // stack: python
+    'e', '', // CLAUDE.md: edita e aceita
+    'e', '', '', 'Saldo nunca negativo', 'Só o gestor aprova', '', // regras: caminho mantido, conceito trocado, um novo
+    'e', '-', 'e', 'Pedir férias', '', 'Pedido sem saldo é recusado', '', // backlog: descarta o 1, edita o 2
+    's',
+  ];
+  const io = Object.assign(scriptedIO(answers), { edit: async (text: string) => `${text}\nEditado no editor.\n` });
+  const review = await reviewBirth(io, birth, siteOf(birth));
+  assert.ok(review.kind === 'accept');
+  assert.equal(review.proposal.stack, 'python');
+  assert.match(review.proposal.claudeMd, /Editado no editor\./);
+  assert.deepEqual(review.proposal.regrasCriticas.conceitos, ['Saldo nunca negativo', 'Só o gestor aprova']);
+  assert.deepEqual(review.proposal.backlog.map((item) => [item.titulo, item.dependeDe, item.regrasCriticas, item.criterios]), [
+    ['Pedir férias', [], ['Saldo nunca negativo'], ['Pedido sem saldo é recusado']],
+  ]);
+  assert.match(io.lines.join('\n'), /aviso: "Pedir férias" dependia de "Cadastro de pessoas do time", descartado; a dependência saiu/);
+
+  const saved = saveBirth(db, birth, review.proposal);
+  const items = parseBacklog(readFileSync(join(root, '.mabel', 'backlog.md'), 'utf8'));
+  assert.deepEqual(items.map((item) => [item.number, item.title, item.dependsOn]), [
+    [1, 'Estabelecer base de testes', []],
+    [2, 'Pedir férias', [1]],
+  ]);
+  assert.match(items[0]?.intent ?? '', /pytest/);
+  assert.ok(readConfig(root)?.rede?.includes('pypi.org'));
+  assert.equal(saved.items, 2);
+});
+
+test('revisão: - no CLAUDE.md não o cria; d descarta; n deixa pendente', async () => {
+  const { root, db, birth } = await proposed();
+  const kept = await reviewBirth(scriptedIO(['', '-', '-', '', 'n']), birth, siteOf(birth));
+  assert.equal(kept.kind, 'keep');
+  const io = scriptedIO(['', '-', '-', '-', '']);
+  const review = await reviewBirth(io, birth, siteOf(birth));
+  assert.ok(review.kind === 'accept');
+  assert.equal(review.proposal.claudeMd, '');
+  assert.deepEqual(review.proposal.backlog, []);
+  const saved = saveBirth(db, birth, review.proposal);
+  assert.equal(existsSync(join(root, 'CLAUDE.md')), false);
+  assert.equal(saved.items, 1);
+  assert.deepEqual(readCriticalRules(root), { paths: [], concepts: [] });
+
+  const other = await proposed();
+  assert.equal((await reviewBirth(scriptedIO(['', '', '', '', 'd']), other.birth, siteOf(other.birth))).kind, 'discard');
+});
+
+test('repositório com testes e CLAUDE.md: sem base de testes, CLAUDE.md preservado e índice do usuário fora do commit', async () => {
+  const root = makeRepo({ 'package.json': JSON.stringify({ scripts: { test: 'node --test' } }), 'src/a.js': '', 'CLAUDE.md': '# Meu CLAUDE\n' });
+  writeFileSync(join(root, 'rascunho.txt'), 'meu');
+  spawnSync('git', ['add', 'rascunho.txt'], { cwd: root });
+  const output = { ...PROPOSED, proposta: { ...PROPOSAL, acrescimosClaudeMd: ['Comandos: npm test'] } };
+  const { db, birth } = await proposed(output, root);
+  const io = scriptedIO(['', '', '', '']);
+  const review = await reviewBirth(io, birth, siteOf(birth));
+  assert.ok(review.kind === 'accept');
+  const text = io.lines.join('\n');
+  assert.match(text, /CLAUDE\.md \(existente, não é alterado\)[\s\S]*acréscimos sugeridos, que não serão gravados:\n {2}- Comandos: npm test/);
+  assert.match(text, /Backlog \(2 itens\)/);
+  assert.equal(review.proposal.claudeMd, '');
+
+  // Mesmo com um claudeMd vindo de fora, o existente não é sobrescrito.
+  const saved = saveBirth(db, birth, { ...review.proposal, claudeMd: '# Outro\n' });
+  assert.equal(readFileSync(join(root, 'CLAUDE.md'), 'utf8'), '# Meu CLAUDE\n');
+  assert.equal(saved.gitInit, false);
+  assert.equal(saved.noTests, false);
+  const items = parseBacklog(readFileSync(join(root, '.mabel', 'backlog.md'), 'utf8'));
+  assert.deepEqual(items.map((item) => [item.number, item.dependsOn]), [[1, []], [2, [1]]]);
+  assert.ok(!git(root, 'show', '--name-only', '--format=', 'HEAD').includes('rascunho.txt'));
+  assert.equal(git(root, 'diff', '--cached', '--name-only'), 'rascunho.txt');
+});
+
+test('gravação recusa diretório que ganhou arquivos sem git e proposta já decidida', async () => {
+  const { root, db, birth } = await proposed();
+  writeFileSync(join(root, 'notas.txt'), 'x');
+  assert.throws(() => saveBirth(db, birth, PROPOSAL), /ganhou arquivos e continua sem git/);
+  assert.equal(existsSync(join(root, '.mabel')), false);
+
+  const other = await proposed();
+  saveBirth(other.db, other.birth, PROPOSAL);
+  assert.throws(() => saveBirth(other.db, getBirth(other.db, other.birth.id) as typeof other.birth, PROPOSAL), /não tem proposta pendente/);
+});
+
+test('dropItems refaz as posições das dependências', () => {
+  const item = (titulo: string, dependeDe: number[]) => ({ ...(PROPOSAL.backlog[0] as BirthProposal['backlog'][number]), titulo, dependeDe });
+  const { backlog, warnings } = dropItems([item('a', []), item('b', [1]), item('c', [1, 2])], [false, true, true]);
+  assert.deepEqual(backlog.map((entry) => [entry.titulo, entry.dependeDe]), [['b', []], ['c', [1]]]);
+  assert.equal(warnings.length, 2);
 });
