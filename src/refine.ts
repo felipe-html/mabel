@@ -185,10 +185,12 @@ export async function ensureRefineBalance(
   home: string,
   stage: RunStage,
   confirmLow: ((notice: string) => Promise<boolean>) | undefined,
+  /** Para onde vai o aviso da chamada mínima (stderr quando o stdout é só JSON). */
+  progress: NodeJS.WritableStream = process.stdout,
 ): Promise<string | undefined> {
   let decision = checkBalance(latestReadings(db), new Date(), stageEstimate(db, stage));
   if (decision.action === 'refresh') {
-    process.stdout.write(style.dim('  Atualizando o saldo com uma chamada mínima (haiku)…\n'));
+    progress.write(style.dim('  Atualizando o saldo com uma chamada mínima (haiku)…\n'));
     const outcome = await runProbe(db, home);
     if (outcome.status === 'interrupted') return 'interrompido';
     decision = checkBalance(latestReadings(db), new Date(), stageEstimate(db, stage));

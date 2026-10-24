@@ -119,6 +119,10 @@ No modo Mabel, os comandos começam com `/`:
    verificação, cria o `.mabel/` e faz o commit dele. Projeto sem testes ganha como
    primeiro item "Estabelecer base de testes". Depois do merge dele, inclua o comando de
    teste em `verify` no `.mabel/config.json`: o agente não altera o config.
+   Para começar do zero, **`mabel nascer "<descrição>"`** num diretório vazio (ou num
+   repositório sem `.mabel/`) conversa com um agente que propõe a stack, o `CLAUDE.md`, as
+   regras críticas e o backlog inicial, em até 3 rodadas de perguntas. Você revisa parte a
+   parte; o que aceitar é gravado pelo caminho do `init` e commitado como "mabel nascer".
 2. **`/add`** acrescenta itens ao backlog, ou edite `.mabel/backlog.md` direto. Specs e
    referências também vão no `.mabel/`: não precisa commitar, o `/run` commita o que
    estiver pendente nele na base (só esse diretório) antes de começar.
@@ -238,6 +242,7 @@ Todos funcionam no modo Mabel (`/comando`) e no shell (`mabel comando`).
 | Comando | O que faz |
 |---|---|
 | `init [--stack <id>]` | Prepara o projeto atual para o Mabel |
+| `nascer ["<descrição>"] [--stack <id>] [--modelo <m>]` | Conversa com um agente, num diretório vazio ou num repositório sem `.mabel/`, que propõe stack, `CLAUDE.md`, regras críticas e backlog inicial; você revisa e o Mabel grava pelo `init`. Sem TTY: `--responder`, `--aceitar`, `--descartar`, `--lista` e `--json` |
 | `add` | Adiciona um item ao backlog |
 | `refinar [<n>] [--refazer] [--aceitar \| --descartar]` | Proposta de refinamento de um item, por agente, para você revisar antes de gravar no backlog |
 | `run [--item <n>] [--uma] [--sem-lote] [--fundo]` | Consome a fila. `--item` processa um item; `--uma` para no primeiro estado final; `--sem-lote` planeja e executa item a item; `--fundo` entrega a fila ao supervisor e volta na hora |

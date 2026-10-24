@@ -14,7 +14,8 @@ import { type ItemFields, renderItemBlock } from './backlog.ts';
 import { git } from './git.ts';
 import { DELEGATE } from './inbox.ts';
 import { TEST_BASE_TITLE, createProject } from './init.ts';
-import { MABEL_DIR, currentBranch, gitRoot, hasTestCommand, isEmptyProject, readConfig } from './project.ts';
+import { isoLocal, writeJson } from './json.ts';
+import { MABEL_DIR, ProjectError, currentBranch, gitRoot, hasTestCommand, isEmptyProject, readConfig } from './project.ts';
 import { type ReviewIO, editList, ensureRefineBalance, terminalReviewIO } from './refine.ts';
 import { type RunOutcome, type RunRequest, startRun } from './runner.ts';
 import { birthSandbox } from './sandbox.ts';
@@ -930,7 +931,7 @@ async function balanceBlock(env: BirthEnv): Promise<string | undefined> {
         return answer.startsWith('s') || answer.startsWith('y');
       }
     : undefined;
-  return ensureRefineBalance(env.db, env.home, 'birth', confirmLow);
+  return ensureRefineBalance(env.db, env.home, 'birth', confirmLow, env.view.log ? undefined : process.stderr);
 }
 
 export type StepResult = { birth: Birth } | { error: string; code: number };
@@ -1023,7 +1024,85 @@ export async function converse(env: BirthEnv, io: BirthIO, start: Birth): Promis
 
 export const shortId = (id: string) => id.slice(0, 8);
 
-/** Fora do TTY: o estado do nascimento em texto, com o id para o passo seguinte. */
+// Saída para outros programas ------------------------------------------------------------
+
+const BIRTH_STATES: Record<BirthStatus, string> = {
+  asking: 'perguntas',
+  proposed: 'proposta',
+  accepted: 'gravado',
+  discarded: 'descartado',
+};
+
+/** A proposta com os nomes de campo em português de cobra, como as outras saídas `--json`. */
+export function proposalJson(proposal: BirthProposal): Record<string, unknown> {
+  return {
+    stack: proposal.stack,
+    stack_motivo: proposal.stackMotivo,
+    claude_md: proposal.claudeMd,
+    acrescimos_claude_md: proposal.acrescimosClaudeMd,
+    regras_criticas: { caminhos: proposal.regrasCriticas.caminhos, conceitos: proposal.regrasCriticas.conceitos },
+    backlog: proposal.backlog.map((item) => ({
+      titulo: item.titulo,
+      intencao: item.intencao,
+      criterios: item.criterios,
+      fora_do_escopo: item.foraDoEscopo,
+      decisoes: item.decisoes,
+      regras_criticas: item.regrasCriticas,
+      depende_de: item.dependeDe,
+    })),
+  };
+}
+
+/** Proposta vinda do cliente: aceita os nomes do esquema ou os de cobra da saída `--json`. */
+export function proposalFromJson(value: unknown): BirthProposal | string {
+  const camel = (input: unknown): unknown => {
+    if (Array.isArray(input)) return input.map(camel);
+    if (input === null || typeof input !== 'object') return input;
+    return Object.fromEntries(
+      Object.entries(input).map(([key, child]) => [
+        key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase()),
+        camel(child),
+      ]),
+    );
+  };
+  const proposal = camel(value);
+  const errors = validate(SCHEMAS.birth.properties?.proposta ?? {}, proposal);
+  if (errors.length > 0) return `proposta fora do esquema: ${errors.slice(0, 8).join('; ')}`;
+  return proposal as BirthProposal;
+}
+
+export function birthJson(db: DatabaseSync, birth: Birth): Record<string, unknown> {
+  const output = birth.output;
+  return {
+    nascimento: birth.id,
+    estado: BIRTH_STATES[birth.status],
+    rodada: birth.rounds,
+    entendimento: output?.entendimento ?? '',
+    perguntas: (birth.status === 'asking' ? (output?.perguntas ?? []) : []).map((q) => ({
+      texto: q.texto,
+      sugestao: q.sugestao,
+      regra_critica: q.regraCritica,
+    })),
+    suposicoes: output?.suposicoes ?? [],
+    proposta: birth.status === 'proposed' && output ? proposalJson(output.proposta) : null,
+    custo_usd: birthCost(db, birth),
+  };
+}
+
+export function savedJson(birth: Birth, saved: BirthSaved): Record<string, unknown> {
+  return {
+    nascimento: birth.id,
+    estado: 'gravado',
+    projeto: { id: saved.project.id, nome: saved.project.name, raiz: saved.project.root },
+    arquivos: saved.files,
+    itens: saved.items,
+    git_init: saved.gitInit,
+    commit: 'branch' in saved.commit ? { branch: saved.commit.branch } : { erro: saved.commit.error },
+    custo_usd: saved.costUsd,
+  };
+}
+
+/** Fora do TTY: o estado do nascimento em texto, com o id e o passo seguinte. */
 function printStep(env: BirthEnv, birth: Birth): void {
   if (!birth.output) return;
   out('');
@@ -1037,9 +1116,146 @@ function printStep(env: BirthEnv, birth: Birth): void {
   }
   out('');
   out(style.dim(`Nascimento ${birth.id} · custo ${formatCost(birthCost(env.db, birth))}`));
+  if (birth.status === 'asking') {
+    out(style.dim('Responda com `mabel nascer --responder <id> --respostas <arquivo.json>` (lista na ordem das perguntas; null aceita a sugestão)'));
+    out(style.dim('ou, no terminal, rode `mabel nascer` na raiz.'));
+  } else {
+    out(style.dim('Revise no terminal com `mabel nascer` na raiz, grave como está com `mabel nascer --aceitar <id>`'));
+    out(style.dim('ou descarte com `mabel nascer --descartar <id>`.'));
+  }
+}
+
+function listLines(births: Birth[]): string[] {
+  if (births.length === 0) return ['Nenhum nascimento em aberto.'];
+  const rows = births.map((birth) => [shortId(birth.id), BIRTH_STATES[birth.status], `${birth.rounds}/${MAX_ROUNDS}`, formatWhen(birth.createdAt), birth.root]);
+  const header = ['id', 'estado', 'rodada', 'criado', 'raiz'];
+  const widths = header.map((title, i) => Math.max(title.length, ...rows.map((row) => (row[i] ?? '').length)));
+  const line = (row: string[]) => row.map((cell, i) => cell.padEnd(widths[i] ?? 0)).join('  ').trimEnd();
+  return [line(header), ...rows.map(line)];
+}
+
+function readJsonFile(path: string, what: string): unknown {
+  let text: string;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch (error) {
+    throw new BirthError(`Não foi possível ler ${what} em ${path}: ${(error as NodeJS.ErrnoException).code ?? (error as Error).message}.`);
+  }
+  try {
+    return JSON.parse(text) as unknown;
+  } catch (error) {
+    throw new BirthError(`${path} não é JSON válido: ${(error as Error).message}.`);
+  }
+}
+
+/** Respostas de `--respostas`: uma por pergunta, na ordem; texto responde, `null` aceita a sugestão. */
+export function parseAnswers(value: unknown, questions: Question[]): (string | null)[] | string {
+  if (!Array.isArray(value)) return 'as respostas precisam ser uma lista JSON';
+  if (value.length !== questions.length) return `${value.length} respostas para ${questions.length} perguntas`;
+  for (const [i, answer] of value.entries()) {
+    if (answer !== null && typeof answer !== 'string') return `resposta ${i + 1}: use texto ou null`;
+    const question = questions[i] as Question;
+    if ((answer === null || !answer.trim()) && !question.sugestao) return `resposta ${i + 1}: a pergunta não tem sugestão; responda com texto`;
+  }
+  return value as (string | null)[];
 }
 
 // Comando --------------------------------------------------------------------------------
+
+export const birthUsageFull = [
+  birthUsage,
+  'mabel nascer --responder <id> --respostas <arquivo.json> [--json]',
+  'mabel nascer --aceitar <id> [--proposta <arquivo.json>] [--json]',
+  'mabel nascer --descartar <id> [--json]',
+  'mabel nascer --lista [--json]',
+].join('\n       ');
+
+type Values = {
+  stack?: string;
+  modelo?: string;
+  json?: boolean;
+  responder?: string;
+  respostas?: string;
+  aceitar?: string;
+  proposta?: string;
+  descartar?: string;
+  lista?: boolean;
+};
+
+class UsageError extends Error {}
+
+/** Nascimento do `<id>` (ou prefixo), conferido contra os estados aceitos pelo passo. */
+function pick(db: DatabaseSync, id: string, allowed: BirthStatus[]): Birth {
+  const found = findBirth(db, id);
+  if (typeof found === 'string') throw new BirthError(found);
+  if (!allowed.includes(found.status)) {
+    const wanted = allowed.map((status) => BIRTH_STATES[status]).join(' ou ');
+    throw new BirthError(`O nascimento ${shortId(found.id)} está em ${BIRTH_STATES[found.status]}; este passo vale para ${wanted}.`);
+  }
+  return found;
+}
+
+async function stepCommand(env: BirthEnv, values: Values): Promise<number> {
+  const { db } = env;
+  const json = Boolean(values.json);
+  const report = (birth: Birth) => (json ? writeJson(birthJson(db, birth)) : printStep(env, birth));
+
+  if (values.lista) {
+    const births = openBirths(db);
+    if (json) {
+      writeJson({
+        nascimentos: births.map((birth) => ({
+          id: birth.id,
+          raiz: birth.root,
+          descricao: birth.description,
+          estado: BIRTH_STATES[birth.status],
+          rodada: birth.rounds,
+          criado_em: isoLocal(new Date(birth.createdAt)),
+        })),
+      });
+    } else {
+      out(listLines(births).join('\n'));
+    }
+    return 0;
+  }
+
+  if (values.descartar !== undefined) {
+    const birth = pick(db, values.descartar, ['asking', 'proposed']);
+    decideBirth(db, birth.id, 'discarded', { motivo: 'descartado' });
+    if (json) writeJson({ nascimento: birth.id, estado: 'descartado' });
+    else out(`Nascimento ${shortId(birth.id)} descartado; nada gravado.`);
+    return 0;
+  }
+
+  if (values.responder !== undefined) {
+    if (values.respostas === undefined) throw new UsageError('Falta --respostas <arquivo.json> com uma resposta por pergunta.');
+    const birth = pick(db, values.responder, ['asking']);
+    const answers = parseAnswers(readJsonFile(values.respostas, 'as respostas'), birth.output?.perguntas ?? []);
+    if (typeof answers === 'string') throw new BirthError(`Respostas inválidas: ${answers}.`);
+    const result = await answerBirth(env, birth, answerPairs(birth.output?.perguntas ?? [], answers));
+    if ('error' in result) {
+      process.stderr.write(`${result.error}\n`);
+      return result.code;
+    }
+    report(result.birth);
+    return 0;
+  }
+
+  if (values.aceitar !== undefined) {
+    const birth = pick(db, values.aceitar, ['proposed']);
+    let proposal = (birth.output as BirthOutput).proposta;
+    if (values.proposta !== undefined) {
+      const edited = proposalFromJson(readJsonFile(values.proposta, 'a proposta'));
+      if (typeof edited === 'string') throw new BirthError(`Proposta inválida: ${edited}.`);
+      proposal = edited;
+    }
+    const saved = saveBirth(db, birth, proposal);
+    if (json) writeJson(savedJson(birth, saved));
+    else out(savedLines(saved).join('\n'));
+    return 0;
+  }
+  return -1;
+}
 
 export async function birthCommand(args: string[]): Promise<number> {
   let parsed;
@@ -1047,13 +1263,35 @@ export async function birthCommand(args: string[]): Promise<number> {
     parsed = parseArgs({
       args,
       allowPositionals: true,
-      options: { stack: { type: 'string' }, modelo: { type: 'string' } },
+      options: {
+        stack: { type: 'string' },
+        modelo: { type: 'string' },
+        json: { type: 'boolean' },
+        responder: { type: 'string' },
+        respostas: { type: 'string' },
+        aceitar: { type: 'string' },
+        proposta: { type: 'string' },
+        descartar: { type: 'string' },
+        lista: { type: 'boolean' },
+      },
     });
   } catch (error) {
-    process.stderr.write(`${(error as Error).message}\nUso: ${birthUsage}\n`);
+    process.stderr.write(`${(error as Error).message}\nUso: ${birthUsageFull}\n`);
     return 1;
   }
-  const { values, positionals } = parsed;
+  const { positionals } = parsed;
+  const values = parsed.values as Values;
+  const steps = [values.responder, values.aceitar, values.descartar, values.lista || undefined].filter((value) => value !== undefined);
+  const usage = (message: string) => {
+    process.stderr.write(`${message}\nUso: ${birthUsageFull}\n`);
+    return 1;
+  };
+  if (steps.length > 1) return usage('Use um passo por vez: --responder, --aceitar, --descartar ou --lista.');
+  if (values.respostas !== undefined && values.responder === undefined) return usage('--respostas vale com --responder <id>.');
+  if (values.proposta !== undefined && values.aceitar === undefined) return usage('--proposta vale com --aceitar <id>.');
+  if (steps.length > 0 && (positionals.length > 0 || values.stack !== undefined || values.modelo !== undefined)) {
+    return usage('A descrição, --stack e --modelo valem só para começar um nascimento.');
+  }
   if (values.stack !== undefined && !findStack(values.stack)) {
     process.stderr.write(`Stack desconhecida: ${values.stack}. Use uma destas: ${STACKS.map((stack) => stack.id).join(', ')}.\n`);
     return 1;
@@ -1066,10 +1304,12 @@ export async function birthCommand(args: string[]): Promise<number> {
   const home = dataDir();
   const db = openDb(home);
   try {
-    const io = interactive() ? terminalBirthIO : undefined;
-    const env: BirthEnv = { db, home, io, view: { log: new ToolLog(process.cwd(), '    ') } };
-    const site = birthSite(process.cwd());
+    // Com `--json`, nada pergunta e só a linha de JSON vai para o stdout.
+    const io = interactive() && !values.json ? terminalBirthIO : undefined;
+    const env: BirthEnv = { db, home, io, view: values.json ? {} : { log: new ToolLog(process.cwd(), '    ') } };
+    if (steps.length > 0) return await stepCommand({ ...env, io: undefined }, values);
 
+    const site = birthSite(process.cwd());
     if (io) {
       const pending = openBirths(db, site.root)[0];
       if (pending) {
@@ -1083,23 +1323,24 @@ export async function birthCommand(args: string[]): Promise<number> {
     if (!description && io) {
       description = (await io.ask(`O que é o projeto?${site.hasCode ? ' (enter parte do código)' : ''} `)).trim();
     }
-    if (!description && !site.hasCode) {
-      process.stderr.write(`Diga o que é o projeto: mabel nascer "<descrição>".\nUso: ${birthUsage}\n`);
-      return 1;
-    }
+    if (!description && !site.hasCode) return usage('Diga o que é o projeto: mabel nascer "<descrição>".');
 
-    out(style.bold(`Nascimento de ${basename(site.root)}`) + style.dim(` · ${site.hasCode ? 'repositório com código' : 'diretório vazio'}`));
+    if (!values.json) {
+      out(style.bold(`Nascimento de ${basename(site.root)}`) + style.dim(` · ${site.hasCode ? 'repositório com código' : 'diretório vazio'}`));
+    }
     const result = await startBirth(env, site, description, options);
     if ('error' in result) {
       process.stderr.write(`${result.error}\n`);
       return result.code;
     }
     if (io) return await converse(env, io, result.birth);
-    printStep(env, result.birth);
+    if (values.json) writeJson(birthJson(db, result.birth));
+    else printStep(env, result.birth);
     return 0;
   } catch (error) {
     if (error instanceof Interrupted) return 130;
-    if (error instanceof BirthError) {
+    if (error instanceof UsageError) return usage(error.message);
+    if (error instanceof BirthError || error instanceof ProjectError) {
       process.stderr.write(`${error.message}\n`);
       return 1;
     }

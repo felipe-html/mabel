@@ -6,7 +6,7 @@
 
 - **Orçamento de contexto do projeto-alvo.** Limite de tamanho para `CLAUDE.md` e docs de contexto, com gate que falha quando estoura. Memória curada (consolidação periódica), nunca append-only.
 - **Integração com herdr.** Usar a API de socket do herdr para abrir um pane por agente ativo e acompanhar a frota ao vivo. Só depois que a CLI básica estiver estável.
-- **`mabel add` assistido.** Descrever uma funcionalidade em texto livre e deixar um agente (Haiku/Sonnet) propor a quebra em itens do backlog, com critérios, para você revisar antes de gravar.
+- **`mabel add --assistido`.** Descrever uma funcionalidade em texto livre e deixar um agente propor a quebra em itens do backlog, com critérios, para você revisar antes de gravar. O motor já existe no `mabel nascer` (itens com intenção, critérios, regras críticas e dependências por posição, validação e correção na mesma sessão, revisão do backlog): falta a etapa sobre um projeto que já existe, com o backlog atual no contexto.
 - **Confirmar a detecção de saldo esgotado.** `isUsageLimit` usa uma heurística (`rate_limit_event` com status fora de `allowed*` ou texto de limite no `result`). Falta capturar uma run real que esgote o saldo e gravá-la em fixture, como pede a spec do passo 4.
 - **Autocompletar de argumentos no modo Mabel.** Sugerir números de item em `/item`, `/aprovar`, `/responder` e `/cancelar`, filtrados pelo estado em que cada comando faz sentido.
 - **Mais stacks no catálogo do `init`.** Java/Kotlin (Gradle, JUnit), Ruby (RSpec), frontend com Playwright para testes de ponta a ponta. Entram quando houver projeto real pedindo.
@@ -34,4 +34,8 @@
 - **Mocks do snapshot no `setup`.** Gerar fixtures ou handlers (MSW) a partir de `api/<nome>.openapi.json`, para o executor não escrever dados de teste à mão.
 - **Telas com vários frames.** `referencia tela` com vários `node-id` (estados de erro, vazio, carregando) num comando só, e fontes e espaçamentos no `tela.md`.
 - **OpenAPI em YAML e API autenticada.** `referencia api` só aceita JSON público.
-- **Supervisor, `--json` e eventos.** Especificados em `docs/specs/integracao-externa.md`: o supervisor dono das filas (`run --fundo`, `anexar`, `parar`), as saídas `--json`, o fluxo `mabel eventos --json`, os comandos sem TTY e o `mabel nascer`. O contrato já prevê filas em paralelo e saldo único; falta o código. É o que a interface (repositório `mabel-ui`) consome.
+- **Acrescentar ao `CLAUDE.md` existente no `nascer`.** Hoje os acréscimos sugeridos só aparecem na revisão. Gravá-los pediria mostrar o diff e aceitar um a um, e mudaria o G10 de novo (o commit tocaria um arquivo que o humano escreveu).
+- **`setup` e `verify` propostos pelo agente no `nascer`.** Com stack `outra`, o projeto nasce sem comandos e o G3 fica sem gate até o item da base de testes. O agente poderia propor os comandos, revisados como no `init`.
+- **`mabel nascer --de <arquivo>`.** Partir de um documento (PRD, notas de reunião) em vez da descrição em uma linha; o arquivo entraria no prompt com orçamento próprio.
+- **Medir o backlog do `nascer`.** Quanto dos itens propostos chegou a `done` sem replanejamento, comparado com os itens escritos à mão, para calibrar o prompt.
+- **Respostas guardadas quando a rodada do `nascer` falha.** Se a run da rodada seguinte falha, as respostas dadas no terminal se perdem e as perguntas voltam. Guardar as respostas pendentes no `births` deixaria retomar sem responder de novo.

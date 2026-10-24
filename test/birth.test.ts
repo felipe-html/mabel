@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -501,4 +501,126 @@ test('dropItems refaz as posições das dependências', () => {
   const { backlog, warnings } = dropItems([item('a', []), item('b', [1]), item('c', [1, 2])], [false, true, true]);
   assert.deepEqual(backlog.map((entry) => [entry.titulo, entry.dependeDe]), [['b', []], ['c', [1]]]);
   assert.equal(warnings.length, 2);
+});
+
+/** CLI do `nascer` sem TTY, com o `claude` falso num cenário próprio. */
+function birthCli(responses: unknown[]) {
+  const root = mkdtempSync(join(tmpdir(), 'mabel-nascer-'));
+  const home = mkdtempSync(join(tmpdir(), 'mabel-home-'));
+  const db = openDb(home);
+  seedBalance(db);
+  db.close();
+  const dir = scratch();
+  const scenario = join(dir, 'cenario.json');
+  writeFileSync(scenario, JSON.stringify({ responses }));
+  const env = {
+    ...process.env,
+    MABEL_HOME: home,
+    NO_COLOR: '1',
+    MABEL_CLAUDE_BIN: join(import.meta.dirname, 'fixtures', 'fake-claude.mjs'),
+    FAKE_CLAUDE_SCENARIO: scenario,
+    FAKE_CLAUDE_LOG: join(dir, 'log.jsonl'),
+  };
+  const run = (cwd: string, ...args: string[]) =>
+    spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'nascer', ...args], { cwd, encoding: 'utf8', env, input: '', timeout: 20_000 });
+  const file = (name: string, content: unknown) => {
+    const path = join(dir, name);
+    writeFileSync(path, JSON.stringify(content));
+    return path;
+  };
+  return { root, home, dir, cli: (...args: string[]) => run(root, ...args), run, file };
+}
+
+/** A única linha do stdout, como JSON. */
+function oneLine(result: ReturnType<typeof spawnSync>): Record<string, unknown> {
+  assert.equal(result.status, 0, String(result.stderr));
+  const lines = String(result.stdout).trim().split('\n');
+  assert.equal(lines.length, 1, String(result.stdout));
+  return JSON.parse(lines[0] as string) as Record<string, unknown>;
+}
+
+test('sem TTY, --json: perguntas, --responder, --lista e --aceitar com a proposta editada pelo cliente', () => {
+  const { root, cli, file } = birthCli([{ structured_output: QUESTIONS, session_id: 's-json', cost: 0.12 }, { structured_output: PROPOSED, cost: 0.2 }]);
+  const asking = oneLine(cli('um app de férias', '--json'));
+  assert.equal(asking.versao, 1);
+  assert.equal(asking.estado, 'perguntas');
+  assert.equal(asking.rodada, 1);
+  assert.equal(asking.proposta, null);
+  assert.equal(asking.custo_usd, 0.12);
+  assert.deepEqual((asking.perguntas as unknown[])[1], { texto: 'Pode tirar férias com saldo negativo?', sugestao: 'Não', regra_critica: true });
+  const id = asking.nascimento as string;
+
+  assert.match(cli('--responder', id).stderr, /Falta --respostas/);
+  assert.equal(cli('--responder', id, '--respostas', file('poucas.json', [null])).status, 1);
+  assert.match(cli('--responder', id, '--respostas', file('sem.json', [null, null, null])).stderr, /resposta 3: a pergunta não tem sugestão/);
+  assert.match(cli('--aceitar', id).stderr, /está em perguntas; este passo vale para proposta/);
+
+  const proposal = oneLine(cli('--responder', id.slice(0, 8), '--respostas', file('respostas.json', [null, 'Nunca', 'Google']), '--json'));
+  assert.equal(proposal.estado, 'proposta');
+  assert.equal(proposal.rodada, 2);
+  assert.deepEqual(proposal.perguntas, []);
+  const snake = proposal.proposta as Record<string, unknown>;
+  assert.deepEqual(Object.keys(snake), ['stack', 'stack_motivo', 'claude_md', 'acrescimos_claude_md', 'regras_criticas', 'backlog']);
+  assert.deepEqual(Object.keys((snake.backlog as Record<string, unknown>[])[0] ?? {}), [
+    'titulo', 'intencao', 'criterios', 'fora_do_escopo', 'decisoes', 'regras_criticas', 'depende_de',
+  ]);
+  assert.ok(Math.abs((proposal.custo_usd as number) - 0.32) < 1e-9);
+
+  const list = oneLine(cli('--lista', '--json'));
+  assert.deepEqual((list.nascimentos as Record<string, unknown>[]).map((entry) => [entry.id, entry.estado, entry.rodada]), [[id, 'proposta', 2]]);
+  assert.match(cli('--lista').stdout, /proposta\s+2\/3/);
+
+  // O cliente devolve a proposta em cobra, sem o primeiro item: o segundo perde a dependência.
+  const edited = { ...snake, backlog: (snake.backlog as Record<string, unknown>[]).slice(1).map((item) => ({ ...item, depende_de: [] })) };
+  assert.match(cli('--aceitar', id, '--proposta', file('ruim.json', { ...edited, extra: 1 })).stderr, /proposta fora do esquema/);
+  const saved = oneLine(cli('--aceitar', id, '--proposta', file('editada.json', edited), '--json'));
+  assert.equal(saved.estado, 'gravado');
+  assert.equal((saved.projeto as Record<string, unknown>).raiz, realpathSync(root));
+  assert.ok((saved.arquivos as string[]).includes('CLAUDE.md'));
+  assert.equal(saved.git_init, true);
+  assert.deepEqual(saved.commit, { branch: 'main' });
+  const items = parseBacklog(readFileSync(join(root, '.mabel', 'backlog.md'), 'utf8'));
+  assert.deepEqual(items.map((item) => [item.number, item.title, item.dependsOn]), [
+    [1, 'Estabelecer base de testes', []],
+    [2, 'Pedido de férias', [1]],
+  ]);
+  assert.match(cli('--descartar', id).stderr, /está em gravado/);
+  assert.match(cli('--lista').stdout, /Nenhum nascimento em aberto/);
+});
+
+test('sem TTY: o que falta sai com código 1; --descartar; recusas de raiz', () => {
+  const { root, cli, run, file } = birthCli([{ structured_output: PROPOSED }]);
+  const missing = cli('--json');
+  assert.equal(missing.status, 1);
+  assert.equal(missing.stdout, '');
+  assert.match(missing.stderr, /Diga o que é o projeto/);
+  assert.match(cli('--aceitar', 'x', '--descartar', 'y').stderr, /um passo por vez/);
+  assert.match(cli('--proposta', file('p.json', {})).stderr, /--proposta vale com --aceitar/);
+  assert.match(cli('--lista', 'descrição').stderr, /valem só para começar/);
+  assert.match(cli('--stack', 'cobol', 'x').stderr, /Stack desconhecida: cobol/);
+  assert.match(cli('--aceitar', 'nao-existe').stderr, /Nenhum nascimento com o id nao-existe/);
+
+  const started = oneLine(cli('férias', '--json'));
+  assert.equal(started.estado, 'proposta');
+  const discarded = oneLine(cli('--descartar', started.nascimento as string, '--json'));
+  assert.deepEqual(discarded, { versao: 1, nascimento: started.nascimento, estado: 'descartado' });
+  assert.equal(existsSync(join(root, '.mabel')), false);
+
+  const loose = mkdtempSync(join(tmpdir(), 'mabel-nascer-'));
+  writeFileSync(join(loose, 'notas.txt'), 'x');
+  const refused = run(loose, 'férias');
+  assert.equal(refused.status, 1);
+  assert.match(refused.stderr, /com arquivos e sem git/);
+  const { root: mabelRoot } = setupProject();
+  assert.match(run(mabelRoot, 'férias').stderr, /já é um projeto Mabel/);
+});
+
+test('sem TTY, repositório com código: roda sem descrição e o texto diz o passo seguinte', () => {
+  const { run } = birthCli([{ structured_output: PROPOSED }]);
+  const repo = makeRepo({ 'package.json': JSON.stringify({ scripts: { test: 'node --test' } }), 'src/a.js': '' });
+  const result = run(repo);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Nascimento de .* · repositório com código/);
+  assert.match(result.stdout, /Proposta para/);
+  assert.match(result.stdout, /mabel nascer --aceitar <id>/);
 });
