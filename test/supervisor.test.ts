@@ -263,3 +263,40 @@ test('supervisor instalar e remover gravam o LaunchAgent e chamam o launchctl', 
   assert.match(remove.stdout, /filas em andamento continuam/);
   assert.equal(agentPath().endsWith('dev.mabel.supervisor.plist'), true);
 });
+
+test('sem TTY, nenhum comando de cliente espera resposta; o que falta vira código 1 com o argumento', async () => {
+  const p = setupProject('\n## A\nprimeiro\n');
+  syncBacklog(p.db, p.project);
+  const empty = makeRepo();
+  /** Roda com o stdin aberto e sem terminal: um comando que perguntasse ficaria preso. */
+  const run = (cwd: string, ...args: string[]) =>
+    new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve, reject) => {
+      const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, ...args], { cwd, env: p.env(), stdio: 'pipe' });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString('utf8')));
+      child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString('utf8')));
+      const timer = setTimeout(() => {
+        child.kill('SIGKILL');
+        reject(new Error(`mabel ${args.join(' ')} ficou esperando: ${stdout}${stderr}`));
+      }, 15_000);
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        resolve({ code, stdout, stderr });
+      });
+    });
+
+  const cases: [string, string[], number, RegExp][] = [
+    [p.root, ['run', '--fundo'], 1, /mabel supervisor instalar/],
+    [p.root, ['parar'], 0, /não está rodando/],
+    [p.root, ['aprovar'], 1, /Informe o número do item/],
+    [p.root, ['responder', '1'], 1, /Informe a resposta/],
+    [p.root, ['projeto', 'remover', p.project.name], 1, /--confirmar/],
+    [empty, ['init'], 0, /\.mabel\/ criado/],
+  ];
+  for (const [cwd, args, code, output] of cases) {
+    const result = await run(cwd, ...args);
+    assert.equal(result.code, code, `mabel ${args.join(' ')}: ${result.stderr}`);
+    assert.match(`${result.stdout}${result.stderr}`, output, `mabel ${args.join(' ')}`);
+  }
+});
