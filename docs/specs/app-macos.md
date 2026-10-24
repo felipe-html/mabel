@@ -23,9 +23,9 @@ não o desenho final dos gatos.
 | Terminal | SwiftTerm (pacote Swift) num pty rodando `mabel` no diretório do projeto. Atrás de um protocolo `TerminalView`, para trocar pela libghostty se ela estabilizar. |
 | Segundo plano | Quem mantém a fila rodando é o supervisor do Mabel, não o app. Fechar a janela ou o app não para nenhuma fila. |
 | Saldo | Da conta. Aparece no topo da lista de projetos e no rodapé do modo Mabel dentro do terminal (o rodapé da CLI, sem reimplementar). |
-| Mascotes | Um gato por papel, animado com Rive (máquina de estados). Ver "Mascotes". |
+| Mascotes | Um gato por papel, em pixel art de baixa resolução animada quadro a quadro, no estilo do mascote do Claude Code. Ver "Mascotes". |
 | Distribuição | Build local, sem App Store: o App Sandbox impediria rodar `mabel`, `git` e `claude`. Sem App Sandbox, com Hardened Runtime. Assinatura e notarização ficam para depois. |
-| Dependências | SwiftTerm e o runtime do Rive (`rive-ios`, que cobre macOS). Outra dependência exige justificativa ao usuário. |
+| Dependências | Só o SwiftTerm. Outra dependência exige justificativa ao usuário. |
 | Idioma | Identificadores em inglês; textos da interface em português. |
 
 ## O que o app precisa do Mabel
@@ -163,18 +163,29 @@ etapa depois de alguns segundos):
 Com várias pendências e etapa rodando ao mesmo tempo, o card mostra o frajola
 (`perguntando`): o que precisa do usuário vem antes.
 
-Animação:
+Desenho e animação, no estilo do mascote do Claude Code:
 
-- Um arquivo Rive por gato (`siames.riv`, `laranja.riv`…), todos com a mesma máquina de
-  estados `Gato` e a mesma entrada de texto `estado` (os nomes da tabela acima). O app só
-  muda a entrada; as transições entre estados ficam no arquivo.
-- O mesmo arquivo serve para os tamanhos do card (~96 pt), do painel (~160 pt) e da
-  barra de menus (18 pt). Na barra de menus, que é monocromática, vale um ícone de
-  template simplificado por estado.
-- Até os arquivos Rive existirem, o app usa um gato provisório desenhado em SwiftUI
-  (formas simples e animação por `TimelineView`), com os mesmos estados. O provisório é
-  só para não travar o resto: não é o desenho final.
-- "Reduzir movimento" do macOS ligado: estados sem loop, só a pose.
+- **Pixel art de baixa resolução:** grade de 16×14, cores chapadas e olhos de um pixel.
+  Ampliada por fator inteiro, sem suavização (`interpolation(.none)`).
+- **Quadro a quadro, sem interpolação:** cada estado é uma lista curta de quadros (2 a 6)
+  tocada em 1 a 8 fps. A troca de pose é seca, como no mascote de referência.
+- **Grades em texto,** como os `assets/*.txt` do Mabel, mas com uma letra por cor: `O`
+  pelo, `A` e `B` manchas, `E` orelhas, `M` focinho, `T` rabo, `L` patas, `K` olhos, `P`
+  nariz, `.` vazio, mais as cores de cena (`W` papel e teclas, `G` teclado, `R` bateria,
+  `Z`, `D` e `Y` para z, pensamento e brilho). Um arquivo por estado
+  (`sprites/<estado>.txt`), com os quadros separados por linha em branco e o fps no
+  cabeçalho. O usuário edita no editor de texto, e o diff mostra o que mudou.
+- **Pelagem é paleta:** os cinco gatos usam as mesmas grades. Cada gato é um mapa de
+  letra → cor (`sprites/paletas.json`); o siamês pinta `E`, `M`, `T` e `L` de marrom, o
+  frajola pinta `M`, `B` e `L` de branco.
+- **Renderização:** SwiftUI `Canvas` desenhando um retângulo por pixel, com o quadro
+  escolhido por `TimelineView`. Nenhuma dependência.
+- **Tamanhos:** fator 6 no card, 12 no painel, e o ícone da barra de menus a partir da
+  mesma grade, como imagem de template de 18 pt.
+- **Protótipo:** a prancha "Mascotes e estados" da referência visual mostra a pelagem e o
+  comportamento de cada estado. O protótipo em pixel art feito na conversa de 2026-10-23
+  é o ponto de partida das grades.
+- "Reduzir movimento" do macOS ligado: só o primeiro quadro de cada estado.
 
 ## Fora desta spec
 
@@ -193,7 +204,8 @@ Cada um termina com os testes verdes, os critérios atendidos e um commit.
 3. **Eventos e estados.** `mabel eventos` aberto, estado de cada projeto e do gato
    provisório derivado dos eventos, barra de menus, badge do Dock, notificações.
 4. **Inbox nativa e consumo.** Painel lateral com a inbox e a tela de diagnóstico.
-5. **Gatos de verdade.** Arquivos Rive no lugar do provisório.
+5. **Gatos de verdade.** Grades finais dos cinco gatos e dos oito estados, revisadas pelo
+   usuário, no lugar das provisórias.
 6. **Novo projeto assistido**, quando o `mabel nascer` existir.
 
 ## Testes
