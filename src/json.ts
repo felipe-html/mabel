@@ -57,18 +57,19 @@ export interface QueuePause {
 }
 
 /**
- * Pausa em vigor no projeto: a última `pause` ou `wait` do `queue_events`. A espera vale
- * enquanto o `run` que a gravou segura a trava e o prazo não passou; a pausa vale até a
- * fila voltar a rodar (trava ativa ou run de item depois dela).
+ * Pausa em vigor no projeto: a última `pause` ou `wait` do `queue_events`, se nenhum `start`
+ * veio depois. A espera vale enquanto o `run` que a gravou segura a trava e o prazo não
+ * passou; a pausa vale até a fila voltar a rodar (como no `mabel eventos`). Projetos com
+ * pausas de antes do `start` contam também a trava ativa e as runs de item depois dela.
  */
 export function queuePause(db: DatabaseSync, home: string, projectId: string, now: Date): QueuePause | null {
   const row = db
     .prepare(
       `SELECT at, kind, cause, detail, until FROM queue_events
-       WHERE project_id = ? AND kind IN ('pause', 'wait') ORDER BY id DESC LIMIT 1`,
+       WHERE project_id = ? AND kind IN ('pause', 'wait', 'start') ORDER BY id DESC LIMIT 1`,
     )
-    .get(projectId) as { at: string; kind: 'pause' | 'wait'; cause: string; detail: string; until: string | null } | undefined;
-  if (!row) return null;
+    .get(projectId) as { at: string; kind: 'pause' | 'wait' | 'start'; cause: string; detail: string; until: string | null } | undefined;
+  if (!row || row.kind === 'start') return null;
   const running = lockHolder(home, projectId) !== undefined;
   if (row.kind === 'wait') {
     if (!running || (row.until !== null && new Date(row.until).getTime() <= now.getTime())) return null;

@@ -22,6 +22,7 @@ import {
   respondCommand,
   respondUsage,
 } from './decide.ts';
+import { eventsCommand, eventsUsage } from './events.ts';
 import { inboxCommand, inboxUsage } from './inbox.ts';
 import { init, initUsage } from './init.ts';
 import { projectCommand, projectUsage, projectsCommand, projectsUsage } from './projects.ts';
@@ -169,6 +170,13 @@ export const commands: Command[] = [
     description: 'Auditoria de um projeto; `remover` apaga os dados dele no Mabel',
     usage: projectUsage,
     run: projectCommand,
+  },
+  {
+    name: 'eventos',
+    description: 'Fluxo de eventos de todos os projetos, uma linha de JSON por evento, até ser encerrado',
+    usage: eventsUsage,
+    shellOnly: true,
+    run: eventsCommand,
   },
   {
     name: 'completion',

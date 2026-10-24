@@ -133,6 +133,14 @@ test('pausa por saldo vale até a fila voltar a rodar', () => {
   assert.equal(p.json('saldo').pausa, null);
 });
 
+test('um run novo encerra a pausa por saldo, mesmo sem etapa', () => {
+  const p = jsonProject();
+  recordQueueEvent(p.db, p.project.id, { at: new Date(Date.now() - 2000), kind: 'pause', cause: 'five_hour', detail: 'saldo de 5h abaixo do piso' });
+  recordQueueEvent(p.db, p.project.id, { at: new Date(Date.now() - 1000), kind: 'start', cause: 'queue', detail: '' });
+  recordQueueEvent(p.db, p.project.id, { at: new Date(), kind: 'stop', cause: 'queue', detail: 'empty' });
+  assert.equal(p.json('projetos').projetos[0].fila, 'parada');
+});
+
 test('saldo --json: as duas janelas, com ritmo só na de 7 dias', () => {
   const p = jsonProject();
   let out = p.json('saldo');
