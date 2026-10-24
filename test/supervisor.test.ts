@@ -115,7 +115,8 @@ test('stop: a etapa em andamento termina e a fila encerra antes da próxima', as
 test('mabel parar num run em primeiro plano; sem fila, avisa que não está rodando', async () => {
   const p = setupProject('\n## A\nprimeiro\n\n## B\nsegundo\n');
   prepare(p.root);
-  useScenario(p.root, [{ structured_output: PLAN, delay_ms: 800 }, { structured_output: PLAN }]);
+  // A etapa dura mais que o arranque do `mabel parar` (um processo novo), mesmo com a suíte carregada.
+  useScenario(p.root, [{ structured_output: PLAN, delay_ms: 3000 }, { structured_output: PLAN }]);
   const idle = p.cli('parar');
   assert.equal(idle.status, 0);
   assert.match(idle.stdout, /não está rodando/);
