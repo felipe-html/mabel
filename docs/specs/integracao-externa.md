@@ -51,24 +51,44 @@ Uma linha de JSON por chamada, com `"versao": 1` no topo.
 | `mabel inbox --json` | As pendências: item, tipo (`aprovar`, `responder`, `validar`), pergunta, sugestão, opções. |
 | `mabel projeto <nome> --json` | Diagnóstico de consumo: custo e uso de janela por etapa, por modelo e por item. |
 
+### Exemplos
+
+`docs/specs/exemplos/` tem um exemplo real de cada saída `--json` (`projetos.json`,
+`status.json`, `saldo.json`, `inbox.json`, `projeto.json`, `nascer-*.json`) e um evento de
+cada tipo (`eventos.ndjson`). Quem os grava é `test/examples.test.ts`, rodando o CLI num
+cenário fixo; o teste falha se a saída mudar sem o exemplo ser regravado:
+
+```bash
+MABEL_GRAVAR_EXEMPLOS=1 npm test
+```
+
+Nos exemplos, ids, raízes e nomes de projeto são fixos, os horários partem de
+`2026-10-24T12:00:00-03:00` e o que depende do relógio (`idade_leitura_s`, `ritmo.esperado`)
+vem arredondado. A saída real é uma linha só; os `.json` estão formatados para leitura. O
+`mabel-ui` copia os arquivos, e a verificação dele compara a cópia com
+`../mabel/docs/specs/exemplos/`.
+
 ## Fluxo de eventos
 
 `mabel eventos --json` fica aberto e escreve um evento por linha (NDJSON), de todos os
 projetos, até o processo ser encerrado. O cliente mantém um só aberto e reabre se ele cair.
 
 ```json
-{"versao":1,"tipo":"etapa","projeto":"loja-online","item":12,"etapa":"executar","estado":"iniciou"}
-{"versao":1,"tipo":"ferramenta","projeto":"loja-online","item":12,"nome":"Edit"}
-{"versao":1,"tipo":"gate","projeto":"loja-online","item":12,"gate":"testes","resultado":"verde"}
-{"versao":1,"tipo":"inbox","projeto":"app-financas","item":7,"pendencias":2}
+{"versao":1,"tipo":"etapa","projeto":"loja-online","projeto_id":"3f0c2a9e-…","item":12,"etapa":"executar","estado":"iniciou"}
+{"versao":1,"tipo":"ferramenta","projeto":"loja-online","projeto_id":"3f0c2a9e-…","item":12,"nome":"Edit"}
+{"versao":1,"tipo":"gate","projeto":"loja-online","projeto_id":"3f0c2a9e-…","item":12,"gate":"testes","resultado":"verde"}
+{"versao":1,"tipo":"inbox","projeto":"app-financas","projeto_id":"8d2b…","pendencias":2}
 {"versao":1,"tipo":"saldo","janela":"5h","uso":0.22,"reset":"2026-10-23T16:40:00-03:00"}
-{"versao":1,"tipo":"fila","projeto":"loja-online","estado":"pausada_por_saldo"}
+{"versao":1,"tipo":"fila","projeto":"loja-online","projeto_id":"3f0c2a9e-…","estado":"pausada_por_saldo"}
 ```
 
 Tipos: `etapa` (iniciou, terminou, falhou), `ferramenta` (nome da ferramenta chamada pelo
 agente), `gate` (verde, vermelho), `revisao` (aprovada, reprovada), `inbox` (número de
 pendências do projeto), `saldo` (leitura nova), `fila` (mudança de estado da fila),
-`item` (transição de estado).
+`item` (transição de estado). Todo evento de projeto traz `projeto` (o nome) e
+`projeto_id`; o `saldo` não tem projeto, porque o saldo é da conta. Horários sempre no fuso
+local com o deslocamento, como nas saídas `--json`. Os campos exatos de cada tipo estão em
+`docs/specs/exemplos/eventos.ndjson`.
 
 ## Ações sem TTY
 

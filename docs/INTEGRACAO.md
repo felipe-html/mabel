@@ -11,7 +11,7 @@ formato; lá ele é consumido. O lado consumidor está em `../mabel-ui/docs/INTE
 | Contrato | `docs/specs/integracao-externa.md` | O formato de `--json`, eventos, supervisor e comandos sem TTY. É a fonte da verdade. |
 | Pedidos | Issues com o rótulo `integracao`, no repositório que vai agir | O que precisa de alguém pensar: campo que falta, comando novo, divergência entre spec e código. |
 
-Os exemplos gerados por teste em `docs/specs/exemplos/` vão completar o contrato, para o
+Os exemplos gerados por teste em `docs/specs/exemplos/` completam o contrato, para o
 consumidor conferir de forma mecânica ([felipe-html/mabel#28](https://github.com/felipe-html/mabel/issues/28)).
 
 ## Pedidos
