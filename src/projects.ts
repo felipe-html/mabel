@@ -9,6 +9,7 @@ import { type DeliveryStatus, listDeliveries } from './delivery.ts';
 import { formatCost, formatTokens, formatWhen, truncate } from './format.ts';
 import { tryGit } from './git.ts';
 import { ITEM_STATES } from './items.ts';
+import { STAGE_VALUES, WINDOW_KEYS, inboxCount, isoLocal, queueState, stageInProgress, writeJson } from './json.ts';
 import { LockError, acquireLock, lockHolder, lockPath } from './lock.ts';
 import { select } from './menu.ts';
 import { autonomousDecisions, escalate } from './pipeline.ts';
@@ -375,6 +376,117 @@ function projectEscalations(db: DatabaseSync, projectId: string): string[] {
   return result;
 }
 
+// Saídas --json --------------------------------------------------------------------------
+
+/** Um projeto em `mabel projetos --json`. */
+export function projectJson(db: DatabaseSync, home: string, project: ProjectRow, now: Date): Record<string, unknown> {
+  const { fila, pausa } = queueState(db, home, project.id, now);
+  return {
+    id: project.id,
+    nome: project.name,
+    raiz: project.root,
+    fila,
+    pausa,
+    em_andamento: fila === 'rodando' || fila === 'pausada_por_saldo' ? stageInProgress(db, project.id) : null,
+    inbox: inboxCount(db, project.id),
+    itens: Object.fromEntries(project.states.map((state) => [state.status, state.count])),
+    runs: project.runs,
+    custo_usd: project.costUsd,
+    ultima_atividade: isoLocal(new Date(project.lastActivity)),
+  };
+}
+
+/** Uso de cada janela por run de item: última leitura menos a primeira, quando estão na mesma janela. */
+const RUN_USAGE = `
+  SELECT r.run_id, r.window,
+    (SELECT utilization FROM rate_limits WHERE run_id = r.run_id AND window = r.window ORDER BY id DESC LIMIT 1)
+      - (SELECT utilization FROM rate_limits WHERE run_id = r.run_id AND window = r.window ORDER BY id LIMIT 1) AS used
+  FROM rate_limits r JOIN runs ON runs.id = r.run_id JOIN items i ON i.id = runs.item_id
+  WHERE i.project_id = ?
+  GROUP BY r.run_id, r.window
+  HAVING count(DISTINCT r.resets_at) = 1`;
+
+/**
+ * Diagnóstico de consumo (`mabel projeto <nome> --json`): custo, tokens e uso das janelas,
+ * no total e por etapa, por modelo e por item.
+ */
+export function projectDetailJson(db: DatabaseSync, project: ProjectRow): Record<string, unknown> {
+  const usageRows = db.prepare(RUN_USAGE).all(project.id) as { run_id: string; window: string; used: number }[];
+  const usage = new Map<string, Record<string, number>>();
+  for (const row of usageRows) {
+    const key = WINDOW_KEYS[row.window as keyof typeof WINDOW_KEYS];
+    if (!key) continue;
+    const byWindow = usage.get(row.run_id) ?? {};
+    byWindow[key] = Math.max(0, row.used);
+    usage.set(row.run_id, byWindow);
+  }
+
+  const runs = db
+    .prepare(
+      `SELECT r.id, coalesce(r.stage, r.kind) AS stage, coalesce(r.model, r.model_requested, '?') AS model,
+         i.number, coalesce(r.cost_usd, 0) AS cost, coalesce(r.input_tokens, 0) AS input, coalesce(r.output_tokens, 0) AS output,
+         coalesce(r.cache_read_tokens, 0) AS cache_read, coalesce(r.cache_creation_tokens, 0) AS cache_creation
+       FROM runs r JOIN items i ON i.id = r.item_id WHERE i.project_id = ?`,
+    )
+    .all(project.id) as {
+    id: string;
+    stage: string;
+    model: string;
+    number: number;
+    cost: number;
+    input: number;
+    output: number;
+    cache_read: number;
+    cache_creation: number;
+  }[];
+
+  interface Totals {
+    runs: number;
+    custo_usd: number;
+    tokens: { entrada: number; saida: number; cache_leitura: number; cache_criacao: number };
+    uso: Record<string, number>;
+  }
+  const empty = (): Totals => ({ runs: 0, custo_usd: 0, tokens: { entrada: 0, saida: 0, cache_leitura: 0, cache_criacao: 0 }, uso: { '5h': 0, '7d': 0 } });
+  const add = (totals: Totals, run: (typeof runs)[number]) => {
+    totals.runs++;
+    totals.custo_usd += run.cost;
+    totals.tokens.entrada += run.input;
+    totals.tokens.saida += run.output;
+    totals.tokens.cache_leitura += run.cache_read;
+    totals.tokens.cache_criacao += run.cache_creation;
+    for (const [window, used] of Object.entries(usage.get(run.id) ?? {})) totals.uso[window] = (totals.uso[window] ?? 0) + used;
+  };
+  const group = <K extends string | number>(key: (run: (typeof runs)[number]) => K) => {
+    const groups = new Map<K, Totals>();
+    for (const run of runs) {
+      const k = key(run);
+      const totals = groups.get(k) ?? empty();
+      add(totals, run);
+      groups.set(k, totals);
+    }
+    return groups;
+  };
+
+  const total = empty();
+  for (const run of runs) add(total, run);
+  const byCost = (a: Totals, b: Totals) => b.custo_usd - a.custo_usd;
+
+  const items = db
+    .prepare('SELECT number, title, status FROM items WHERE project_id = ? ORDER BY number')
+    .all(project.id) as { number: number; title: string; status: string }[];
+  const byItem = group((run) => run.number);
+
+  return {
+    projeto: { id: project.id, nome: project.name, raiz: project.root },
+    total,
+    por_etapa: [...group((run) => run.stage)]
+      .sort(([, a], [, b]) => byCost(a, b))
+      .map(([stage, totals]) => ({ etapa: STAGE_VALUES[stage] ?? stage, ...totals })),
+    por_modelo: [...group((run) => run.model)].sort(([, a], [, b]) => byCost(a, b)).map(([model, totals]) => ({ modelo: model, ...totals })),
+    por_item: items.map((item) => ({ item: item.number, titulo: item.title, estado: item.status, ...(byItem.get(item.number) ?? empty()) })),
+  };
+}
+
 // Remoção --------------------------------------------------------------------------------
 
 export interface RemovalPlan {
@@ -517,8 +629,8 @@ function shellQuote(text: string): string {
 
 // Comandos -------------------------------------------------------------------------------
 
-export const projectsUsage = 'mabel projetos [--removidos]';
-export const projectUsage = 'mabel projeto <nome> | mabel projeto remover <nome> [--confirmar <nome>]';
+export const projectsUsage = 'mabel projetos [--removidos] [--json]';
+export const projectUsage = 'mabel projeto <nome> [--json] | mabel projeto remover <nome> [--confirmar <nome>]';
 
 function withDb(action: (db: DatabaseSync, home: string) => number | Promise<number>): Promise<number> {
   const home = dataDir();
@@ -554,13 +666,25 @@ async function chooseAndShow(db: DatabaseSync, projects: ProjectRow[]): Promise<
 
 export function projectsCommand(args: string[]): Promise<number> {
   let removed: boolean;
+  let json: boolean;
   try {
-    removed = parseArgs({ args, options: { removidos: { type: 'boolean' } } }).values.removidos ?? false;
+    const { values } = parseArgs({ args, options: { removidos: { type: 'boolean' }, json: { type: 'boolean' } } });
+    removed = values.removidos ?? false;
+    json = values.json ?? false;
   } catch (error) {
     process.stderr.write(`${(error as Error).message}\nUso: ${projectsUsage}\n`);
     return Promise.resolve(1);
   }
-  return withDb((db) => {
+  if (removed && json) {
+    process.stderr.write(`--removidos não tem saída --json.\nUso: ${projectsUsage}\n`);
+    return Promise.resolve(1);
+  }
+  return withDb((db, home) => {
+    if (json) {
+      const now = new Date();
+      writeJson({ projetos: listProjects(db).map((project) => projectJson(db, home, project, now)) });
+      return 0;
+    }
     if (removed) {
       process.stdout.write(`${renderRemovals(db).join('\n')}\n`);
       return 0;
@@ -575,7 +699,7 @@ export function projectsCommand(args: string[]): Promise<number> {
 export function projectCommand(args: string[]): Promise<number> {
   let parsed;
   try {
-    parsed = parseArgs({ args, allowPositionals: true, options: { confirmar: { type: 'string' } } });
+    parsed = parseArgs({ args, allowPositionals: true, options: { confirmar: { type: 'string' }, json: { type: 'boolean' } } });
   } catch (error) {
     process.stderr.write(`${(error as Error).message}\nUso: ${projectUsage}\n`);
     return Promise.resolve(1);
@@ -588,12 +712,20 @@ export function projectCommand(args: string[]): Promise<number> {
     }
     return withDb((db, home) => removeCommand(db, home, second, parsed.values.confirmar));
   }
+  if (first === undefined && parsed.values.json) {
+    process.stderr.write(`Informe o projeto.\nUso: ${projectUsage}\n`);
+    return Promise.resolve(1);
+  }
   return withDb((db) => {
     if (!first) {
       const projects = listProjects(db);
       if (projects.length > 0 && interactive()) return chooseAndShow(db, projects);
       process.stderr.write(`Informe o projeto.\nUso: ${projectUsage}\n`);
       return 1;
+    }
+    if (parsed.values.json) {
+      writeJson(projectDetailJson(db, findProject(db, first)));
+      return 0;
     }
     process.stdout.write(`${renderProjectDetail(db, findProject(db, first)).join('\n')}\n`);
     return 0;

@@ -94,6 +94,12 @@ achados do teste orientam a especificação dos passos seguintes.
   - [x] `mabel referencia` (lista) e `mabel referencia api`.
   - [x] `mabel referencia tela` (Figma e `--png`), em commit separado.
 - [x] `run` commita na base o que está pendente no `.mabel/` (G10 ampliado, autorizado).
+- [ ] Integração externa (`docs/specs/integracao-externa.md`):
+  - [x] I.1 `--json` em `projetos`, `status`, `inbox` e `projeto <nome>`, e o comando `saldo`.
+  - [ ] I.2 Fluxo de eventos: `mabel eventos --json`.
+  - [ ] I.3 Supervisor: `mabel supervisor`, `run --fundo`, `anexar`, `parar` e o LaunchAgent.
+  - [ ] I.4 Ações sem TTY conferidas comando a comando.
+  - [ ] I.5 `mabel nascer`, depois da spec própria.
 
 ## Histórico
 
@@ -175,3 +181,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-23 | O #7 do `wego-acessos-frontend-novo` esgotou as tentativas na revisão por um critério de verificação `humano` (C9: conferir CORS e headers no ambiente de dev): o veredito exigia `atendido` em todo critério do plano, e o revisor, sem como comprovar pelo código, reprovou as três vezes; o #5 e o #6 passaram só porque os revisores marcaram os critérios humanos como atendidos. Correção, a pedido do usuário e dentro do G3 (critério humano se prova pela rota de validação humana): `reviewVerdict` não reprova critério `humano` não atendido e o registra no detalhe do gate ("fica para a validação humana"); o prompt do revisor manda avaliar se a implementação permite a validação e registrar como `bloqueante` o que a impede. Contrato não mudou. |
 | 2026-10-23 | Contrato alterado com autorização do usuário: vários projetos-alvo em paralelo, cada um com a sua fila sequencial rodando em segundo plano; o saldo é da conta, com uma política só para todas as filas, e aparece dentro e fora do projeto. "Múltiplos projetos" sai de Fora da v0 (itens em paralelo dentro de um projeto continuam fora). Ainda sem implementação: a fila em segundo plano depende do supervisor de runs, registrado no `BACKLOG.md` com a interface macOS, os mascotes e o controle remoto no iOS. |
 | 2026-10-24 | A interface saiu deste repositório, a pedido do usuário. A spec do app macOS, os mascotes e o controle remoto foram para o repositório `mabel-ui` (`docs/SPEC.md`, `CLAUDE.md`, `BACKLOG.md` e os sprites). Aqui fica o que a CLI precisa oferecer: `docs/specs/integracao-externa.md` (supervisor, `--json`, `mabel eventos`, comandos sem TTY, `mabel nascer`), que é o contrato entre os dois repositórios. O diagnóstico de consumo usa `mabel projeto <nome> --json` e a remoção usa o `--confirmar` que já existe. |
+| 2026-10-24 | I.1 (`docs/specs/integracao-externa.md`): `src/json.ts` com a versão, o horário local com deslocamento, o saldo e o estado da fila; `--json` em `projetos`, `status`, `inbox` e `projeto <nome>`, e o comando novo `mabel saldo` (texto e `--json`). Estado da fila derivado do que já existe: pausa por saldo em vigor no `queue_events` (a espera vale com a trava viva e o prazo aberto; a pausa, até a próxima run do projeto), trava viva é `rodando`, parada com pendências é `aguardando_humano`. Desvios: `pausa` vale também para causas fora do saldo (integração, contexto), sem mudar a fila; a inbox emite só `aprovar` e `responder` (o `validar` fica sem emissor, porque não há comando de validação); `saldo` mostra uma pausa só, a mais recente entre os projetos; com `--atualizar --json`, o resumo da probe vai para o stderr; erro continua em texto no stderr com código 1. |

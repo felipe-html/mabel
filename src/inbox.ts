@@ -1,9 +1,11 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { parseArgs } from 'node:util';
 import { Interrupted, ask, interactive } from './ask.ts';
 import { dataDir, openDb } from './db.ts';
 import { type DecisionOptions, approve, cancel, respond } from './decisions.ts';
 import { renderItemDetail } from './decide.ts';
 import { type Item, type ItemStatus, type PendingKind, listItems } from './items.ts';
+import { writeJson } from './json.ts';
 import { humanAttemptsSummary } from './pipeline.ts';
 import { type Project, ProjectError, resolveProject } from './project.ts';
 import { run } from './run.ts';
@@ -11,7 +13,7 @@ import type { PlanOutput, Question } from './schemas/stages.ts';
 import { readArtifact } from './stages.ts';
 import { style } from './style.ts';
 
-export const inboxUsage = 'mabel inbox';
+export const inboxUsage = 'mabel inbox [--json]';
 
 /** Resposta gravada quando o humano devolve a pergunta ao agente. */
 export const DELEGATE = 'decida e registre como suposição.';
@@ -318,12 +320,74 @@ export async function inboxSession(
   }
 }
 
-export async function inboxCommand(_args: string[]): Promise<number> {
+const PENDING_VALUES: Record<PendingKind, string> = {
+  question_plan: 'perguntas_planejamento',
+  question_execute: 'perguntas_execucao',
+  plan_incomplete: 'plano_incompleto',
+  critical_approval: 'aprovacao_critica',
+  attempts_exhausted: 'tentativas_esgotadas',
+  environment_block: 'impedimento_ambiente',
+  integration_conflict: 'conflito_integracao',
+};
+
+/**
+ * O que o humano pode fazer em cada pendência, como na inbox do terminal. `decidir` é o
+ * `responder` com a resposta que devolve a pergunta ao agente (`DELEGATE`).
+ */
+const PENDING_OPTIONS: Record<PendingKind, string[]> = {
+  question_plan: ['responder', 'decidir', 'cancelar'],
+  question_execute: ['responder', 'decidir', 'replanejar', 'cancelar'],
+  plan_incomplete: ['responder', 'cancelar'],
+  critical_approval: ['aprovar', 'responder', 'cancelar'],
+  attempts_exhausted: ['responder', 'replanejar', 'cancelar'],
+  environment_block: ['responder', 'replanejar', 'cancelar'],
+  integration_conflict: ['responder', 'replanejar', 'cancelar'],
+};
+
+/** `mabel inbox --json`: as pendências do projeto, com as perguntas e as opções de cada uma. */
+export function inboxJson(db: DatabaseSync, project: Project): Record<string, unknown> {
+  return {
+    projeto: { id: project.id, nome: project.name, raiz: project.root },
+    resposta_decidir: DELEGATE,
+    pendencias: pendingItems(db, project.id).map((item) => {
+      const kind = item.pendingKind as PendingKind;
+      const pending = item.pending ?? {};
+      // Pendências antigas guardavam as perguntas como texto.
+      const questions = (pending.questions ?? []).map((q: Question | string) =>
+        typeof q === 'string' ? { texto: q, sugestao: '', regra_critica: false } : { texto: q.texto, sugestao: q.sugestao ?? '', regra_critica: q.regraCritica ?? false },
+      );
+      return {
+        item: item.number,
+        titulo: item.title,
+        tipo: kind === 'critical_approval' ? 'aprovar' : 'responder',
+        pendencia: PENDING_VALUES[kind],
+        motivo: pending.reason ?? item.statusReason,
+        perguntas: questions,
+        suposicoes_criticas: pending.criticalAssumptions ?? [],
+        arquivos: pending.files ?? [],
+        opcoes: PENDING_OPTIONS[kind],
+      };
+    }),
+  };
+}
+
+export async function inboxCommand(args: string[]): Promise<number> {
+  let json: boolean;
+  try {
+    json = parseArgs({ args, options: { json: { type: 'boolean' } } }).values.json ?? false;
+  } catch (error) {
+    process.stderr.write(`${(error as Error).message}\nUso: ${inboxUsage}\n`);
+    return 1;
+  }
   const home = dataDir();
   const db = openDb(home);
   let resume = false;
   try {
     const project = resolveProject(db);
+    if (json) {
+      writeJson(inboxJson(db, project));
+      return 0;
+    }
     if (!interactive()) {
       const items = pendingItems(db, project.id);
       if (items.length === 0) process.stdout.write('Nada aguardando você.\n');

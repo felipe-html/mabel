@@ -7,7 +7,8 @@ import { dataDir, openDb } from './db.ts';
 import { summaryLine } from './exec.ts';
 import { formatCost, formatWhen, truncate } from './format.ts';
 import { boardItems, syncBacklog } from './items.ts';
-import { ProjectError, resolveProject } from './project.ts';
+import { balanceJson, balancePause, queueState, runningStages, writeJson } from './json.ts';
+import { ProjectError, type Project, resolveProject } from './project.ts';
 import { type RunOutcome, type RunRequest, startRun } from './runner.ts';
 import { paint, style } from './style.ts';
 
@@ -67,15 +68,20 @@ export function renderRecentRuns(runs: RecentRun[]): string[] {
   });
 }
 
-/** Resumo do quadro do projeto atual; vazio fora de um projeto Mabel. */
-function projectSummary(db: DatabaseSync): string[] {
-  let project;
+/** Projeto do diretório atual; indefinido fora de um projeto Mabel. */
+function currentProject(db: DatabaseSync): Project | undefined {
   try {
-    project = resolveProject(db);
+    return resolveProject(db);
   } catch (error) {
-    if (error instanceof ProjectError) return [];
+    if (error instanceof ProjectError) return undefined;
     throw error;
   }
+}
+
+/** Resumo do quadro do projeto atual; vazio fora de um projeto Mabel. */
+function projectSummary(db: DatabaseSync): string[] {
+  const project = currentProject(db);
+  if (!project) return [];
   const { warnings } = syncBacklog(db, project);
   return [
     ...renderBoardSummary(project.name, boardItems(db, project)),
@@ -83,12 +89,54 @@ function projectSummary(db: DatabaseSync): string[] {
   ];
 }
 
-export async function status(args: string[]): Promise<number> {
+/** `mabel status --json`: a fila do projeto atual por estado, as etapas em andamento e o saldo. */
+export function statusJson(db: DatabaseSync, home: string, now: Date): Record<string, unknown> {
+  const saldo = balanceJson(db, home, latestReadings(db), now);
+  const project = currentProject(db);
+  if (!project) return { projeto: null, saldo };
+  const { warnings } = syncBacklog(db, project);
+  const items = boardItems(db, project);
+  const byState: Record<string, number> = {};
+  for (const item of items) byState[item.status] = (byState[item.status] ?? 0) + 1;
+  const { fila, pausa } = queueState(db, home, project.id, now);
+  return {
+    projeto: { id: project.id, nome: project.name, raiz: project.root },
+    fila,
+    pausa,
+    por_estado: byState,
+    itens: items.map((item) => ({
+      numero: item.number,
+      titulo: item.title,
+      estado: item.status,
+      motivo: item.statusReason,
+      tentativas: item.attempts,
+      custo_usd: item.costUsd,
+      dependencias_pendentes: item.pendingDeps,
+      integrado: item.integrated ?? false,
+    })),
+    etapas: runningStages(db, project.id),
+    saldo,
+    avisos: warnings,
+  };
+}
+
+export const statusUsage = 'mabel status [--atualizar] [--json]';
+export const balanceUsage = 'mabel saldo [--atualizar] [--json]';
+
+/** Abre o banco, atualiza o saldo se pedido e entrega o resto a `show`. */
+async function withBalance(
+  args: string[],
+  usage: string,
+  show: (db: DatabaseSync, home: string, json: boolean) => void,
+): Promise<number> {
   let refresh: boolean;
+  let json: boolean;
   try {
-    refresh = parseArgs({ args, options: { atualizar: { type: 'boolean' } } }).values.atualizar ?? false;
+    const { values } = parseArgs({ args, options: { atualizar: { type: 'boolean' }, json: { type: 'boolean' } } });
+    refresh = values.atualizar ?? false;
+    json = values.json ?? false;
   } catch (error) {
-    process.stderr.write(`${(error as Error).message}\nUso: mabel status [--atualizar]\n`);
+    process.stderr.write(`${(error as Error).message}\nUso: ${usage}\n`);
     return 1;
   }
 
@@ -104,10 +152,39 @@ export async function status(args: string[]): Promise<number> {
   let code = 0;
   try {
     if (refresh) {
-      process.stdout.write(style.dim('Atualizando o saldo com uma chamada mínima (haiku)…\n'));
+      // Com --json, a saída é só a linha de JSON; o resumo da probe vai para o stderr.
+      const out = json ? process.stderr : process.stdout;
+      out.write(style.dim('Atualizando o saldo com uma chamada mínima (haiku)…\n'));
       const outcome = await runProbe(db, home);
-      process.stdout.write(`${style.dim(summaryLine(outcome))}\n\n`);
+      out.write(`${style.dim(summaryLine(outcome))}\n${json ? '' : '\n'}`);
       if (outcome.status !== 'succeeded') code = 1;
+    }
+    show(db, home, json);
+  } finally {
+    db.close();
+  }
+  return code;
+}
+
+export function balanceCommand(args: string[]): Promise<number> {
+  return withBalance(args, balanceUsage, (db, home, json) => {
+    const now = new Date();
+    if (json) {
+      writeJson(balanceJson(db, home, latestReadings(db), now));
+      return;
+    }
+    const lines = renderBalanceHeader(latestReadings(db), now, paint);
+    const pause = balancePause(db, home, now);
+    if (pause) lines.push('', paint.warn(`${pause.tipo === 'pausa' ? 'Fila pausada' : 'Fila esperando'} (${pause.projeto}): ${pause.motivo}`));
+    process.stdout.write(`${lines.join('\n')}\n`);
+  });
+}
+
+export function status(args: string[]): Promise<number> {
+  return withBalance(args, statusUsage, (db, home, json) => {
+    if (json) {
+      writeJson(statusJson(db, home, new Date()));
+      return;
     }
     const lines = [...renderBalanceHeader(latestReadings(db), new Date(), paint), ''];
     const credentials = expiryWarnings(home);
@@ -119,8 +196,5 @@ export async function status(args: string[]): Promise<number> {
       ...renderRecentRuns(recentRuns(db, 5)),
     );
     process.stdout.write(`${lines.join('\n')}\n`);
-  } finally {
-    db.close();
-  }
-  return code;
+  });
 }
