@@ -99,7 +99,7 @@ achados do teste orientam a especificação dos passos seguintes.
   - [x] I.2 Fluxo de eventos: `mabel eventos --json`.
   - [x] I.3 Supervisor: `mabel supervisor`, `run --fundo`, `anexar`, `parar` e o LaunchAgent.
   - [x] I.4 Ações sem TTY conferidas comando a comando.
-  - [ ] I.5 `mabel nascer` (`docs/specs/nascer.md`), depois das respostas às perguntas da spec.
+  - [ ] I.5 `mabel nascer` (`docs/specs/nascer.md`).
 
 ## Histórico
 
@@ -188,3 +188,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-24 | I.4 (`docs/specs/integracao-externa.md`): conferidos sem TTY `run --fundo`, `parar`, `aprovar`, `responder`, `init` e `projeto remover`; nenhum precisou mudar. `aprovar`, `responder` e `cancelar` só pedem argumentos no modo Mabel (`promptArgs`) e, no shell, saem com código 1 dizendo o que falta; o `init` só pergunta com terminal; a remoção pede `--confirmar <nome>`. Teste roda cada um com o stdin aberto e sem terminal. Desvio: o `init` sem TTY num projeto sem stack reconhecida segue com "Stack: a definir" (comportamento já testado), em vez de sair pedindo `--stack`; também não commita o `.mabel/`, que o `run` commita na abertura. |
 | 2026-10-24 | Decisões do usuário sobre os desvios do I.3 e do I.4: mantidos a política de saldo pelas leituras do banco, sem escalonador central; o `parar` por sinal ao dono da trava; a retomada na abertura do supervisor; o `supervisor remover` sem parar as filas; o `init` sem TTY com "Stack: a definir"; e o caminho do `node` no LaunchAgent só documentado. |
 | 2026-10-24 | Spec do `mabel nascer` (`docs/specs/nascer.md`): etapa `birth` sem item e só leitura, até 3 rodadas de perguntas na mesma sessão, proposta de stack, `CLAUDE.md`, regras críticas e backlog inicial, revisão como no `refinar`, gravação pelo `init`, tabela `births` e fluxo sem TTY com `--json`. Quatro perguntas ao usuário antes de implementar; a primeira (commit do `CLAUDE.md`) muda o G10. |
+| 2026-10-24 | Decisões do usuário sobre a spec do `nascer`: aceitas as quatro recomendações. O aceite na revisão autoriza o commit "mabel nascer" com o `.mabel/` e o `CLAUDE.md` criado (mudança no G10 autorizada), `git init` sem perguntar no diretório vazio, até 3 rodadas de 5 perguntas e `sonnet` como modelo padrão. |
