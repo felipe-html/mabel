@@ -29,7 +29,7 @@ import { projectCommand, projectUsage, projectsCommand, projectsUsage } from './
 import { refineCommand, refineUsage } from './refine.ts';
 import { run, runUsage } from './run.ts';
 import { runsCommand, runsUsage } from './runs.ts';
-import { status } from './status.ts';
+import { balanceCommand, balanceUsage, status, statusUsage } from './status.ts';
 
 export interface Command {
   name: string;
@@ -138,8 +138,14 @@ export const commands: Command[] = [
   {
     name: 'status',
     description: 'Mostra a fila, as etapas em andamento e o saldo',
-    usage: 'mabel status [--atualizar]',
+    usage: statusUsage,
     run: status,
+  },
+  {
+    name: 'saldo',
+    description: 'Mostra as duas janelas de saldo e a pausa da fila por saldo, se houver',
+    usage: balanceUsage,
+    run: balanceCommand,
   },
   {
     name: 'runs',
