@@ -127,6 +127,7 @@ interface BirthProposal {
 | `id` | Id do nascimento (o `<id>` dos comandos aceita prefixo único). |
 | `root` | Raiz do repositório. |
 | `description` | Descrição inicial. |
+| `options` | `--stack` e `--modelo` da primeira chamada, que valem para as rodadas seguintes. |
 | `session_id` | Sessão do agente, retomada a cada rodada. |
 | `rounds` | Rodadas feitas. |
 | `output` | Última saída estruturada. |
