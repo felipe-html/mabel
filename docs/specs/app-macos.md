@@ -1,8 +1,9 @@
 # Especificação — App do Mabel para macOS
 
 Interface gráfica do Mabel: lista de projetos, saldo da conta, terminal com o modo Mabel,
-inbox nativa e um gato animado por papel. O app é um **projeto novo, em repositório
-próprio** (`mabel-app`), e esta spec é o ponto de partida dele: quem começar o projeto
+inbox nativa e um gato animado por papel. O app é um **projeto novo, no repositório
+`mabel-ui`**, que vai abrigar também o controle remoto no iOS. Esta spec é o ponto de
+partida dele: quem começar o projeto
 deve conseguir trabalhar só com ela e com a referência visual.
 
 A CLI continua sendo a porta principal do Mabel e o plano B do app. O app é um cliente:
@@ -18,7 +19,7 @@ não o desenho final dos gatos.
 | Tema | Decisão |
 |---|---|
 | Plataforma | macOS 14 ou mais novo, Swift 6, SwiftUI. iOS fica para o controle remoto (fora desta spec). |
-| Repositório | `mabel-app`, separado do `mabel`. O `mabel` não ganha dependência nenhuma por causa do app. |
+| Repositório | `mabel-ui`, separado do `mabel`, com os dois apps Apple (este e o controle remoto no iOS) sobre um pacote compartilhado. O `mabel` não ganha dependência nenhuma por causa deles. Ver "Estrutura do repositório". |
 | Fonte da verdade | A CLI `mabel`. O app lê estado por `--json` e por um fluxo de eventos; age rodando comandos. Nunca lê nem escreve o `~/.mabel/mabel.db` direto. |
 | Terminal | SwiftTerm (pacote Swift) num pty rodando `mabel` no diretório do projeto. Atrás de um protocolo `TerminalView`, para trocar pela libghostty se ela estabilizar. |
 | Segundo plano | Quem mantém a fila rodando é o supervisor do Mabel, não o app. Fechar a janela ou o app não para nenhuma fila. |
@@ -27,6 +28,28 @@ não o desenho final dos gatos.
 | Distribuição | Build local, sem App Store: o App Sandbox impediria rodar `mabel`, `git` e `claude`. Sem App Sandbox, com Hardened Runtime. Assinatura e notarização ficam para depois. |
 | Dependências | Só o SwiftTerm. Outra dependência exige justificativa ao usuário. |
 | Idioma | Identificadores em inglês; textos da interface em português. |
+
+## Estrutura do repositório
+
+```
+mabel-ui/
+├── MabelKit/      pacote Swift compartilhado: cliente da CLI, modelos, eventos, gatos
+├── Mac/           app macOS (esta spec)
+├── Remote/        controle remoto iOS (spec própria, depois)
+├── sprites/       grades dos gatos: <estado>.txt e paletas.json
+│   └── formatar.mjs   refaz a grade de 16×14 de um texto sem quebras
+└── .vscode/       cores por letra nos sprites (extensão Highlight) e células quadradas
+```
+
+- **MabelKit** tem tudo o que não depende de tela: `MabelClient` (roda o binário,
+  decodifica `--json` e eventos, trata versão), os modelos (projeto, item, inbox, saldo),
+  a derivação do estado do gato a partir dos eventos e a leitura das grades e paletas.
+  O controle remoto reaproveita o pacote; só o transporte muda (ele fala com o supervisor
+  pela rede, não roda o binário).
+- **Mac** tem só as telas, o terminal, a barra de menus, o Dock e as notificações.
+- **sprites/** é a fonte das grades, lidas pelo MabelKit como recurso do pacote. Editar:
+  Cursor com as extensões Highlight e Overtype; com a Todo Tree instalada, desligá-la no
+  workspace, porque ela quebra a Highlight (`Invalid flags: dgi`).
 
 ## O que o app precisa do Mabel
 
@@ -185,21 +208,21 @@ Desenho e animação, no estilo do mascote do Claude Code:
 - **Fonte das grades até o app existir:** a referência visual tem um quadro por estado,
   com prévia animada, a tira de quadros e as cinco pelagens. A grade se edita em Tweaks ›
   "quadros" (e "fps"); a prévia muda na hora. No incremento 5, as grades de cada quadro
-  viram os `sprites/<estado>.txt` do `mabel-app`, e daí em diante o repositório é a fonte.
+  viram os `sprites/<estado>.txt` do `mabel-ui`, e daí em diante o repositório é a fonte.
 - "Reduzir movimento" do macOS ligado: só o primeiro quadro de cada estado.
 
 ## Fora desta spec
 
-Controle remoto no iOS, edição do backlog pela interface, vários terminais por projeto,
+Controle remoto no iOS (mesmo repositório, spec própria), edição do backlog pela interface, vários terminais por projeto,
 temas, sons, App Store.
 
 ## Incrementos
 
 Cada um termina com os testes verdes, os critérios atendidos e um commit.
 
-1. **Esqueleto e lista.** Projeto Xcode (ou Swift Package com executável), cliente da CLI
-   (`MabelClient`: roda o binário, decodifica `--json`, trata versão), lista de projetos
-   e saldo no topo contra o `mabel-fake`.
+1. **Esqueleto e lista.** `MabelKit` com o cliente da CLI (`MabelClient`: roda o
+   binário, decodifica `--json`, trata versão) e o app `Mac` com a lista de projetos e o
+   saldo no topo, contra o `mabel-fake`.
 2. **Terminal.** Projeto aberto com SwiftTerm rodando `mabel` no diretório do projeto;
    anexar quando a fila está no supervisor.
 3. **Eventos e estados.** `mabel eventos` aberto, estado de cada projeto e do gato
@@ -211,7 +234,7 @@ Cada um termina com os testes verdes, os critérios atendidos e um commit.
 
 ## Testes
 
-- **`mabel-fake`:** executável do próprio `mabel-app` (script ou alvo Swift) que responde
+- **`mabel-fake`:** executável do próprio `mabel-ui` (script ou alvo Swift) que responde
   aos comandos `--json` a partir de fixtures e reproduz um arquivo NDJSON em
   `mabel eventos`. O app aceita o caminho do binário por variável
   (`MABEL_BIN`), e os testes apontam para o fake.
