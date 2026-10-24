@@ -91,10 +91,12 @@ export interface QueueResult {
 /**
  * Auditoria da fila fora das runs: `pause` encerra o `run` até o humano agir, `wait` é a
  * espera que retoma sozinha (até `until`) e `answer` é a resposta do humano a uma pergunta
- * da política de saldo (`approved`: seguir mesmo assim).
+ * da política de saldo (`approved`: seguir mesmo assim). `start` e `stop` marcam o início e
+ * o fim da fila (causa `queue`; o detalhe do `stop` é o `QueueEnd`), para o `mabel eventos`.
  */
-export type QueueEventKind = 'pause' | 'wait' | 'answer';
+export type QueueEventKind = 'pause' | 'wait' | 'answer' | 'start' | 'stop';
 export type QueueEventCause =
+  | 'queue'
   | 'five_hour'
   | 'seven_day'
   | 'pace'
@@ -131,10 +133,12 @@ export function recordQueueEvent(db: DatabaseSync, projectId: string, event: Que
   );
 }
 
-/** Os `limit` eventos mais recentes do projeto, em ordem cronológica. */
+/** Os `limit` eventos mais recentes do projeto, em ordem cronológica, sem início e fim da fila. */
 export function listQueueEvents(db: DatabaseSync, projectId: string, limit = 20): QueueEvent[] {
   const rows = db
-    .prepare('SELECT at, kind, cause, detail, until, approved FROM queue_events WHERE project_id = ? ORDER BY id DESC LIMIT ?')
+    .prepare(
+      "SELECT at, kind, cause, detail, until, approved FROM queue_events WHERE project_id = ? AND kind NOT IN ('start', 'stop') ORDER BY id DESC LIMIT ?",
+    )
     .all(projectId, limit) as {
     at: string;
     kind: QueueEventKind;
@@ -438,7 +442,20 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
     }
   };
 
-  const done = loop().then(({ end, message }) => {
+  /** Início e fim da fila no `queue_events`; o fim sai também quando o laço lança erro. */
+  const tracked = async (): Promise<{ end: QueueEnd; message?: string }> => {
+    record({ kind: 'start', cause: 'queue', detail: '' });
+    let end = 'error';
+    try {
+      const result = await loop();
+      end = result.end;
+      return result;
+    } finally {
+      record({ kind: 'stop', cause: 'queue', detail: end });
+    }
+  };
+
+  const done = tracked().then(({ end, message }) => {
     const cost = db
       .prepare('SELECT coalesce(sum(cost_usd), 0) AS total FROM runs WHERE started_at >= ?')
       .get(startedAt.toISOString()) as { total: number };
