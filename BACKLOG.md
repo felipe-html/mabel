@@ -34,3 +34,4 @@
 - **Mocks do snapshot no `setup`.** Gerar fixtures ou handlers (MSW) a partir de `api/<nome>.openapi.json`, para o executor não escrever dados de teste à mão.
 - **Telas com vários frames.** `referencia tela` com vários `node-id` (estados de erro, vazio, carregando) num comando só, e fontes e espaçamentos no `tela.md`.
 - **OpenAPI em YAML e API autenticada.** `referencia api` só aceita JSON público.
+- **Supervisor, `--json` e eventos.** Especificados em `docs/specs/integracao-externa.md`: o supervisor dono das filas (`run --fundo`, `anexar`, `parar`), as saídas `--json`, o fluxo `mabel eventos --json`, os comandos sem TTY e o `mabel nascer`. O contrato já prevê filas em paralelo e saldo único; falta o código. É o que a interface (repositório `mabel-ui`) consome.

@@ -8,9 +8,11 @@ imposta por código (runner, hook, gate, banco); se depende de o modelo obedecer
 
 ## Escopo da v0
 
-- Um projeto-alvo por vez.
+- Vários projetos-alvo em paralelo, cada um com a sua fila.
 - Máquina local.
-- Fila sequencial: um item por vez, uma etapa por vez.
+- Fila sequencial dentro de cada projeto: um item por vez, uma etapa por vez.
+- A fila de um projeto roda em segundo plano: não depende do terminal ou da interface
+  que a iniciou, e pode ser acompanhada e deixada a qualquer momento.
 
 ## Vocabulário
 
@@ -60,6 +62,10 @@ A política existe para evitar iniciar etapas que seriam interrompidas por falta
 Ela é checada apenas antes de cada etapa; uma etapa em andamento pode ultrapassar os
 limites.
 
+O saldo é da conta, não do projeto: as filas de todos os projetos consomem as mesmas
+janelas. A política é uma só, avaliada contra a mesma leitura antes da etapa de qualquer
+projeto, e uma pausa vale para todas as filas.
+
 O Mabel mede quanto cada etapa (planejar, executar, revisar) costuma consumir de cada
 janela, pela diferença entre a primeira e a última leitura das runs auditadas. Com pelo
 menos 3 amostras, a política olha o saldo **depois** da etapa contra um piso de 10%. Sem
@@ -77,9 +83,9 @@ quando, somado ao consumo estimado da etapa, passa do ritmo em mais de 10 pontos
 | Leitura de saldo ausente, vencida ou com mais de 30 minutos | Antes da etapa, o Mabel faz uma chamada mínima para obter a leitura. Sem leitura, a fila pausa e registra o motivo. |
 
 As situações são avaliadas nessa ordem. A leitura vem do `rate_limit_event` da run mais
-recente. A interface do Mabel (modo Mabel e `mabel run` num terminal) mantém um rodapé
+recente, de qualquer projeto. A interface do Mabel (modo Mabel e `mabel run` num terminal) mantém um rodapé
 fixo com as duas janelas: saldo, horário de reset, ritmo da janela de 7 dias e idade da
-leitura.
+leitura. O mesmo saldo aparece dentro de um projeto e fora dele.
 
 ## Backlog e quadro
 
@@ -152,7 +158,7 @@ mostrar crítico, ele sobe para garantia.
 
 ## Fora da v0
 
-Múltiplos projetos, itens em paralelo, integração com herdr, servidor MCP da frota,
+Itens em paralelo dentro de um projeto, integração com herdr, servidor MCP da frota,
 dashboard, merge automático na branch principal.
 
 ## Perguntas em aberto
