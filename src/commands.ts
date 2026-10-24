@@ -29,6 +29,7 @@ import { projectCommand, projectUsage, projectsCommand, projectsUsage } from './
 import { refineCommand, refineUsage } from './refine.ts';
 import { run, runUsage } from './run.ts';
 import { runsCommand, runsUsage } from './runs.ts';
+import { attachCommand, attachUsage, stopCommand, stopUsage, supervisorCommand, supervisorUsage } from './supervisor.ts';
 import { balanceCommand, balanceUsage, status, statusUsage } from './status.ts';
 
 export interface Command {
@@ -80,6 +81,25 @@ export const commands: Command[] = [
     description: 'Consome a fila: planeja os itens prontos, depois executa',
     usage: runUsage,
     run,
+  },
+  {
+    name: 'anexar',
+    description: 'Acompanha ao vivo a fila em segundo plano do projeto; ctrl+c solta sem parar',
+    usage: attachUsage,
+    run: attachCommand,
+  },
+  {
+    name: 'parar',
+    description: 'Para a fila do projeto depois da etapa em andamento',
+    usage: stopUsage,
+    run: stopCommand,
+  },
+  {
+    name: 'supervisor',
+    description: 'Processo que roda as filas em segundo plano; `instalar` o põe no launchd',
+    usage: supervisorUsage,
+    shellOnly: true,
+    run: supervisorCommand,
   },
   {
     name: 'item',

@@ -240,7 +240,9 @@ Todos funcionam no modo Mabel (`/comando`) e no shell (`mabel comando`).
 | `init [--stack <id>]` | Prepara o projeto atual para o Mabel |
 | `add` | Adiciona um item ao backlog |
 | `refinar [<n>] [--refazer] [--aceitar \| --descartar]` | Proposta de refinamento de um item, por agente, para você revisar antes de gravar no backlog |
-| `run [--item <n>] [--uma] [--sem-lote]` | Consome a fila. `--item` processa um item; `--uma` para no primeiro estado final; `--sem-lote` planeja e executa item a item |
+| `run [--item <n>] [--uma] [--sem-lote] [--fundo]` | Consome a fila. `--item` processa um item; `--uma` para no primeiro estado final; `--sem-lote` planeja e executa item a item; `--fundo` entrega a fila ao supervisor e volta na hora |
+| `anexar` | Acompanha ao vivo a fila em segundo plano do projeto; Ctrl+C solta sem parar a fila |
+| `parar` | Para a fila do projeto (em segundo plano ou num terminal) depois da etapa em andamento |
 | `inbox` | Responde às decisões pendentes, uma por vez, com sugestão do agente |
 | `item <n>` | Detalhe do item: estado, pendência, plano, custo e runs |
 | `aprovar <n>` | Aprova os critérios de um item crítico |
@@ -250,8 +252,14 @@ Todos funcionam no modo Mabel (`/comando`) e no shell (`mabel comando`).
 | `entregar [--substituir] [--rascunho]` | Publica um snapshot da integração, abre o PR com o relatório e volta o checkout para a base; `--substituir` troca a entrega aberta pela integração atual |
 | `rejeitar <n> "<motivo>" [--cancelar]` | Reverte um item na integração e o devolve ao planejamento (ou o cancela) |
 | `status [--atualizar]` | Saldo, resumo da fila e runs recentes; `--atualizar` lê o saldo agora |
+| `saldo [--atualizar]` | As duas janelas de saldo e a pausa da fila por saldo, se houver |
+| `supervisor [instalar \| remover \| estado]` | Processo que roda as filas em segundo plano (só no shell); `instalar` grava o LaunchAgent, que o sobe com a sessão do macOS |
 | `exec "<prompt>"` | Executa um prompt avulso no Claude Code, com auditoria |
 | `completion zsh` | Script de autocompletar do shell |
+
+`projetos`, `status`, `saldo`, `inbox` e `projeto <nome>` aceitam `--json` (uma linha com
+`"versao": 1`), e `eventos --json` escreve um evento por linha; o formato está em
+`docs/specs/integracao-externa.md`.
 
 No modo Mabel: `/` abre a lista de comandos, Tab completa, ↑/↓ percorrem o histórico e
 `exit`, `/sair` ou Ctrl+D encerram.
@@ -269,6 +277,8 @@ No modo Mabel: `/` abre a lista de comandos, Tab completa, ↑/↓ percorrem o h
 | `~/.mabel/items/<id>/` | Plano, execuções, verificações e revisões de cada item |
 | `~/.mabel/worktrees/` | Worktrees dos itens em andamento |
 | `~/.mabel/entregas/<projeto>/` | Corpo do PR de cada entrega |
+| `~/.mabel/filas/<projeto>.log` | Saída das filas em segundo plano (o `anexar` lê daqui) |
+| `~/.mabel/supervisor.sock`, `supervisor.log` | Socket e log do supervisor |
 
 | Variável | Efeito |
 |---|---|

@@ -79,7 +79,7 @@ precisaria perguntar sai com código diferente de 0 e diz qual argumento falta.
 Conversa com um agente, num diretório vazio ou num repositório sem `.mabel/`, que sai com
 uma proposta revisável: stack, `CLAUDE.md`, regras críticas e backlog inicial. O usuário
 revisa como no `refinar` e o `mabel init` grava. Parente do "`mabel add` assistido" no
-`BACKLOG.md`. Spec própria antes de implementar.
+`BACKLOG.md`. Spec própria: `docs/specs/nascer.md`.
 
 ## Incrementos
 

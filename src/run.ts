@@ -24,12 +24,13 @@ import { type Project, ProjectError, commitPendingMabel, mabelCommitted, resolve
 import { type RunHandle, type RunStage, startRun } from './runner.ts';
 import { sandboxUnavailable } from './sandbox.ts';
 import { probeRequest } from './status.ts';
+import { request } from './supervisor.ts';
 import { style } from './style.ts';
 import { mabelCodeChanged } from './version.ts';
 import { checkDeliveries } from './delivery.ts';
 import { deleteBranch, isMerged, removeOrphanWorktrees, removeWorktree } from './worktree.ts';
 
-export const runUsage = 'mabel run [--item <n>] [--uma] [--sem-lote]';
+export const runUsage = 'mabel run [--item <n>] [--uma] [--sem-lote] [--fundo]';
 
 /** Relógio injetável: os testes avançam o tempo sem esperar de verdade. */
 export interface Clock {
@@ -75,7 +76,7 @@ export interface QueueOptions {
   codeChanged?: () => boolean;
 }
 
-export type QueueEnd = 'empty' | 'once' | 'interrupted' | 'paused' | 'not_found';
+export type QueueEnd = 'empty' | 'once' | 'interrupted' | 'paused' | 'not_found' | 'stopped';
 
 export interface QueueResult {
   end: QueueEnd;
@@ -165,8 +166,14 @@ const EXECUTING: ItemStatus[] = ['planned', 'executing', 'verifying', 'reviewing
 const countItems = (count: number) => (count === 1 ? '1 item' : `${count} itens`);
 const WINDOW_LABELS: Record<string, string> = { five_hour: '5h', seven_day: '7 dias' };
 
-/** Consome a fila do projeto. `interrupt` repassa o ctrl+c à run atual e encerra o laço. */
-export function startQueue(options: QueueOptions): { interrupt: () => void; done: Promise<QueueResult> } {
+/** Parada pedida pelo `mabel parar`. */
+export const STOP_REQUESTED = 'parada pedida (mabel parar)';
+
+/**
+ * Consome a fila do projeto. `interrupt` repassa o ctrl+c à run atual e encerra o laço;
+ * `stop` deixa a etapa em andamento terminar e encerra antes da próxima.
+ */
+export function startQueue(options: QueueOptions): { interrupt: () => void; stop: () => void; done: Promise<QueueResult> } {
   const { db, home, project } = options;
   const clock = options.clock ?? systemClock;
   const interactive = options.interactive ?? false;
@@ -198,15 +205,19 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
     abort.abort();
     current?.interrupt();
   };
+  // A parada não interrompe a run; só encurta as esperas, que não têm etapa em andamento.
+  const stopping = new AbortController();
+  const stop = () => stopping.abort();
+  const waiting = AbortSignal.any([abort.signal, stopping.signal]);
 
   const waitUntil = async (target: Date, label: string) => {
     log.write(style.dim(`  Aguardando ${label} (${formatReset(target, clock.now())})…`));
-    while (!abort.signal.aborted && clock.now().getTime() < target.getTime()) {
+    while (!waiting.aborted && clock.now().getTime() < target.getTime()) {
       const remaining = target.getTime() - clock.now().getTime();
       if (process.stdout.isTTY) {
         process.stdout.write(`\r\x1b[2K  ${style.dim(`faltam ${formatDuration(remaining)}`)}`);
       }
-      await clock.sleep(Math.min(remaining, process.stdout.isTTY ? 1000 : 60_000), abort.signal);
+      await clock.sleep(Math.min(remaining, process.stdout.isTTY ? 1000 : 60_000), waiting);
     }
     if (process.stdout.isTTY) process.stdout.write('\r\x1b[2K');
   };
@@ -225,7 +236,7 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
     let probed = false;
     const estimate = stageEstimate(db, stage);
     for (;;) {
-      if (abort.signal.aborted) return false;
+      if (abort.signal.aborted || stopping.signal.aborted) return false;
       const readings = latestReadings(db);
       const decision = checkBalance(readings, clock.now(), estimate);
       if (decision.action === 'proceed') return true;
@@ -299,6 +310,7 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
     log: (line: string) => log.write(line),
     beforeAgentStage: async (stage: RunStage, item: Item) => {
       // Código antigo na memória com prompts novos do disco: a etapa rodaria meio a meio.
+      if (stopping.signal.aborted) return false;
       if ((options.codeChanged ?? mabelCodeChanged)()) {
         pauseReason = CODE_CHANGED;
         record({ kind: 'pause', cause: 'code', detail: pauseReason });
@@ -400,6 +412,7 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
     if (paused) return { end: 'paused', message: paused };
     for (;;) {
       if (abort.signal.aborted) return { end: 'interrupted' };
+      if (stopping.signal.aborted) return { end: 'stopped', message: STOP_REQUESTED };
 
       // Itens cujo merge já entrou na base: concluídos.
       finishIntegrated(db, project, listItems(db, project.id)).forEach(markDone);
@@ -429,6 +442,9 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
       finalStates.set(target.number, getItemById(db, target.id).status);
 
       if (result.kind === 'interrupted') return { end: 'interrupted' };
+      if (result.kind === 'paused' && stopping.signal.aborted && !abort.signal.aborted) {
+        return { end: 'stopped', message: STOP_REQUESTED };
+      }
       if (result.kind === 'paused') {
         // A pausa do pipeline (contexto acima do orçamento); as do saldo já foram gravadas.
         if (result.reason && !abort.signal.aborted) record({ kind: 'pause', cause: 'context', detail: result.reason });
@@ -438,6 +454,7 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
         await waitForReset();
         continue;
       }
+      if (stopping.signal.aborted) return { end: 'stopped', message: STOP_REQUESTED };
       if (options.once || options.itemNumber !== undefined) return { end: 'once' };
     }
   };
@@ -470,7 +487,7 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; done
       autonomous: autonomousDecisions(db, { projectId: project.id, since: startedAt }),
     };
   });
-  return { interrupt, done };
+  return { interrupt, stop, done };
 }
 
 export function notifyTitle(project: Project): string {
@@ -483,6 +500,7 @@ const ENDINGS: Record<QueueEnd, string> = {
   interrupted: 'interrompido',
   paused: 'pausado',
   not_found: 'nada a fazer',
+  stopped: 'parado',
 };
 
 /** Fim da fila e estados finais, sem custo e tempo: `fila vazia · awaiting_merge 3 · needs_human 1`. */
@@ -510,7 +528,7 @@ export async function run(args: string[]): Promise<number> {
   try {
     ({ values } = parseArgs({
       args,
-      options: { item: { type: 'string' }, uma: { type: 'boolean' }, 'sem-lote': { type: 'boolean' } },
+      options: { item: { type: 'string' }, uma: { type: 'boolean' }, 'sem-lote': { type: 'boolean' }, fundo: { type: 'boolean' } },
     }));
   } catch (error) {
     process.stderr.write(`${(error as Error).message}\nUso: ${runUsage}\n`);
@@ -526,6 +544,7 @@ export async function run(args: string[]): Promise<number> {
   }
 
   const home = dataDir();
+  if (values.fundo) return background(home, args.filter((arg) => arg !== '--fundo'));
   const db = openDb(home);
   let release: (() => void) | undefined;
   let stopFooter: (() => void) | undefined;
@@ -581,16 +600,24 @@ export async function run(args: string[]): Promise<number> {
         },
       });
       const onSigint = () => queue.interrupt();
+      // `mabel parar`: a etapa em andamento termina e a fila encerra.
+      const onStop = () => {
+        process.stdout.write(`${style.bold('  Parada pedida: a fila encerra depois da etapa em andamento.')}\n`);
+        queue.stop();
+      };
       process.on('SIGINT', onSigint);
+      process.on('SIGUSR2', onStop);
       let result: QueueResult;
       try {
         result = await queue.done;
       } finally {
         process.off('SIGINT', onSigint);
+        process.off('SIGUSR2', onStop);
       }
       process.stdout.write(`\n${renderQueueSummary(result)}\n`);
       if (result.end === 'interrupted') return 130;
       if (result.end === 'not_found') return 1;
+      if (result.end === 'stopped') return 0;
       const waiting = pendingItems(db, project.id).length;
       if (!interactive || waiting === 0) return 0;
       const label = waiting === 1 ? '1 item aguarda você' : `${waiting} itens aguardam você`;
@@ -612,5 +639,37 @@ export async function run(args: string[]): Promise<number> {
     stopFooter?.();
     release?.();
     db.close();
+  }
+}
+
+/** `mabel run --fundo`: entrega a fila ao supervisor e volta na hora. */
+async function background(home: string, args: string[]): Promise<number> {
+  const db = openDb(home);
+  let project: Project;
+  try {
+    project = resolveProject(db);
+  } catch (error) {
+    if (error instanceof ProjectError) {
+      process.stderr.write(`${error.message}\n`);
+      return 1;
+    }
+    throw error;
+  } finally {
+    db.close();
+  }
+  try {
+    const response = await request(home, { acao: 'rodar', raiz: project.root, args });
+    if (!response.ok) {
+      process.stderr.write(`${response.erro}\n`);
+      return 1;
+    }
+    process.stdout.write(
+      `Fila de ${project.name} em segundo plano (pid ${response.pid}).\n` +
+        style.dim('Acompanhe com `mabel anexar`; pare depois da etapa com `mabel parar`.\n'),
+    );
+    return 0;
+  } catch (error) {
+    process.stderr.write(`${(error as Error).message}\n`);
+    return 1;
   }
 }

@@ -17,6 +17,7 @@ import { isAncestor } from './integration.ts';
 import { DEFAULT_INTEGRATION, ProjectError, readConfig } from './project.ts';
 import { type QueueEvent, type QueueEventCause, listQueueEvents } from './run.ts';
 import { signals, signalsComparison } from './refine.ts';
+import { queueLogPath, queueStatePath } from './supervisor.ts';
 import { itemDir } from './stages.ts';
 import { style } from './style.ts';
 
@@ -64,10 +65,13 @@ export const dirScope: Record<string, DirScope> = {
   worktrees: { scope: 'project', paths: (home, t) => [join(home, 'worktrees', t.projectId)] },
   locks: { scope: 'project', paths: (home, t) => [lockPath(home, t.projectId)] },
   entregas: { scope: 'project', paths: (home, t) => [join(home, 'entregas', t.projectId)] },
+  filas: { scope: 'project', paths: (home, t) => [queueLogPath(home, t.projectId), queueStatePath(home, t.projectId)] },
   'mabel.db': { scope: 'global' },
   'mabel.db-wal': { scope: 'global' },
   'mabel.db-shm': { scope: 'global' },
   historico: { scope: 'global' },
+  'supervisor.sock': { scope: 'global' },
+  'supervisor.log': { scope: 'global' },
   'credenciais.json': { scope: 'global' },
 };
 
