@@ -10,7 +10,7 @@ não implementa regra do Mabel, não escreve no banco e não fala com o Claude C
 que ele faz passa pela CLI `mabel`.
 
 Referência visual: [Mabel — referência visual](https://claude.ai/artifact/7zZweawt8Yshx2JRiVi46j)
-(lista de projetos, projeto aberto com terminal e inbox, e os gatos por papel e por estado). É um esboço de layout e de comportamento,
+(lista de projetos, projeto aberto com terminal e inbox, e um quadro editável por estado do gato). É um esboço de layout e de comportamento,
 não o desenho final dos gatos.
 
 ## Decisões
@@ -182,9 +182,10 @@ Desenho e animação, no estilo do mascote do Claude Code:
   escolhido por `TimelineView`. Nenhuma dependência.
 - **Tamanhos:** fator 6 no card, 12 no painel, e o ícone da barra de menus a partir da
   mesma grade, como imagem de template de 18 pt.
-- **Protótipo:** a prancha "Mascotes e estados" da referência visual mostra a pelagem e o
-  comportamento de cada estado. O protótipo em pixel art feito na conversa de 2026-10-23
-  é o ponto de partida das grades.
+- **Fonte das grades até o app existir:** a referência visual tem um quadro por estado,
+  com prévia animada, a tira de quadros e as cinco pelagens. A grade se edita em Tweaks ›
+  "quadros" (e "fps"); a prévia muda na hora. No incremento 5, as grades de cada quadro
+  viram os `sprites/<estado>.txt` do `mabel-app`, e daí em diante o repositório é a fonte.
 - "Reduzir movimento" do macOS ligado: só o primeiro quadro de cada estado.
 
 ## Fora desta spec
