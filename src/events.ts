@@ -3,7 +3,7 @@ import { parseArgs } from 'node:util';
 import { dataDir, openDb } from './db.ts';
 import { pendingItems } from './inbox.ts';
 import { systemClock } from './run.ts';
-import type { RunStage } from './runner.ts';
+import { type RunOutcome, type RunStage, isUsageLimit } from './runner.ts';
 
 export const eventsUsage = 'mabel eventos --json';
 
@@ -77,16 +77,33 @@ interface RunRow {
   status: string;
   started_at: string;
   ended_at: string | null;
+  error: string | null;
+  result_text: string | null;
+  rate_status: string | null;
   number: number | null;
   project: string | null;
   project_id: string | null;
 }
 
-const RUN_SELECT = `SELECT r.rowid AS rowid, r.id, r.stage, r.status, r.started_at, r.ended_at,
+const RUN_SELECT = `SELECT r.rowid AS rowid, r.id, r.stage, r.status, r.started_at, r.ended_at, r.error, r.result_text,
+  (SELECT status FROM rate_limits WHERE run_id = r.id ORDER BY id DESC LIMIT 1) AS rate_status,
   i.number, p.name AS project, p.id AS project_id
   FROM runs r LEFT JOIN items i ON i.id = r.item_id LEFT JOIN projects p ON p.id = i.project_id`;
 
+/** Por que a run falhou: `interrompida` (ctrl+c), `saldo` (limite de uso) ou `erro`. */
+function failureReason(run: RunRow): string {
+  if (run.status === 'interrupted') return 'interrompida';
+  const outcome = {
+    status: run.status,
+    error: run.error ?? undefined,
+    rateLimitStatus: run.rate_status ?? undefined,
+    totals: run.result_text === null ? undefined : { text: run.result_text },
+  } as unknown as RunOutcome;
+  return isUsageLimit(outcome) ? 'saldo' : 'erro';
+}
+
 function stageEnd(run: RunRow): Entry {
+  const succeeded = run.status === 'succeeded';
   return {
     at: run.ended_at ?? run.started_at,
     order: ORDER.stageEnd,
@@ -94,9 +111,11 @@ function stageEnd(run: RunRow): Entry {
     event: {
       tipo: 'etapa',
       projeto: run.project,
+      projeto_id: run.project_id,
       item: run.number,
       etapa: STAGE_LABELS[run.stage as RunStage],
-      estado: run.status === 'succeeded' ? 'terminou' : 'falhou',
+      estado: succeeded ? 'terminou' : 'falhou',
+      ...(succeeded ? {} : { motivo: failureReason(run) }),
     },
   };
 }
@@ -120,7 +139,14 @@ export function pollEvents(db: DatabaseSync, cursor: EventCursor): StreamEvent[]
       at: run.started_at,
       order: ORDER.stageStart,
       projectId: run.project_id ?? undefined,
-      event: { tipo: 'etapa', projeto: run.project, item: run.number, etapa: STAGE_LABELS[run.stage], estado: 'iniciou' },
+      event: {
+        tipo: 'etapa',
+        projeto: run.project,
+        projeto_id: run.project_id,
+        item: run.number,
+        etapa: STAGE_LABELS[run.stage],
+        estado: 'iniciou',
+      },
     });
     if (run.status === 'running') cursor.openRuns.add(run.id);
     else entries.push(stageEnd(run));
@@ -128,43 +154,51 @@ export function pollEvents(db: DatabaseSync, cursor: EventCursor): StreamEvent[]
 
   const tools = db
     .prepare(
-      `SELECT t.rowid AS rowid, t.name, t.started_at, i.number, p.name AS project
+      `SELECT t.rowid AS rowid, t.name, t.started_at, i.number, p.name AS project, p.id AS project_id
        FROM tool_calls t JOIN runs r ON r.id = t.run_id
        LEFT JOIN items i ON i.id = r.item_id LEFT JOIN projects p ON p.id = i.project_id
        WHERE t.rowid > ? ORDER BY t.rowid`,
     )
-    .all(cursor.toolCalls) as { rowid: number; name: string; started_at: string; number: number | null; project: string | null }[];
+    .all(cursor.toolCalls) as {
+    rowid: number;
+    name: string;
+    started_at: string;
+    number: number | null;
+    project: string | null;
+    project_id: string | null;
+  }[];
   for (const tool of tools) {
     cursor.toolCalls = tool.rowid;
     if (!tool.project) continue;
     entries.push({
       at: tool.started_at,
       order: ORDER.tool,
-      event: { tipo: 'ferramenta', projeto: tool.project, item: tool.number, nome: tool.name },
+      event: { tipo: 'ferramenta', projeto: tool.project, projeto_id: tool.project_id, item: tool.number, nome: tool.name },
     });
   }
 
   // O gate `review` é o parecer da revisão: sai como `revisao`.
   const gates = db
     .prepare(
-      `SELECT g.id, g.gate, g.passed, g.at, i.number, p.name AS project
+      `SELECT g.id, g.gate, g.passed, g.at, i.number, p.name AS project, p.id AS project_id
        FROM gate_results g JOIN items i ON i.id = g.item_id JOIN projects p ON p.id = i.project_id
        WHERE g.id > ? ORDER BY g.id`,
     )
-    .all(cursor.gates) as { id: number; gate: string; passed: number; at: string; number: number; project: string }[];
+    .all(cursor.gates) as { id: number; gate: string; passed: number; at: string; number: number; project: string; project_id: string }[];
   for (const gate of gates) {
     cursor.gates = gate.id;
+    const where = { projeto: gate.project, projeto_id: gate.project_id, item: gate.number };
     const event =
       gate.gate === 'review'
-        ? { tipo: 'revisao', projeto: gate.project, item: gate.number, resultado: gate.passed ? 'aprovada' : 'reprovada' }
-        : { tipo: 'gate', projeto: gate.project, item: gate.number, gate: gate.gate, resultado: gate.passed ? 'verde' : 'vermelho' };
+        ? { tipo: 'revisao', ...where, resultado: gate.passed ? 'aprovada' : 'reprovada' }
+        : { tipo: 'gate', ...where, gate: gate.gate, resultado: gate.passed ? 'verde' : 'vermelho' };
     entries.push({ at: gate.at, order: ORDER.gate, event });
   }
 
   // Transições; a inbox é recontada nos projetos que tiveram alguma.
   const transitions = db
     .prepare(
-      `SELECT t.id, t.from_state, t.to_state, t.at, i.number, p.name AS project, p.id AS project_id
+      `SELECT t.id, t.from_state, t.to_state, t.reason, t.at, i.number, p.name AS project, p.id AS project_id
        FROM item_transitions t JOIN items i ON i.id = t.item_id JOIN projects p ON p.id = i.project_id
        WHERE t.id > ? ORDER BY t.id`,
     )
@@ -172,6 +206,7 @@ export function pollEvents(db: DatabaseSync, cursor: EventCursor): StreamEvent[]
     id: number;
     from_state: string;
     to_state: string;
+    reason: string | null;
     at: string;
     number: number;
     project: string;
@@ -183,7 +218,15 @@ export function pollEvents(db: DatabaseSync, cursor: EventCursor): StreamEvent[]
     entries.push({
       at: row.at,
       order: ORDER.item,
-      event: { tipo: 'item', projeto: row.project, item: row.number, de: row.from_state, para: row.to_state },
+      event: {
+        tipo: 'item',
+        projeto: row.project,
+        projeto_id: row.project_id,
+        item: row.number,
+        de: row.from_state,
+        para: row.to_state,
+        motivo: row.reason,
+      },
     });
     touched.set(row.project_id, { project: row.project, at: row.at });
   }
@@ -191,7 +234,7 @@ export function pollEvents(db: DatabaseSync, cursor: EventCursor): StreamEvent[]
     const pending = pendingItems(db, projectId).length;
     if (pending === (cursor.inbox.get(projectId) ?? 0)) continue;
     cursor.inbox.set(projectId, pending);
-    entries.push({ at, order: ORDER.inbox, event: { tipo: 'inbox', projeto: project, pendencias: pending } });
+    entries.push({ at, order: ORDER.inbox, event: { tipo: 'inbox', projeto: project, projeto_id: projectId, pendencias: pending } });
   }
 
   const readings = db
@@ -233,7 +276,7 @@ export function pollEvents(db: DatabaseSync, cursor: EventCursor): StreamEvent[]
   const setQueue = (projectId: string, project: string, state: QueueState) => {
     if (cursor.queueState.get(projectId) === state) return;
     cursor.queueState.set(projectId, state);
-    emit({ tipo: 'fila', projeto: project, estado: state });
+    emit({ tipo: 'fila', projeto: project, projeto_id: projectId, estado: state });
   };
   for (const entry of sorted) {
     if (entry.queue) {

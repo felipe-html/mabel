@@ -74,10 +74,11 @@ test('critério 2: um run produz etapa iniciou, ferramenta, gate e etapa termino
 
   // Campos e ordem: a run da execução, com a ferramenta, os gates da verificação e a revisão.
   const projeto = ctx.project.name;
+  const projeto_id = ctx.project.id;
   const flow = events.filter((event) => event.tipo !== 'saldo');
   const executing = flow.findIndex((event) => event.tipo === 'etapa' && event.etapa === 'executar');
-  assert.deepEqual(flow[executing], { versao: 1, tipo: 'etapa', projeto, item: 1, etapa: 'executar', estado: 'iniciou' });
-  assert.deepEqual(flow[executing + 1], { versao: 1, tipo: 'ferramenta', projeto, item: 1, nome: 'Write' });
+  assert.deepEqual(flow[executing], { versao: 1, tipo: 'etapa', projeto, projeto_id, item: 1, etapa: 'executar', estado: 'iniciou' });
+  assert.deepEqual(flow[executing + 1], { versao: 1, tipo: 'ferramenta', projeto, projeto_id, item: 1, nome: 'Write' });
   const [tool, gate, review, ended] = [
     flow.findIndex((event, i) => i > executing && event.tipo === 'ferramenta'),
     flow.findIndex((event) => event.tipo === 'gate' && event.gate === 'existe'),
@@ -85,8 +86,8 @@ test('critério 2: um run produz etapa iniciou, ferramenta, gate e etapa termino
     flow.findIndex((event) => event.tipo === 'etapa' && event.etapa === 'revisar' && event.estado === 'terminou'),
   ];
   assert.ok(executing < tool && tool < gate && gate < ended, JSON.stringify(flow, null, 1));
-  assert.deepEqual(flow[gate], { versao: 1, tipo: 'gate', projeto, item: 1, gate: 'existe', resultado: 'verde' });
-  assert.deepEqual(flow[review], { versao: 1, tipo: 'revisao', projeto, item: 1, resultado: 'aprovada' });
+  assert.deepEqual(flow[gate], { versao: 1, tipo: 'gate', projeto, projeto_id, item: 1, gate: 'existe', resultado: 'verde' });
+  assert.deepEqual(flow[review], { versao: 1, tipo: 'revisao', projeto, projeto_id, item: 1, resultado: 'aprovada' });
   assert.ok(ended < review);
 
   // A sequência completa, sem as ferramentas (uma por arquivo escrito).
@@ -128,9 +129,9 @@ test('critério 2: um run produz etapa iniciou, ferramenta, gate e etapa termino
   ]);
   assert.deepEqual(
     flow.find((event) => event.tipo === 'item'),
-    { versao: 1, tipo: 'item', projeto, item: 1, de: 'backlog', para: 'ready' },
+    { versao: 1, tipo: 'item', projeto, projeto_id, item: 1, de: 'backlog', para: 'ready', motivo: null },
   );
-  assert.deepEqual(flow[0], { versao: 1, tipo: 'fila', projeto, estado: 'rodando' });
+  assert.deepEqual(flow[0], { versao: 1, tipo: 'fila', projeto, projeto_id, estado: 'rodando' });
 });
 
 test('fila: espera por saldo, retomada na próxima etapa e fim pausado por saldo', () => {
@@ -155,7 +156,10 @@ test('fila: espera por saldo, retomada na próxima etapa e fim pausado por saldo
   ctx.db.prepare("UPDATE runs SET status = 'failed', ended_at = ? WHERE id = 'r1'").run(at(5).toISOString());
   queue(6, 'pause', 'seven_day', 'saldo de 7 dias');
   queue(7, 'stop', 'queue', 'paused');
-  assert.deepEqual(states(pollEvents(ctx.db, cursor)), ['etapa falhou', 'fila pausada_por_saldo']);
+  const failed = pollEvents(ctx.db, cursor);
+  assert.deepEqual(states(failed), ['etapa falhou', 'fila pausada_por_saldo']);
+  assert.equal(failed[0]?.motivo, 'erro');
+
   assert.deepEqual(pollEvents(ctx.db, cursor), []);
 
   // Pausa que não é de saldo: a fila encerra `parada`.
@@ -165,6 +169,15 @@ test('fila: espera por saldo, retomada na próxima etapa e fim pausado por saldo
   assert.deepEqual(states(pollEvents(ctx.db, cursor)), ['fila rodando', 'fila parada']);
   // O início e o fim não entram na auditoria do `mabel projeto`.
   assert.deepEqual(listQueueEvents(ctx.db, ctx.project.id).map((e) => e.kind), ['wait', 'answer', 'pause', 'pause']);
+
+  // Motivo da falha: ctrl+c e limite de uso.
+  const ended = ctx.db.prepare(
+    "INSERT INTO runs (id, kind, item_id, stage, prompt, cwd, status, error, started_at, ended_at) VALUES (?, 'stage', ?, 'execute', '', '', ?, ?, ?, ?)",
+  );
+  ended.run('r2', item.id, 'interrupted', null, at(11).toISOString(), at(11).toISOString());
+  ended.run('r3', item.id, 'failed', 'Claude AI usage limit reached', at(11).toISOString(), at(11).toISOString());
+  const reasons = pollEvents(ctx.db, cursor).filter((e) => e.estado === 'falhou').map((e) => e.motivo);
+  assert.deepEqual(reasons, ['interrompida', 'saldo']);
 });
 
 test('inbox: pendências do projeto quando um item para esperando o humano', () => {
@@ -176,6 +189,6 @@ test('inbox: pendências do projeto quando um item para esperando o humano', () 
   ctx.db.prepare("UPDATE items SET pending_kind = 'question_plan' WHERE id = ?").run(item.id);
   transition(ctx.db, ctx.project, item.id, 'needs_human', 'perguntas');
   const events = pollEvents(ctx.db, cursor);
-  assert.deepEqual(events.at(-1), { versao: 1, tipo: 'inbox', projeto: ctx.project.name, pendencias: 1 });
+  assert.deepEqual(events.at(-1), { versao: 1, tipo: 'inbox', projeto: ctx.project.name, projeto_id: ctx.project.id, pendencias: 1 });
   assert.deepEqual(events.filter((e) => e.tipo === 'item').map((e) => e.para), ['planning', 'needs_human']);
 });
