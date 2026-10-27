@@ -3,6 +3,7 @@ import { parseArgs } from 'node:util';
 import { dataDir, openDb } from './db.ts';
 import { fail } from './errors.ts';
 import { pendingItems } from './inbox.ts';
+import { isoLocal } from './json.ts';
 import { systemClock } from './run.ts';
 import { type RunOutcome, type RunStage, isUsageLimit } from './runner.ts';
 
@@ -246,7 +247,7 @@ export function pollEvents(db: DatabaseSync, cursor: EventCursor): StreamEvent[]
     entries.push({
       at: reading.observed_at,
       order: ORDER.balance,
-      event: { tipo: 'saldo', janela: WINDOW_LABELS[reading.window] ?? reading.window, uso: reading.utilization, reset: reading.resets_at },
+      event: { tipo: 'saldo', janela: WINDOW_LABELS[reading.window] ?? reading.window, uso: reading.utilization, reset: isoLocal(new Date(reading.resets_at)) },
     });
   }
 

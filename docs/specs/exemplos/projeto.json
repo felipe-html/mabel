@@ -1,0 +1,122 @@
+{
+  "versao": 1,
+  "projeto": {
+    "id": "3f0c2a9e-5b7d-4e1a-9c8f-2d6b4a1e7c30",
+    "nome": "loja-online",
+    "raiz": "/Users/voce/projetos/loja-online"
+  },
+  "total": {
+    "runs": 3,
+    "custo_usd": 2.05,
+    "tokens": {
+      "entrada": 6300,
+      "saida": 4000,
+      "cache_leitura": 119000,
+      "cache_criacao": 1750
+    },
+    "uso": {
+      "5h": 0.12,
+      "7d": 0.020000000000000018
+    }
+  },
+  "por_etapa": [
+    {
+      "etapa": "executar",
+      "runs": 1,
+      "custo_usd": 1.25,
+      "tokens": {
+        "entrada": 4000,
+        "saida": 2500,
+        "cache_leitura": 90000,
+        "cache_criacao": 1200
+      },
+      "uso": {
+        "5h": 0.07999999999999999,
+        "7d": 0.020000000000000018
+      }
+    },
+    {
+      "etapa": "planejar",
+      "runs": 2,
+      "custo_usd": 0.8,
+      "tokens": {
+        "entrada": 2300,
+        "saida": 1500,
+        "cache_leitura": 29000,
+        "cache_criacao": 550
+      },
+      "uso": {
+        "5h": 0.04000000000000001,
+        "7d": 0
+      }
+    }
+  ],
+  "por_modelo": [
+    {
+      "modelo": "sonnet",
+      "runs": 1,
+      "custo_usd": 1.25,
+      "tokens": {
+        "entrada": 4000,
+        "saida": 2500,
+        "cache_leitura": 90000,
+        "cache_criacao": 1200
+      },
+      "uso": {
+        "5h": 0.07999999999999999,
+        "7d": 0.020000000000000018
+      }
+    },
+    {
+      "modelo": "opus",
+      "runs": 2,
+      "custo_usd": 0.8,
+      "tokens": {
+        "entrada": 2300,
+        "saida": 1500,
+        "cache_leitura": 29000,
+        "cache_criacao": 550
+      },
+      "uso": {
+        "5h": 0.04000000000000001,
+        "7d": 0
+      }
+    }
+  ],
+  "por_item": [
+    {
+      "item": 1,
+      "titulo": "Carrinho",
+      "estado": "needs_human",
+      "runs": 1,
+      "custo_usd": 0.42,
+      "tokens": {
+        "entrada": 1200,
+        "saida": 800,
+        "cache_leitura": 15000,
+        "cache_criacao": 300
+      },
+      "uso": {
+        "5h": 0.04000000000000001,
+        "7d": 0
+      }
+    },
+    {
+      "item": 2,
+      "titulo": "Frete",
+      "estado": "executing",
+      "runs": 2,
+      "custo_usd": 1.63,
+      "tokens": {
+        "entrada": 5100,
+        "saida": 3200,
+        "cache_leitura": 104000,
+        "cache_criacao": 1450
+      },
+      "uso": {
+        "5h": 0.07999999999999999,
+        "7d": 0.020000000000000018
+      }
+    }
+  ]
+}
