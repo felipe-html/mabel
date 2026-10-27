@@ -14,7 +14,10 @@
         "papel": "executor",
         "modelo": "sonnet",
         "run": "a1b2c3d4-0003-4000-8000-000000000003",
-        "inicio": "2026-10-24T11:50:00-03:00"
+        "inicio": "2026-10-24T11:50:00-03:00",
+        "tentativa": 1,
+        "reprovacoes": 0,
+        "ultima_revisao": null
       },
       "inbox": 1,
       "itens": {

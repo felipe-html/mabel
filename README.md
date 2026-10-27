@@ -251,7 +251,7 @@ Todos funcionam no modo Mabel (`/comando`) e no shell (`mabel comando`).
 | `inbox` | Responde às decisões pendentes, uma por vez, com sugestão do agente |
 | `item <n>` | Detalhe do item: estado, pendência, plano, custo e runs |
 | `aprovar <n>` | Aprova os critérios de um item crítico |
-| `responder <n> "<resposta>" [--replanejar]` | Responde a um item parado em `needs_human` |
+| `responder <n> "<resposta>" [--replanejar]` | Responde a um item parado em `needs_human`; `--respostas <arquivo.json>` traz uma resposta por pergunta |
 | `cancelar <n>` | Cancela um item |
 | `integracao` | Relatório da branch de integração: o que levar à base e o que olhar primeiro |
 | `entregar [--substituir] [--rascunho]` | Publica um snapshot da integração, abre o PR com o relatório e volta o checkout para a base; `--substituir` troca a entrega aberta pela integração atual |
@@ -263,7 +263,9 @@ Todos funcionam no modo Mabel (`/comando`) e no shell (`mabel comando`).
 | `completion zsh` | Script de autocompletar do shell |
 
 `projetos`, `status`, `saldo`, `inbox` e `projeto <nome>` aceitam `--json` (uma linha com
-`"versao": 1`), e `eventos --json` escreve um evento por linha; o formato está em
+`"versao": 1`), e `eventos --json` escreve um evento por linha. `aprovar`, `responder`,
+`parar`, `run --fundo` e `projeto remover` também aceitam `--json`, e com `--json` o erro sai
+no stderr como `{"versao":1,"erro":{"codigo","mensagem"}}`. O formato está em
 `docs/specs/integracao-externa.md`.
 
 No modo Mabel: `/` abre a lista de comandos, Tab completa, ↑/↓ percorrem o histórico e

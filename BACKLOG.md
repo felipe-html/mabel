@@ -39,7 +39,6 @@
 - **`mabel nascer --de <arquivo>`.** Partir de um documento (PRD, notas de reunião) em vez da descrição em uma linha; o arquivo entraria no prompt com orçamento próprio.
 - **Medir o backlog do `nascer`.** Quanto dos itens propostos chegou a `done` sem replanejamento, comparado com os itens escritos à mão, para calibrar o prompt.
 - **Respostas guardadas quando a rodada do `nascer` falha.** Se a run da rodada seguinte falha, as respostas dadas no terminal se perdem e as perguntas voltam. Guardar as respostas pendentes no `births` deixaria retomar sem responder de novo.
-- **Erros em JSON com `--json`.** Virou pedido do `mabel-ui`: [felipe-html/mabel#30](https://github.com/felipe-html/mabel/issues/30).
 - **Pendência `validar` na inbox.** O tipo está no formato do `mabel inbox --json`, mas nada o emite: não há comando de validação humana de critério. Entra junto com a validação visual (ver "Validação visual na inbox").
 - **`refinar` e `add` para clientes.** Sem TTY, o `refinar` só aceita ou descarta a proposta inteira, sem `--json` nem edição; o `add` não tem passo que um cliente preencha. Seguir o desenho do `nascer`: `--json` com a proposta, `--aceitar <n> --proposta <arquivo>` com a versão editada, e `add` com os campos por argumento ou por arquivo JSON.
 - **Eventos do `nascer`.** Virou pedido do `mabel-ui`, com a correção de que as rodadas hoje não saem no fluxo: [felipe-html/mabel#31](https://github.com/felipe-html/mabel/issues/31).

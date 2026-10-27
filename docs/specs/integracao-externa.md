@@ -45,11 +45,37 @@ Uma linha de JSON por chamada, com `"versao": 1` no topo.
 
 | Comando | Conteúdo |
 |---|---|
-| `mabel projetos --json` | Por projeto: `id`, `nome`, `raiz`, `fila` (`parada`, `rodando`, `pausada_por_saldo`, `aguardando_humano`), item e etapa em andamento, papel ativo, pendências da inbox, custo total, última atividade. |
+| `mabel projetos --json` | Por projeto: `id`, `nome`, `raiz`, `fila` (`parada`, `rodando`, `pausada_por_saldo`, `aguardando_humano`), item e etapa em andamento, papel ativo, pendências da inbox, custo total, última atividade. Em `em_andamento`: `tentativa` (no ciclo, a partir de 1; nula fora de executar, verificar e revisar), `reprovacoes` (revisões reprovadas desde o último plano aprovado) e `ultima_revisao` (`null` ou `{"resultado": "aprovada" \| "reprovada", "em"}`). |
 | `mabel status --json` | Do projeto atual: a fila por estado, as etapas em andamento e o saldo. |
 | `mabel saldo --json` | As duas janelas: `uso`, `reset`, `ritmo` (só 7d), `idade_leitura_s`, e a pausa em vigor com o motivo, se houver. |
 | `mabel inbox --json` | As pendências: item, tipo (`aprovar`, `responder`, `validar`), pergunta, sugestão, opções. |
 | `mabel projeto <nome> --json` | Diagnóstico de consumo: custo e uso de janela por etapa, por modelo e por item. |
+
+### Erros
+
+Com `--json`, o erro sai no stderr numa linha, com código de saída diferente de 0:
+
+```json
+{"versao":1,"erro":{"codigo":"nao_encontrado","mensagem":"Item #99 não existe."}}
+```
+
+| Código | Quando |
+|---|---|
+| `argumento_faltando` | Falta um argumento (número do item, resposta, `--confirmar`). |
+| `argumento_invalido` | Opção desconhecida, valor ou arquivo inválido, combinação recusada. |
+| `saldo_baixo` | A política de saldo barrou o passo (`nascer`). |
+| `nao_encontrado` | Item, projeto ou nascimento inexistente. |
+| `estado_invalido` | O item ou a fila não está no estado que o comando pede (outro `run`, item que não aguarda resposta). |
+| `nao_e_projeto` | O diretório não é um projeto Mabel. |
+| `supervisor_indisponivel` | `run --fundo` sem o supervisor rodando. |
+| `falha_etapa` | A run do agente falhou ou deu saída inválida (`nascer`). |
+| `interno` | Erro inesperado da CLI. |
+
+Código novo não muda a versão. As ações que o app roda também aceitam `--json`:
+`aprovar` e `responder` devolvem `{"item": {"numero", "titulo", "estado"}}`; `run --fundo`,
+`{"projeto": {...}, "pid"}`; `parar`, `{"parada_pedida", "pid"}`; `projeto remover <nome>
+--confirmar <nome>`, `{"removido": {"id", "nome", "raiz"}, "avisos"}`. `responder` aceita
+`--respostas <arquivo.json>`, uma resposta por pergunta (`docs/specs/inbox.md`).
 
 ### Exemplos
 

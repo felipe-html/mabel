@@ -21,6 +21,11 @@ com agentes, de forma auditável e com intervenção humana só em regras de neg
   fim. Mudança no contrato continua exigindo autorização antes.
 - Ao concluir uma tarefa do plano, marque-a e registre no histórico do `docs/PLANO.md`.
 - Ideia nova que não cabe na tarefa atual vai para a seção do Claude no `BACKLOG.md`.
+- Issue com o rótulo `aprovado` pode ser implementada, mas o rótulo não autoriza mudança
+  no contrato. Antes de implementar, confira a issue contra o `docs/CONTRATO.md`. Se ela
+  ferir uma garantia, uma regra ou uma decisão do humano, não implemente: comente na issue
+  o trecho do contrato e o conflito, e espere a confirmação do usuário. Isso vale para
+  qualquer agente que receber a issue.
 
 ## Código
 
