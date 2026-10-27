@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
 import { dataDir, openDb } from './db.ts';
+import { fail } from './errors.ts';
 import { pendingItems } from './inbox.ts';
 import { systemClock } from './run.ts';
 import { type RunOutcome, type RunStage, isUsageLimit } from './runner.ts';
@@ -306,12 +307,10 @@ export async function eventsCommand(args: string[]): Promise<number> {
   try {
     ({ values } = parseArgs({ args, options: { json: { type: 'boolean' } } }));
   } catch (error) {
-    process.stderr.write(`${(error as Error).message}\nUso: ${eventsUsage}\n`);
-    return 1;
+    return fail('argumento_invalido', (error as Error).message, eventsUsage);
   }
   if (!values.json) {
-    process.stderr.write(`O fluxo de eventos só tem a saída em JSON por enquanto.\nUso: ${eventsUsage}\n`);
-    return 1;
+    return fail('argumento_faltando', 'O fluxo de eventos só tem a saída em JSON por enquanto.', eventsUsage);
   }
   // Intervalo entre as leituras do banco; os testes encurtam.
   const interval = Number(process.env.MABEL_EVENTOS_INTERVALO_MS) || 1000;

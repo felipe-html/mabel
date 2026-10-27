@@ -10,11 +10,13 @@ import {
   stageEstimate,
 } from './balance.ts';
 import { dataDir, openDb } from './db.ts';
+import { fail } from './errors.ts';
 import { ToolLog, summaryLine } from './exec.ts';
 import { startFooter } from './footer.ts';
 import { formatCost, formatDuration } from './format.ts';
 import { inboxSession, pendingItems, runInbox, terminalIO } from './inbox.ts';
 import { type Item, type ItemStatus, getItemById, listItems, syncBacklog, transition } from './items.ts';
+import { writeJson } from './json.ts';
 import { type Notify, notify as systemNotify } from './notify.ts';
 import { finishIntegrated, openIntegration } from './integration.ts';
 import { writeIntegrationReport } from './report.ts';
@@ -24,13 +26,13 @@ import { type Project, ProjectError, commitPendingMabel, mabelCommitted, resolve
 import { type RunHandle, type RunStage, startRun } from './runner.ts';
 import { sandboxUnavailable } from './sandbox.ts';
 import { probeRequest } from './status.ts';
-import { request } from './supervisor.ts';
+import { SupervisorUnavailable, request } from './supervisor.ts';
 import { style } from './style.ts';
 import { mabelCodeChanged } from './version.ts';
 import { checkDeliveries } from './delivery.ts';
 import { deleteBranch, isMerged, removeOrphanWorktrees, removeWorktree } from './worktree.ts';
 
-export const runUsage = 'mabel run [--item <n>] [--uma] [--sem-lote] [--fundo]';
+export const runUsage = 'mabel run [--item <n>] [--uma] [--sem-lote] [--fundo [--json]]';
 
 /** Relógio injetável: os testes avançam o tempo sem esperar de verdade. */
 export interface Clock {
@@ -528,23 +530,27 @@ export async function run(args: string[]): Promise<number> {
   try {
     ({ values } = parseArgs({
       args,
-      options: { item: { type: 'string' }, uma: { type: 'boolean' }, 'sem-lote': { type: 'boolean' }, fundo: { type: 'boolean' } },
+      options: {
+        item: { type: 'string' },
+        uma: { type: 'boolean' },
+        'sem-lote': { type: 'boolean' },
+        fundo: { type: 'boolean' },
+        json: { type: 'boolean' },
+      },
     }));
   } catch (error) {
-    process.stderr.write(`${(error as Error).message}\nUso: ${runUsage}\n`);
-    return 1;
+    return fail('argumento_invalido', (error as Error).message, runUsage);
   }
   let itemNumber: number | undefined;
   if (values.item !== undefined) {
     itemNumber = Number(values.item.replace(/^#/, ''));
-    if (!Number.isInteger(itemNumber) || itemNumber < 1) {
-      process.stderr.write(`--item precisa ser o número de um item.\nUso: ${runUsage}\n`);
-      return 1;
-    }
+    if (!Number.isInteger(itemNumber) || itemNumber < 1) return fail('argumento_invalido', '--item precisa ser o número de um item.', runUsage);
   }
+  // Em primeiro plano a saída é o acompanhamento da fila; JSON só na entrega ao supervisor.
+  if (values.json && !values.fundo) return fail('argumento_invalido', '--json vale com --fundo.', runUsage);
 
   const home = dataDir();
-  if (values.fundo) return background(home, args.filter((arg) => arg !== '--fundo'));
+  if (values.fundo) return background(home, args.filter((arg) => arg !== '--fundo' && arg !== '--json'), values.json ?? false);
   const db = openDb(home);
   let release: (() => void) | undefined;
   let stopFooter: (() => void) | undefined;
@@ -643,25 +649,24 @@ export async function run(args: string[]): Promise<number> {
 }
 
 /** `mabel run --fundo`: entrega a fila ao supervisor e volta na hora. */
-async function background(home: string, args: string[]): Promise<number> {
+async function background(home: string, args: string[], json: boolean): Promise<number> {
   const db = openDb(home);
   let project: Project;
   try {
     project = resolveProject(db);
   } catch (error) {
-    if (error instanceof ProjectError) {
-      process.stderr.write(`${error.message}\n`);
-      return 1;
-    }
+    if (error instanceof ProjectError) return fail(error.code, error.message);
     throw error;
   } finally {
     db.close();
   }
   try {
     const response = await request(home, { acao: 'rodar', raiz: project.root, args });
-    if (!response.ok) {
-      process.stderr.write(`${response.erro}\n`);
-      return 1;
+    // O projeto já foi conferido aqui: a recusa é de estado (outro `run`, fila que não subiu).
+    if (!response.ok) return fail('estado_invalido', response.erro);
+    if (json) {
+      writeJson({ projeto: { id: project.id, nome: project.name, raiz: project.root }, pid: response.pid });
+      return 0;
     }
     process.stdout.write(
       `Fila de ${project.name} em segundo plano (pid ${response.pid}).\n` +
@@ -669,7 +674,6 @@ async function background(home: string, args: string[]): Promise<number> {
     );
     return 0;
   } catch (error) {
-    process.stderr.write(`${(error as Error).message}\n`);
-    return 1;
+    return fail(error instanceof SupervisorUnavailable ? 'supervisor_indisponivel' : 'interno', (error as Error).message);
   }
 }

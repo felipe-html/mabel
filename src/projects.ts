@@ -6,10 +6,11 @@ import { parseArgs } from 'node:util';
 import { ask, interactive } from './ask.ts';
 import { dataDir, openDb, runDir } from './db.ts';
 import { type DeliveryStatus, listDeliveries } from './delivery.ts';
+import { fail } from './errors.ts';
 import { formatCost, formatTokens, formatWhen, truncate } from './format.ts';
 import { tryGit } from './git.ts';
 import { ITEM_STATES } from './items.ts';
-import { STAGE_VALUES, WINDOW_KEYS, inboxCount, isoLocal, queueState, stageInProgress, writeJson } from './json.ts';
+import { STAGE_VALUES, WINDOW_KEYS, attemptInProgress, inboxCount, isoLocal, queueState, stageInProgress, writeJson } from './json.ts';
 import { LockError, acquireLock, lockHolder, lockPath } from './lock.ts';
 import { select } from './menu.ts';
 import { autonomousDecisions, escalate } from './pipeline.ts';
@@ -150,11 +151,12 @@ export function findProject(db: DatabaseSync, query: string): ProjectRow {
   const matches = byName.length > 0 ? byName : projects.filter((project) => project.id.startsWith(query));
   if (matches.length === 1) return matches[0] as ProjectRow;
   if (matches.length === 0) {
-    throw new ProjectError(`Projeto não encontrado: ${query}. Veja a lista com \`mabel projetos\`.`);
+    throw new ProjectError(`Projeto não encontrado: ${query}. Veja a lista com \`mabel projetos\`.`, 'nao_encontrado');
   }
   const what = byName.length > 0 ? `Há ${matches.length} projetos com o nome ${query}` : `O prefixo ${query} é ambíguo`;
   throw new ProjectError(
     [`${what}. Use um prefixo do id:`, ...matches.map((p) => `  ${p.id.slice(0, 8)}  ${p.name}  ${p.root}`)].join('\n'),
+    'argumento_invalido',
   );
 }
 
@@ -387,13 +389,14 @@ function projectEscalations(db: DatabaseSync, projectId: string): string[] {
 /** Um projeto em `mabel projetos --json`. */
 export function projectJson(db: DatabaseSync, home: string, project: ProjectRow, now: Date): Record<string, unknown> {
   const { fila, pausa } = queueState(db, home, project.id, now);
+  const stage = fila === 'rodando' || fila === 'pausada_por_saldo' ? stageInProgress(db, project.id) : null;
   return {
     id: project.id,
     nome: project.name,
     raiz: project.root,
     fila,
     pausa,
-    em_andamento: fila === 'rodando' || fila === 'pausada_por_saldo' ? stageInProgress(db, project.id) : null,
+    em_andamento: stage ? { ...stage, ...attemptInProgress(db, project.id, stage) } : null,
     inbox: inboxCount(db, project.id),
     itens: Object.fromEntries(project.states.map((state) => [state.status, state.count])),
     runs: project.runs,
@@ -636,7 +639,7 @@ function shellQuote(text: string): string {
 // Comandos -------------------------------------------------------------------------------
 
 export const projectsUsage = 'mabel projetos [--removidos] [--json]';
-export const projectUsage = 'mabel projeto <nome> [--json] | mabel projeto remover <nome> [--confirmar <nome>]';
+export const projectUsage = 'mabel projeto <nome> [--json] | mabel projeto remover <nome> [--confirmar <nome>] [--json]';
 
 function withDb(action: (db: DatabaseSync, home: string) => number | Promise<number>): Promise<number> {
   const home = dataDir();
@@ -645,10 +648,8 @@ function withDb(action: (db: DatabaseSync, home: string) => number | Promise<num
     try {
       return await action(db, home);
     } catch (error) {
-      if (error instanceof ProjectError || error instanceof LockError) {
-        process.stderr.write(`${error.message}\n`);
-        return 1;
-      }
+      if (error instanceof ProjectError) return fail(error.code, error.message);
+      if (error instanceof LockError) return fail('estado_invalido', error.message);
       throw error;
     } finally {
       db.close();
@@ -678,12 +679,10 @@ export function projectsCommand(args: string[]): Promise<number> {
     removed = values.removidos ?? false;
     json = values.json ?? false;
   } catch (error) {
-    process.stderr.write(`${(error as Error).message}\nUso: ${projectsUsage}\n`);
-    return Promise.resolve(1);
+    return Promise.resolve(fail('argumento_invalido', (error as Error).message, projectsUsage));
   }
   if (removed && json) {
-    process.stderr.write(`--removidos não tem saída --json.\nUso: ${projectsUsage}\n`);
-    return Promise.resolve(1);
+    return Promise.resolve(fail('argumento_invalido', '--removidos não tem saída --json.', projectsUsage));
   }
   return withDb((db, home) => {
     if (json) {
@@ -707,27 +706,19 @@ export function projectCommand(args: string[]): Promise<number> {
   try {
     parsed = parseArgs({ args, allowPositionals: true, options: { confirmar: { type: 'string' }, json: { type: 'boolean' } } });
   } catch (error) {
-    process.stderr.write(`${(error as Error).message}\nUso: ${projectUsage}\n`);
-    return Promise.resolve(1);
+    return Promise.resolve(fail('argumento_invalido', (error as Error).message, projectUsage));
   }
   const [first, second] = parsed.positionals;
   if (first === 'remover') {
-    if (!second) {
-      process.stderr.write(`Informe o projeto.\nUso: ${projectUsage}\n`);
-      return Promise.resolve(1);
-    }
-    return withDb((db, home) => removeCommand(db, home, second, parsed.values.confirmar));
+    if (!second) return Promise.resolve(fail('argumento_faltando', 'Informe o projeto.', projectUsage));
+    return withDb((db, home) => removeCommand(db, home, second, parsed.values.confirmar, parsed.values.json ?? false));
   }
-  if (first === undefined && parsed.values.json) {
-    process.stderr.write(`Informe o projeto.\nUso: ${projectUsage}\n`);
-    return Promise.resolve(1);
-  }
+  if (first === undefined && parsed.values.json) return Promise.resolve(fail('argumento_faltando', 'Informe o projeto.', projectUsage));
   return withDb((db) => {
     if (!first) {
       const projects = listProjects(db);
       if (projects.length > 0 && interactive()) return chooseAndShow(db, projects);
-      process.stderr.write(`Informe o projeto.\nUso: ${projectUsage}\n`);
-      return 1;
+      return fail('argumento_faltando', 'Informe o projeto.', projectUsage);
     }
     if (parsed.values.json) {
       writeJson(projectDetailJson(db, findProject(db, first)));
@@ -738,27 +729,29 @@ export function projectCommand(args: string[]): Promise<number> {
   });
 }
 
-async function removeCommand(db: DatabaseSync, home: string, query: string, confirmation: string | undefined): Promise<number> {
+async function removeCommand(
+  db: DatabaseSync,
+  home: string,
+  query: string,
+  confirmation: string | undefined,
+  json: boolean,
+): Promise<number> {
   const project = findProject(db, query);
   const plan = planRemoval(db, home, project);
-  const out = (lines: string[]) => process.stdout.write(`${lines.map((line) => (line ? `  ${line}` : '')).join('\n')}\n`);
+  // Com --json, o stdout leva só a linha final; o resumo não sai.
+  const out = (lines: string[]) => {
+    if (!json) process.stdout.write(`${lines.map((line) => (line ? `  ${line}` : '')).join('\n')}\n`);
+  };
   out(renderRemovalSummary(plan));
 
-  if (plan.refusals.length > 0) {
-    process.stderr.write(`\n${plan.refusals.join('\n')}\nNada foi removido.\n`);
-    return 1;
-  }
+  if (plan.refusals.length > 0) return fail('estado_invalido', `\n${plan.refusals.join('\n')}\nNada foi removido.`);
   if (confirmation === undefined) {
-    if (!interactive()) {
-      process.stderr.write(`\nPara remover, confirme com: mabel projeto remover ${query} --confirmar ${project.name}\n`);
-      return 1;
+    if (json || !interactive()) {
+      return fail('argumento_faltando', `\nPara remover, confirme com: mabel projeto remover ${query} --confirmar ${project.name}`);
     }
     confirmation = await ask(`\n  Digite o nome do projeto para confirmar: `);
   }
-  if (confirmation !== project.name) {
-    process.stderr.write('O nome não confere. Nada foi removido.\n');
-    return 1;
-  }
+  if (confirmation !== project.name) return fail('argumento_invalido', 'O nome não confere. Nada foi removido.');
 
   // A trava impede que um `mabel run` comece no meio da remoção; é apagada junto com `locks/`.
   const release = acquireLock(home, project.id);
@@ -767,6 +760,10 @@ async function removeCommand(db: DatabaseSync, home: string, query: string, conf
     warnings = removeProject(db, home, planRemoval(db, home, project));
   } finally {
     release();
+  }
+  if (json) {
+    writeJson({ removido: { id: project.id, nome: project.name, raiz: project.root }, avisos: warnings });
+    return 0;
   }
   const root = shellQuote(project.root);
   out([

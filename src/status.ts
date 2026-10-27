@@ -4,6 +4,7 @@ import { latestReadings, renderBalanceHeader } from './balance.ts';
 import { renderBoardSummary } from './board.ts';
 import { expiryWarnings } from './credentials.ts';
 import { dataDir, openDb } from './db.ts';
+import { fail } from './errors.ts';
 import { summaryLine } from './exec.ts';
 import { formatCost, formatWhen, truncate } from './format.ts';
 import { boardItems, syncBacklog } from './items.ts';
@@ -136,8 +137,7 @@ async function withBalance(
     refresh = values.atualizar ?? false;
     json = values.json ?? false;
   } catch (error) {
-    process.stderr.write(`${(error as Error).message}\nUso: ${usage}\n`);
-    return 1;
+    return fail('argumento_invalido', (error as Error).message, usage);
   }
 
   const home = dataDir();
@@ -145,8 +145,7 @@ async function withBalance(
   try {
     db = openDb(home);
   } catch (error) {
-    process.stderr.write(`Não foi possível abrir o banco em ${home}: ${(error as Error).message}\n`);
-    return 1;
+    return fail('interno', `Não foi possível abrir o banco em ${home}: ${(error as Error).message}`);
   }
 
   let code = 0;

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
+import type { ErrorCode } from './errors.ts';
 import { git, tryGit } from './git.ts';
 
 export type Stage = 'refine' | 'plan' | 'execute' | 'review';
@@ -94,7 +95,14 @@ export const DEFAULT_TEST_GLOBS = [
   '**/testdata/**',
 ];
 
-export class ProjectError extends Error {}
+/** Sem projeto Mabel aqui, ou projeto que não confere; `code` vai para o erro do `--json`. */
+export class ProjectError extends Error {
+  readonly code: ErrorCode;
+  constructor(message: string, code: ErrorCode = 'nao_e_projeto') {
+    super(message);
+    this.code = code;
+  }
+}
 
 /** Raiz real do repositório git que contém `cwd`, ou `undefined` fora de um repositório. */
 export function gitRoot(cwd: string): string | undefined {
@@ -201,6 +209,7 @@ export function registerProject(db: DatabaseSync, root: string, projectId: strin
   if (byRoot && byRoot.id !== projectId) {
     throw new ProjectError(
       `${root} já está registrado com outro projectId (${byRoot.id}). Restaure o .mabel/config.json original.`,
+      'estado_invalido',
     );
   }
   db.prepare(

@@ -68,7 +68,25 @@ O prompt continua pedindo no máximo 3 perguntas de uma linha (pedido, não gara
 | `environment_block` | Impedimento de ambiente declarado pelo executor, confirmado pela verificação do Mabel fora do sandbox, e o que ajustar | Texto (o que mudou; a execução retoma na mesma sessão), `r` + texto, `c`, `p` |
 
 "Decide você" entra na resposta como `R: decida e registre como suposição.` O prompt das
-etapas trata essa frase como delegação explícita.
+etapas trata essa frase como delegação explícita. Pergunta de regra crítica não aceita `d`
+(G7): a resposta é do humano.
+
+## Sem TTY: `mabel responder <n> --respostas <arquivo.json>`
+
+Para um cliente responder item a item sem montar o texto `P1/R1`. O arquivo é uma lista,
+uma resposta por pergunta na ordem do `inbox --json`, ou o objeto
+`{"perguntas": [...], "suposicoes_criticas": null | "<correção>"}`, exigido quando o item
+tem suposições críticas.
+
+| Valor | Por pergunta | Em `suposicoes_criticas` |
+|---|---|---|
+| texto | responde | corrige as suposições |
+| `null` ou vazio | aceita a sugestão (recusado sem sugestão) | confirma as suposições |
+| `resposta_decidir` do `inbox --json` | "decide você" (recusado em regra crítica) | recusado |
+
+A CLI monta o mesmo texto da inbox do TTY; `--replanejar` vale como na forma em texto.
+Com `--json`, devolve `{"item": {"numero", "titulo", "estado"}}` com o estado depois da
+resposta.
 
 ## Critérios de aceite
 
