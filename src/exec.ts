@@ -1,7 +1,7 @@
 import { statSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { parseArgs } from 'node:util';
-import { ask } from './ask.ts';
+import { ask, askOrEnd, Interrupted, interactive } from './ask.ts';
 import { dataDir, openDb } from './db.ts';
 import { formatCost, formatDuration, formatTokens, truncate } from './format.ts';
 import { type RunOutcome, type RunRequest, startRun } from './runner.ts';
@@ -66,15 +66,15 @@ export function displayTarget(input: unknown, cwd: string, width: number): strin
   return truncate(target, width);
 }
 
+function statusHead(outcome: RunOutcome): string {
+  if (outcome.status === 'succeeded') return '✓ concluída';
+  if (outcome.status === 'interrupted') return '■ interrompida';
+  return `✗ falhou: ${outcome.error ?? 'erro desconhecido'}`;
+}
+
 export function summaryLine(outcome: RunOutcome): string {
   const { totals } = outcome;
-  const head =
-    outcome.status === 'succeeded'
-      ? '✓ concluída'
-      : outcome.status === 'interrupted'
-        ? '■ interrompida'
-        : `✗ falhou: ${outcome.error ?? 'erro desconhecido'}`;
-  const parts = [head];
+  const parts = [statusHead(outcome)];
   if (totals?.numTurns !== undefined) parts.push(`${totals.numTurns} ${totals.numTurns === 1 ? 'turno' : 'turnos'}`);
   parts.push(formatDuration(outcome.durationMs));
   if (totals?.costUsd !== undefined) parts.push(formatCost(totals.costUsd));
@@ -143,6 +143,87 @@ export class ToolLog {
   }
 }
 
+/** Uma run da conversa: o que o `exec` mostra durante ela fica a cargo de quem a roda. */
+export interface ChatIO {
+  turn(request: RunRequest): Promise<RunOutcome>;
+  /** Próxima mensagem; `null` encerra a sessão. Ctrl+C lança `Interrupted`. */
+  read(): Promise<string | null>;
+  write(text: string): void;
+}
+
+export const chatHint = 'Continue a conversa; sair ou Ctrl+D encerra.';
+
+/** Linha curta depois de cada resposta da conversa. */
+export function turnLine(outcome: RunOutcome): string {
+  const parts = [statusHead(outcome), formatDuration(outcome.durationMs)];
+  if (outcome.totals?.costUsd !== undefined) parts.push(formatCost(outcome.totals.costUsd));
+  return style.dim(parts.join(' · '));
+}
+
+/** Total da sessão, mostrado quando ela é encerrada. */
+export function sessionLine(outcomes: RunOutcome[]): string {
+  const sum = (pick: (outcome: RunOutcome) => number | undefined) =>
+    outcomes.reduce((total, outcome) => total + (pick(outcome) ?? 0), 0);
+  const parts = [
+    '■ sessão encerrada',
+    `${outcomes.length} ${outcomes.length === 1 ? 'mensagem' : 'mensagens'}`,
+    formatDuration(sum((outcome) => outcome.durationMs)),
+    formatCost(sum((outcome) => outcome.totals?.costUsd)),
+  ];
+  const input = sum(
+    ({ totals }) => (totals?.inputTokens ?? 0) + (totals?.cacheReadTokens ?? 0) + (totals?.cacheCreationTokens ?? 0),
+  );
+  parts.push(`${formatTokens(input)} tokens de entrada`);
+  parts.push(`${formatTokens(sum((outcome) => outcome.totals?.outputTokens))} de saída`);
+  return parts.join(' · ');
+}
+
+/**
+ * Conversa a partir da primeira resposta: cada mensagem é uma run nova que retoma a sessão
+ * do claude. Encerra só com `sair`, Ctrl+D ou o orçamento da sessão esgotado.
+ */
+export async function chat(request: RunRequest, first: RunOutcome, io: ChatIO): Promise<RunOutcome[]> {
+  const outcomes = [first];
+  let sessionId = first.sessionId;
+  io.write(`\n${turnLine(first)}`);
+  if (!sessionId) io.write('A sessão não chegou a começar: a próxima mensagem abre uma nova.');
+  io.write(style.dim(chatHint));
+
+  while (true) {
+    let remaining: number | undefined;
+    if (request.maxBudgetUsd !== undefined) {
+      remaining = request.maxBudgetUsd - outcomes.reduce((total, outcome) => total + (outcome.totals?.costUsd ?? 0), 0);
+      if (remaining <= 0) {
+        io.write(`Orçamento da sessão esgotado (${formatCost(request.maxBudgetUsd)}).`);
+        break;
+      }
+    }
+
+    let message: string | null;
+    try {
+      message = await io.read();
+    } catch (error) {
+      if (!(error instanceof Interrupted)) throw error;
+      io.write(style.dim(chatHint));
+      continue;
+    }
+    if (message === null || message === 'sair') break;
+    if (!message) continue;
+
+    const next: RunRequest = { ...request, prompt: message };
+    if (sessionId) next.resumeSessionId = sessionId;
+    if (remaining !== undefined) next.maxBudgetUsd = remaining;
+    const outcome = await io.turn(next);
+    outcomes.push(outcome);
+    io.write(`\n${turnLine(outcome)}`);
+    sessionId = outcome.sessionId ?? sessionId;
+    if (!sessionId) io.write('A sessão não chegou a começar: a próxima mensagem abre uma nova.');
+  }
+
+  io.write(`\n${sessionLine(outcomes)}`);
+  return outcomes;
+}
+
 export async function exec(args: string[]): Promise<number> {
   const request = parseExecArgs(args);
   if (typeof request === 'string') {
@@ -151,9 +232,8 @@ export async function exec(args: string[]): Promise<number> {
   }
 
   const log = new ToolLog(request.cwd);
-  let runId = '';
   let headerPrinted = false;
-  const printHeader = (model: string | undefined) => {
+  const printHeader = (runId: string, model: string | undefined) => {
     if (headerPrinted) return;
     headerPrinted = true;
     const where = `${model ?? request.model ?? '?'}  ·  ${request.cwd}`;
@@ -161,13 +241,35 @@ export async function exec(args: string[]): Promise<number> {
   };
 
   const home = dataDir();
-  let handle;
-  try {
-    handle = startRun(openDb(home), home, request, {
-      onInit: ({ model }) => printHeader(model),
+  let db: ReturnType<typeof openDb> | undefined;
+  const turn = async (turnRequest: RunRequest): Promise<RunOutcome> => {
+    let runId = '';
+    db ??= openDb(home);
+    const handle = startRun(db, home, turnRequest, {
+      onInit: ({ model }) => printHeader(runId, model),
       onToolUse: (call) => log.use(call.id, call.name, call.input),
       onToolResult: (result) => log.close(result.id, result.isError),
     });
+    runId = handle.runId;
+
+    process.on('SIGINT', handle.interrupt);
+    let outcome: RunOutcome;
+    try {
+      outcome = await handle.done;
+    } finally {
+      process.off('SIGINT', handle.interrupt);
+    }
+
+    printHeader(runId, outcome.model ?? undefined);
+    log.flush();
+    const text = outcome.totals?.text?.trim();
+    if (text) process.stdout.write(`${text}\n`);
+    return outcome;
+  };
+
+  let first: RunOutcome;
+  try {
+    first = await turn(request);
   } catch (error) {
     process.stderr.write(
       `Não foi possível gravar o registro da run em ${home}: ${(error as Error).message}\n` +
@@ -175,24 +277,19 @@ export async function exec(args: string[]): Promise<number> {
     );
     return 1;
   }
-  runId = handle.runId;
 
-  process.on('SIGINT', handle.interrupt);
-  let outcome: RunOutcome;
-  try {
-    outcome = await handle.done;
-  } finally {
-    process.off('SIGINT', handle.interrupt);
+  if (!interactive()) {
+    process.stdout.write(`\n${summaryLine(first)}\n`);
+    if (first.status === 'succeeded') return 0;
+    return first.status === 'interrupted' ? 130 : 1;
   }
 
-  printHeader(outcome.model ?? undefined);
-  log.flush();
-  const text = outcome.totals?.text?.trim();
-  if (text) process.stdout.write(`${text}\n`);
-  process.stdout.write(`\n${summaryLine(outcome)}\n`);
-
-  if (outcome.status === 'succeeded') return 0;
-  return outcome.status === 'interrupted' ? 130 : 1;
+  await chat(request, first, {
+    turn,
+    read: () => askOrEnd(`\n${style.bold('exec › ')}`),
+    write: (text) => log.write(text),
+  });
+  return 0;
 }
 
 /** Pede o prompt numa linha de entrada, para o `exec` escolhido no menu. */

@@ -124,3 +124,15 @@ test('run de etapa mostra a etapa, o item e o projeto', () => {
   assert.match(cli().stdout, /cccc4444 .+succeeded\s+plan #3\s+claude-haiku/);
   assert.match(cli('cccc').stdout, /tipo\s+plan #3 · Cadastro de viagens \(ferias\)/);
 });
+
+test('run do exec mostra a posição na conversa quando a sessão tem mais de uma mensagem', () => {
+  const { db, cli } = setup();
+  insertRun(db, 'cccc0001-0000-0000-0000-000000000001', { session_id: 'sess-1', started_at: at(200) });
+  insertRun(db, 'cccc0002-0000-0000-0000-000000000002', { session_id: 'sess-1', started_at: at(260) });
+  insertRun(db, 'dddd0001-0000-0000-0000-000000000001', { session_id: 'sess-2', started_at: at(300) });
+
+  assert.match(cli('cccc0002').stdout, /sessão\s+sess-1 · mensagem 2 de 2/);
+  assert.match(cli('cccc0001').stdout, /sessão\s+sess-1 · mensagem 1 de 2/);
+  const single = cli('dddd0001').stdout;
+  assert.match(single, /sessão\s+sess-2\n/);
+});
