@@ -7,6 +7,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
 import { Interrupted, interactive } from './ask.ts';
 import { dataDir, openDb } from './db.ts';
+import { type ErrorCode, fail } from './errors.ts';
 import { ToolLog, summaryLine } from './exec.ts';
 import { formatCost, formatWhen, truncate } from './format.ts';
 import { projectContext } from './hermetic.ts';
@@ -189,7 +190,14 @@ export interface BirthSite {
   claudeMd: boolean;
 }
 
-export class BirthError extends Error {}
+/** Passo do nascimento recusado; `code` vai para o erro do `--json`. */
+export class BirthError extends Error {
+  readonly code: ErrorCode;
+  constructor(message: string, code: ErrorCode = 'estado_invalido') {
+    super(message);
+    this.code = code;
+  }
+}
 
 /** Arquivos que não contam para "diretório vazio". */
 const IGNORED_ENTRIES = new Set(['.DS_Store']);
@@ -831,7 +839,7 @@ export const BIRTH_COMMIT = 'mabel nascer';
 export function saveBirth(db: DatabaseSync, birth: Birth, proposal: BirthProposal): BirthSaved {
   if (birth.status !== 'proposed') throw new BirthError(`O nascimento ${shortId(birth.id)} não tem proposta pendente.`);
   const problems = proposalProblems(proposal, { allowEmptyBacklog: true });
-  if (problems.length > 0) throw new BirthError(`Proposta inválida: ${problems.join('; ')}.`);
+  if (problems.length > 0) throw new BirthError(`Proposta inválida: ${problems.join('; ')}.`, 'argumento_invalido');
   const { root } = birth;
   if (!existsSync(root)) throw new BirthError(`${root} não existe mais.`);
   let gitInit = false;
@@ -934,27 +942,32 @@ async function balanceBlock(env: BirthEnv): Promise<string | undefined> {
   return ensureRefineBalance(env.db, env.home, 'birth', confirmLow, env.view.log ? undefined : process.stderr);
 }
 
-export type StepResult = { birth: Birth } | { error: string; code: number };
+export type StepResult = { birth: Birth } | { error: string; code: number; reason: ErrorCode };
+
+/** Saída de um passo barrado pela política de saldo (ou interrompido na chamada mínima). */
+function blockedExit(blocked: string): { code: number; reason: ErrorCode } {
+  return { code: blocked === 'interrompido' ? 130 : 1, reason: 'saldo_baixo' };
+}
 
 /** Primeira rodada: roda o agente e cria o nascimento. */
 export async function startBirth(env: BirthEnv, site: BirthSite, description: string, options: BirthOptions): Promise<StepResult> {
   const blocked = await balanceBlock(env);
-  if (blocked) return { error: `Nascimento não iniciado: ${blocked}.`, code: blocked === 'interrompido' ? 130 : 1 };
+  if (blocked) return { error: `Nascimento não iniciado: ${blocked}.`, ...blockedExit(blocked) };
   const fixed = options.stack ? findStack(options.stack) : undefined;
   const result = await runRound(env.db, env.home, site, options, birthPrompt(site, description, fixed), 1, undefined, env.view);
-  if ('error' in result) return { error: result.error, code: result.interrupted ? 130 : 1 };
+  if ('error' in result) return { error: result.error, code: result.interrupted ? 130 : 1, reason: 'falha_etapa' };
   return { birth: createBirth(env.db, site.root, description, options, result.sessionId, result.output) };
 }
 
 /** Rodada seguinte, na mesma sessão, com as respostas às perguntas da anterior. */
 export async function answerBirth(env: BirthEnv, birth: Birth, pairs: AnswerPair[]): Promise<StepResult> {
-  if (birth.status !== 'asking') return { error: 'Este nascimento não tem perguntas em aberto.', code: 1 };
+  if (birth.status !== 'asking') return { error: 'Este nascimento não tem perguntas em aberto.', code: 1, reason: 'estado_invalido' };
   const blocked = await balanceBlock(env);
-  if (blocked) return { error: `Rodada não iniciada: ${blocked}.`, code: blocked === 'interrompido' ? 130 : 1 };
+  if (blocked) return { error: `Rodada não iniciada: ${blocked}.`, ...blockedExit(blocked) };
   const site = siteOf(birth);
   const round = birth.rounds + 1;
   const result = await runRound(env.db, env.home, site, birth.options, answersPrompt(round, pairs), round, birth.sessionId ?? undefined, env.view);
-  if ('error' in result) return { error: result.error, code: result.interrupted ? 130 : 1 };
+  if ('error' in result) return { error: result.error, code: result.interrupted ? 130 : 1, reason: 'falha_etapa' };
   return { birth: recordRound(env.db, birth, result.sessionId, result.output) };
 }
 
@@ -1139,12 +1152,12 @@ function readJsonFile(path: string, what: string): unknown {
   try {
     text = readFileSync(path, 'utf8');
   } catch (error) {
-    throw new BirthError(`Não foi possível ler ${what} em ${path}: ${(error as NodeJS.ErrnoException).code ?? (error as Error).message}.`);
+    throw new BirthError(`Não foi possível ler ${what} em ${path}: ${(error as NodeJS.ErrnoException).code ?? (error as Error).message}.`, 'argumento_invalido');
   }
   try {
     return JSON.parse(text) as unknown;
   } catch (error) {
-    throw new BirthError(`${path} não é JSON válido: ${(error as Error).message}.`);
+    throw new BirthError(`${path} não é JSON válido: ${(error as Error).message}.`, 'argumento_invalido');
   }
 }
 
@@ -1184,10 +1197,16 @@ type Values = {
 
 class UsageError extends Error {}
 
+/** Passo que não saiu: o erro (em JSON com `--json`) e o código de saída do passo. */
+function stepFailed(result: { error: string; code: number; reason: ErrorCode }): number {
+  fail(result.reason, result.error);
+  return result.code;
+}
+
 /** Nascimento do `<id>` (ou prefixo), conferido contra os estados aceitos pelo passo. */
 function pick(db: DatabaseSync, id: string, allowed: BirthStatus[]): Birth {
   const found = findBirth(db, id);
-  if (typeof found === 'string') throw new BirthError(found);
+  if (typeof found === 'string') throw new BirthError(found, 'nao_encontrado');
   if (!allowed.includes(found.status)) {
     const wanted = allowed.map((status) => BIRTH_STATES[status]).join(' ou ');
     throw new BirthError(`O nascimento ${shortId(found.id)} está em ${BIRTH_STATES[found.status]}; este passo vale para ${wanted}.`);
@@ -1231,12 +1250,9 @@ async function stepCommand(env: BirthEnv, values: Values): Promise<number> {
     if (values.respostas === undefined) throw new UsageError('Falta --respostas <arquivo.json> com uma resposta por pergunta.');
     const birth = pick(db, values.responder, ['asking']);
     const answers = parseAnswers(readJsonFile(values.respostas, 'as respostas'), birth.output?.perguntas ?? []);
-    if (typeof answers === 'string') throw new BirthError(`Respostas inválidas: ${answers}.`);
+    if (typeof answers === 'string') throw new BirthError(`Respostas inválidas: ${answers}.`, 'argumento_invalido');
     const result = await answerBirth(env, birth, answerPairs(birth.output?.perguntas ?? [], answers));
-    if ('error' in result) {
-      process.stderr.write(`${result.error}\n`);
-      return result.code;
-    }
+    if ('error' in result) return stepFailed(result);
     report(result.birth);
     return 0;
   }
@@ -1246,7 +1262,7 @@ async function stepCommand(env: BirthEnv, values: Values): Promise<number> {
     let proposal = (birth.output as BirthOutput).proposta;
     if (values.proposta !== undefined) {
       const edited = proposalFromJson(readJsonFile(values.proposta, 'a proposta'));
-      if (typeof edited === 'string') throw new BirthError(`Proposta inválida: ${edited}.`);
+      if (typeof edited === 'string') throw new BirthError(`Proposta inválida: ${edited}.`, 'argumento_invalido');
       proposal = edited;
     }
     const saved = saveBirth(db, birth, proposal);
@@ -1276,16 +1292,12 @@ export async function birthCommand(args: string[]): Promise<number> {
       },
     });
   } catch (error) {
-    process.stderr.write(`${(error as Error).message}\nUso: ${birthUsageFull}\n`);
-    return 1;
+    return fail('argumento_invalido', (error as Error).message, birthUsageFull);
   }
   const { positionals } = parsed;
   const values = parsed.values as Values;
   const steps = [values.responder, values.aceitar, values.descartar, values.lista || undefined].filter((value) => value !== undefined);
-  const usage = (message: string) => {
-    process.stderr.write(`${message}\nUso: ${birthUsageFull}\n`);
-    return 1;
-  };
+  const usage = (message: string, code: ErrorCode = 'argumento_invalido') => fail(code, message, birthUsageFull);
   if (steps.length > 1) return usage('Use um passo por vez: --responder, --aceitar, --descartar ou --lista.');
   if (values.respostas !== undefined && values.responder === undefined) return usage('--respostas vale com --responder <id>.');
   if (values.proposta !== undefined && values.aceitar === undefined) return usage('--proposta vale com --aceitar <id>.');
@@ -1293,8 +1305,7 @@ export async function birthCommand(args: string[]): Promise<number> {
     return usage('A descrição, --stack e --modelo valem só para começar um nascimento.');
   }
   if (values.stack !== undefined && !findStack(values.stack)) {
-    process.stderr.write(`Stack desconhecida: ${values.stack}. Use uma destas: ${STACKS.map((stack) => stack.id).join(', ')}.\n`);
-    return 1;
+    return fail('argumento_invalido', `Stack desconhecida: ${values.stack}. Use uma destas: ${STACKS.map((stack) => stack.id).join(', ')}.`);
   }
   const options: BirthOptions = {
     ...(values.stack ? { stack: values.stack } : {}),
@@ -1323,27 +1334,21 @@ export async function birthCommand(args: string[]): Promise<number> {
     if (!description && io) {
       description = (await io.ask(`O que é o projeto?${site.hasCode ? ' (enter parte do código)' : ''} `)).trim();
     }
-    if (!description && !site.hasCode) return usage('Diga o que é o projeto: mabel nascer "<descrição>".');
+    if (!description && !site.hasCode) return usage('Diga o que é o projeto: mabel nascer "<descrição>".', 'argumento_faltando');
 
     if (!values.json) {
       out(style.bold(`Nascimento de ${basename(site.root)}`) + style.dim(` · ${site.hasCode ? 'repositório com código' : 'diretório vazio'}`));
     }
     const result = await startBirth(env, site, description, options);
-    if ('error' in result) {
-      process.stderr.write(`${result.error}\n`);
-      return result.code;
-    }
+    if ('error' in result) return stepFailed(result);
     if (io) return await converse(env, io, result.birth);
     if (values.json) writeJson(birthJson(db, result.birth));
     else printStep(env, result.birth);
     return 0;
   } catch (error) {
     if (error instanceof Interrupted) return 130;
-    if (error instanceof UsageError) return usage(error.message);
-    if (error instanceof BirthError || error instanceof ProjectError) {
-      process.stderr.write(`${error.message}\n`);
-      return 1;
-    }
+    if (error instanceof UsageError) return usage(error.message, 'argumento_faltando');
+    if (error instanceof BirthError || error instanceof ProjectError) return fail(error.code, error.message);
     throw error;
   } finally {
     db.close();

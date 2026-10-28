@@ -1,0 +1,37 @@
+{
+  "versao": 1,
+  "projeto": {
+    "id": "3f0c2a9e-5b7d-4e1a-9c8f-2d6b4a1e7c30",
+    "nome": "loja-online",
+    "raiz": "/Users/voce/projetos/loja-online"
+  },
+  "resposta_decidir": "decida e registre como suposição.",
+  "pendencias": [
+    {
+      "item": 1,
+      "titulo": "Carrinho",
+      "tipo": "responder",
+      "pendencia": "perguntas_planejamento",
+      "motivo": "perguntas do planejamento",
+      "perguntas": [
+        {
+          "texto": "O carrinho guarda os produtos depois do logout?",
+          "sugestao": "Sim, por 30 dias",
+          "regra_critica": false
+        },
+        {
+          "texto": "Produto sem estoque pode entrar no carrinho?",
+          "sugestao": "Não",
+          "regra_critica": true
+        }
+      ],
+      "suposicoes_criticas": [],
+      "arquivos": [],
+      "opcoes": [
+        "responder",
+        "decidir",
+        "cancelar"
+      ]
+    }
+  ]
+}

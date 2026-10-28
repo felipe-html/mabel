@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { test } from 'node:test';
 import { eventCursor, pollEvents } from '../src/events.ts';
 import { getItem, syncBacklog, transition } from '../src/items.ts';
+import { isoLocal } from '../src/json.ts';
 import { writeConfig } from '../src/project.ts';
 import { type QueueEventCause, type QueueEventKind, listQueueEvents, recordQueueEvent } from '../src/run.ts';
 import { CLI, EXECUTION, EXECUTION_FILES, PLAN, REVIEW_OK, setupProject, useScenario } from './helpers.ts';
@@ -69,7 +70,7 @@ test('critério 2: um run produz etapa iniciou, ferramenta, gate e etapa termino
   assert.ok(events.every((event) => event.versao === 1));
   assert.deepEqual(
     events.find((event) => event.tipo === 'saldo'),
-    { versao: 1, tipo: 'saldo', janela: '5h', uso: 0.22, reset },
+    { versao: 1, tipo: 'saldo', janela: '5h', uso: 0.22, reset: isoLocal(new Date(reset)) },
   );
 
   // Campos e ordem: a run da execução, com a ferramenta, os gates da verificação e a revisão.

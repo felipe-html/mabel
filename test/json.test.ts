@@ -103,6 +103,9 @@ test('projetos --json: campos, versão e estados da fila', () => {
     modelo: 'sonnet',
     run: runId,
     inicio: out.projetos[0].em_andamento.inicio,
+    tentativa: 1,
+    reprovacoes: 0,
+    ultima_revisao: null,
   });
 
   // Espera por saldo gravada pelo `run` que segura a trava.
@@ -276,4 +279,117 @@ test('projeto <nome> --json: custo e uso das janelas por etapa, modelo e item', 
 
   const missing = p.cli('projeto', '--json');
   assert.equal(missing.status, 1);
+});
+
+test('projetos --json: tentativa e revisões do item em andamento desde o plano aprovado', () => {
+  const p = jsonProject();
+  p.holdLock();
+  const item = p.item(2);
+  const gate = (attempt: number, name: string, passed: boolean) =>
+    p.db
+      .prepare('INSERT INTO gate_results (item_id, attempt, gate, passed, at) VALUES (?, ?, ?, ?, ?)')
+      .run(item.id, attempt, name, passed ? 1 : 0, new Date().toISOString());
+  // Reprovação de um plano anterior não conta.
+  gate(1, 'review', false);
+  gate(0, 'start', true);
+  gate(2, 'review', false);
+  p.db.prepare("UPDATE items SET status = 'executing', attempts = 1 WHERE id = ?").run(item.id);
+  insertRun(p.db, item.id, 'execute', 'sonnet', 0, 'running');
+
+  const running = p.json('projetos').projetos[0].em_andamento;
+  assert.equal(running.tentativa, 2);
+  assert.equal(running.reprovacoes, 1);
+  assert.equal(running.ultima_revisao.resultado, 'reprovada');
+  assert.match(running.ultima_revisao.em, /^\d{4}-\d{2}-\d{2}T/);
+});
+
+test('erros com --json: uma linha no stderr com código e mensagem, saída diferente de 0', () => {
+  const p = jsonProject();
+  const error = (...args: string[]) => {
+    const result = p.cli(...args, '--json');
+    assert.notEqual(result.status, 0);
+    assert.equal(result.stdout, '');
+    const lines = result.stderr.trim().split('\n');
+    assert.equal(lines.length, 1, result.stderr);
+    const out = JSON.parse(lines[0] as string);
+    assert.deepEqual(Object.keys(out), ['versao', 'erro']);
+    assert.equal(out.versao, 1);
+    assert.deepEqual(Object.keys(out.erro), ['codigo', 'mensagem']);
+    return out.erro as { codigo: string; mensagem: string };
+  };
+  assert.equal(error('responder').codigo, 'argumento_faltando');
+  assert.equal(error('aprovar', '99').codigo, 'nao_encontrado');
+  assert.equal(error('aprovar', '1').codigo, 'estado_invalido');
+  assert.equal(error('projeto', 'nenhum').codigo, 'nao_encontrado');
+  assert.equal(error('projeto', 'remover', p.project.name).codigo, 'argumento_faltando');
+  assert.equal(error('inbox', '--outra').codigo, 'argumento_invalido');
+  assert.equal(error('run').codigo, 'argumento_invalido');
+
+  const outside = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'inbox', '--json'], {
+    cwd: p.home,
+    encoding: 'utf8',
+    env: p.env(),
+  });
+  assert.equal(JSON.parse(outside.stderr).erro.codigo, 'nao_e_projeto');
+  // Sem --json, o erro continua em texto.
+  assert.match(p.cli('aprovar', '99').stderr, /^Item #99 não existe\.\n$/);
+});
+
+test('aprovar e parar com --json', () => {
+  const p = jsonProject();
+  p.db
+    .prepare("UPDATE items SET status = 'needs_human', pending_kind = 'critical_approval', pending = '{}' WHERE id = ?")
+    .run(p.item(1).id);
+  assert.deepEqual(p.json('aprovar', '1'), { versao: 1, item: { numero: 1, titulo: 'Casa', estado: 'planned' } });
+  assert.deepEqual(p.json('parar'), { versao: 1, parada_pedida: false, pid: null });
+});
+
+test('responder --respostas: uma resposta por pergunta, sugestão, delegação e suposições críticas', () => {
+  const p = jsonProject();
+  const pending = (value: unknown) =>
+    p.db
+      .prepare("UPDATE items SET status = 'needs_human', pending_kind = 'question_plan', pending = ? WHERE id = ?")
+      .run(JSON.stringify(value), p.item(1).id);
+  const file = (name: string, value: unknown) => {
+    const path = join(p.home, name);
+    writeFileSync(path, JSON.stringify(value));
+    return path;
+  };
+  const refused = (value: unknown) => {
+    const result = p.cli('responder', '1', '--respostas', file('recusa.json', value), '--json');
+    assert.equal(result.status, 1);
+    const { erro } = JSON.parse(result.stderr);
+    assert.equal(erro.codigo, 'argumento_invalido');
+    return erro.mensagem as string;
+  };
+  const questions = [
+    { texto: 'Qual moeda?', sugestao: 'Real', regraCritica: false },
+    { texto: 'Desconto máximo?', sugestao: '10%', regraCritica: true },
+    { texto: 'Cor do botão?', sugestao: '', regraCritica: false },
+  ];
+  pending({ questions });
+  assert.match(refused([null, null]), /2 respostas para 3 perguntas/);
+  assert.match(refused([null, 'decida e registre como suposição.', 'Azul']), /resposta 2: pergunta de regra crítica/);
+  assert.match(refused([null, null, null]), /resposta 3: a pergunta não tem sugestão/);
+  assert.match(refused({ perguntas: [null, null, 'Azul'], suposicoes_criticas: null }), /não tem suposições críticas/);
+
+  const out = p.json('responder', '1', '--respostas', file('ok.json', [null, '15%', 'decida e registre como suposição.']));
+  assert.deepEqual(out, { versao: 1, item: { numero: 1, titulo: 'Casa', estado: 'planning' } });
+  assert.equal(
+    p.item(1).nextInput?.answer,
+    'P1: Qual moeda?\nR1: Real\nP2: Desconto máximo?\nR2: 15%\nP3: Cor do botão?\nR3: decida e registre como suposição.',
+  );
+
+  // Com suposições críticas, só o objeto, e a confirmação é explícita.
+  pending({ questions: [questions[0]], criticalAssumptions: ['desconto só no Pix'] });
+  assert.match(refused([null]), /o item tem suposições críticas/);
+  assert.match(refused({ perguntas: [null] }), /confirme \(null\) ou corrija/);
+  assert.match(refused({ perguntas: [null], suposicoes_criticas: 'decida e registre como suposição.' }), /a decisão é sua/);
+  p.json('responder', '1', '--respostas', file('sup.json', { perguntas: [null], suposicoes_criticas: null }));
+  assert.equal(p.item(1).nextInput?.answer, 'P1: Qual moeda?\nR1: Real\nP2: Suposições críticas: desconto só no Pix\nR2: Confirmo as suposições.');
+
+  // Texto e arquivo juntos, ou arquivo num item sem perguntas, são recusados.
+  assert.equal(p.cli('responder', '1', 'texto', '--respostas', file('x.json', [])).status, 1);
+  p.db.prepare("UPDATE items SET status = 'needs_human', pending_kind = 'plan_incomplete', pending = '{}' WHERE id = ?").run(p.item(1).id);
+  assert.match(refused([]), /não tem perguntas/);
 });
