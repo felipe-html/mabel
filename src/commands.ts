@@ -177,7 +177,7 @@ export const commands: Command[] = [
   },
   {
     name: 'integracao',
-    description: 'Mostra o relatório da branch de integração: o que levar à base e o que olhar primeiro',
+    description: 'Mostra as unidades do relatório de run: prontas para entregar, em andamento e a integração',
     usage: integrationUsage,
     run: integrationCommand,
   },

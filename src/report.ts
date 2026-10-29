@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { formatCost } from './format.ts';
@@ -6,14 +6,12 @@ import { tryGit } from './git.ts';
 import { openDelivery } from './delivery.ts';
 import { integratedItems } from './integration.ts';
 import { type Item, itemCost } from './items.ts';
-import { MABEL_DIR, type Project, mabelPath } from './project.ts';
+import { MABEL_DIR, type Project } from './project.ts';
 import { type ProofResult, proofLabel } from './proof.ts';
 import type { ExecuteOutput, PlanOutput } from './schemas/stages.ts';
 import { readArtifact } from './stages.ts';
 
-// Relatório da integração (P.5): decidível sem abrir o código.
-
-export const REPORT_FILE = 'integracao.md';
+// Relatório da integração (P.5): decidível sem abrir o código. Vive no `run.md` (S.1).
 
 const two = (n: number) => String(n).padStart(2, '0');
 
@@ -127,23 +125,22 @@ export function lookFirstLines(db: DatabaseSync, home: string, project: Project,
   return integratedItems(db, project, upTo).flatMap((item) => lookFirst(entry(home, item)));
 }
 
-/** Conteúdo do `.mabel/integracao.md` ou, com `delivery`, do corpo do PR da entrega. */
+/**
+ * Corpo do PR da entrega: o relatório dos itens integrados até o commit dela. Sem
+ * `delivery`, o mesmo relatório com a integração atual (`mabel integracao`, testes).
+ */
 export function renderIntegrationReport(db: DatabaseSync, home: string, project: Project, options: ReportOptions = {}): string {
   const integration = project.config.integracao;
   const base = project.config.baseBranch;
   if (!integration) return '# Integração desligada\n\nCom `integracao: null` no config, cada item fica na própria branch.\n';
   const { delivery, maxChars } = options;
   const entries = integratedItems(db, project, delivery?.commit).map((item) => entry(home, item));
-  const lines = delivery
-    ? [`# Entrega · ${delivery.branch} · ${plural(entries.length, 'item', 'itens')} desde a ${base}`]
-    : ['<!-- Gerado pelo Mabel. Edições aqui são descartadas. -->', `# Integração · ${integration} · ${plural(entries.length, 'item', 'itens')} desde a ${base}`];
+  const lines = [`# ${delivery ? `Entrega · ${delivery.branch}` : `Integração · ${integration}`} · ${plural(entries.length, 'item', 'itens')} desde a ${base}`];
   if (entries.length === 0) return `${[...lines, '', `Nada a levar para a ${base}.`].join('\n')}\n`;
   if (delivery) {
     lines.push('', 'Faça o merge com merge commit ("Create a merge commit" no GitHub, "Merge commit" no Bitbucket): squash e rebase impedem o Mabel de dar os itens como concluídos.');
   } else {
-    lines.push('', `Para levar à ${base}: git merge --no-ff ${integration}`, 'ou: mabel entregar');
-    const open = openDelivery(db, project.id);
-    if (open) lines.push(`Entrega aberta: ${open.branch} · ${open.prUrl ?? 'sem PR'}`);
+    lines.push('', ...howToDeliver(db, project));
   }
   lines.push(`Para devolver um item: mabel rejeitar <n> "<motivo>"`);
   const first = entries.flatMap(lookFirst);
@@ -157,12 +154,41 @@ export function renderIntegrationReport(db: DatabaseSync, home: string, project:
   return `${head}${sections.slice(0, kept).map((section) => `\n${section}`).join('')}${cut(kept)}\n`;
 }
 
+function howToDeliver(db: DatabaseSync, project: Project): string[] {
+  const lines = [`Para levar à ${project.config.baseBranch}: git merge --no-ff ${project.config.integracao}`, 'ou: mabel entregar'];
+  const open = openDelivery(db, project.id);
+  if (open) lines.push(`Entrega aberta: ${open.branch} · ${open.prUrl ?? 'sem PR'}`);
+  return lines;
+}
+
 /**
- * Projeto iniciado antes do relatório: o `.mabel/.gitignore` não o lista. Ignora pelo
+ * Seção "Integração" do `run.md`: a branch sobre a base, como entregar, o "olhe primeiro" e
+ * o detalhe de cada item, com os títulos um nível abaixo.
+ */
+export function integrationSection(db: DatabaseSync, home: string, project: Project): string[] {
+  const integration = project.config.integracao;
+  const base = project.config.baseBranch;
+  if (!integration) return ['Desligada (`integracao: null` no config): cada item fica na própria branch.'];
+  const entries = integratedItems(db, project).map((item) => entry(home, item));
+  const baseCommit = tryGit(project.root, 'rev-parse', '--short', base) ?? '?';
+  const lines = [`${integration} = ${base} (${baseCommit}) + ${plural(entries.length, 'item', 'itens')}`];
+  if (entries.length === 0) return lines;
+  lines.push('', ...howToDeliver(db, project), `Para devolver um item: mabel rejeitar <n> "<motivo>"`);
+  const first = entries.flatMap(lookFirst);
+  lines.push('', '### Olhe primeiro', ...(first.length > 0 ? first.map((line) => `- ${line}`) : ['Nada: todos os critérios provados.']));
+  for (const e of entries) {
+    const [title, ...rest] = itemSection(db, project, e);
+    lines.push('', `#${title}`, ...rest);
+  }
+  return lines;
+}
+
+/**
+ * Projeto iniciado antes do arquivo: o `.mabel/.gitignore` não o lista. Ignora pelo
  * `info/exclude` do repositório, que não é versionado.
  */
-function ensureIgnored(root: string): void {
-  const file = `${MABEL_DIR}/${REPORT_FILE}`;
+export function ensureIgnored(root: string, name: string): void {
+  const file = `${MABEL_DIR}/${name}`;
   if (tryGit(root, 'check-ignore', '-q', file) !== undefined) return;
   const common = tryGit(root, 'rev-parse', '--git-common-dir');
   if (!common) return;
@@ -170,14 +196,4 @@ function ensureIgnored(root: string): void {
   mkdirSync(dirname(exclude), { recursive: true });
   const current = existsSync(exclude) ? readFileSync(exclude, 'utf8') : '';
   appendFileSync(exclude, `${current && !current.endsWith('\n') ? '\n' : ''}/${file}\n`);
-}
-
-/** Regenera o `.mabel/integracao.md`. Sem integração, não grava nada. */
-export function writeIntegrationReport(db: DatabaseSync, home: string, project: Project): string {
-  const content = renderIntegrationReport(db, home, project);
-  if (project.config.integracao) {
-    ensureIgnored(project.root);
-    writeFileSync(mabelPath(project.root, REPORT_FILE), content);
-  }
-  return content;
 }

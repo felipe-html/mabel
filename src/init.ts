@@ -263,7 +263,7 @@ export function createProject(db: DatabaseSync, root: string, input: NewProject)
   const files = createProjectFiles(root, [
     ['regras-criticas.md', input.criticalRules ? criticalRulesText(input.criticalRules) : CRITICAL_RULES_TEMPLATE],
     ['backlog.md', backlog],
-    ['.gitignore', 'quadro.md\nintegracao.md\n'],
+    ['.gitignore', 'quadro.md\nrun.md\n'],
     // Por último: é o config que marca a pasta como projeto Mabel.
     ['config.json', `${JSON.stringify(config, null, 2)}\n`],
   ]);

@@ -569,7 +569,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       <div class="node">
         <span class="kicker">Mabel · G10</span>
         <h4>Integra o item</h4>
-        <p>Commit de merge em <code>mabel/integracao</code>, apaga worktree e branch do item, regrava <code>.mabel/integracao.md</code>. A fila passa ao próximo item.</p>
+        <p>Commit de merge em <code>mabel/integracao</code>, apaga worktree e branch do item. A fila regrava <code>.mabel/run.md</code> e passa ao próximo item.</p>
       </div>
       <div class="exits">
         <div class="exit stop"><span class="k">failed</span><span>merge na integração falhou</span></div>
@@ -727,7 +727,7 @@ Gravar no backlog? [S/n/d]</pre>
           <header><span class="name">run</span><span class="badge agent">planejador · executor · revisor</span></header>
           <p class="usage">mabel run [--item n] [--uma] [--sem-lote] [--fundo [--json]]</p>
           <p>Em lote: planeja todos os <code>ready</code>, oferece a inbox, depois executa os <code>planned</code> um a um até a fila acabar. <code>--sem-lote</code> leva cada item até o fim antes do próximo.</p>
-          <p class="writes"><b>Grava:</b> estados e gates no SQLite; artefatos em <code>~/.mabel/items/&lt;id&gt;/</code>; runs em <code>~/.mabel/runs/</code>; commits na branch do item; merge em <code>mabel/integracao</code>; <code>quadro.md</code> e <code>integracao.md</code>.</p>
+          <p class="writes"><b>Grava:</b> estados e gates no SQLite; artefatos em <code>~/.mabel/items/&lt;id&gt;/</code>; runs em <code>~/.mabel/runs/</code>; commits na branch do item; merge em <code>mabel/integracao</code>; <code>quadro.md</code> e <code>run.md</code> (reescrito ao fim de cada tarefa e no fim do <code>run</code>).</p>
 <pre class="term"><span class="a">  ▸ planejar · opus</span>
 <span class="d">    → Read src/pedidos.ts ✓</span>
 #4 Desconto por volume: planning → planned
@@ -798,8 +798,8 @@ Retomar a esteira agora? [S/n]</pre>
         <article class="cmd">
           <header><span class="name">integracao</span><span class="badge none">leitura</span></header>
           <p class="usage">mabel integracao</p>
-          <p>O que está em <code>mabel/integracao</code> esperando a base, e o que olhar primeiro.</p>
-          <p class="writes"><b>Grava:</b> <code>.mabel/integracao.md</code>: por item, plano, arquivos alterados, prova, devoluções por gate, custo.</p>
+          <p>As unidades do relatório de run: prontas para entregar, em andamento e o que está em <code>mabel/integracao</code> esperando a base, com o que olhar primeiro.</p>
+          <p class="writes"><b>Grava:</b> <code>.mabel/run.md</code>: precisa de você, prontas para entregar, em andamento, integração (por item: plano, arquivos, prova, devoluções, custo) e as tarefas do run.</p>
         </article>
         <article class="cmd">
           <header><span class="name">entregar</span><span class="badge human">você pede</span></header>

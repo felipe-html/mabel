@@ -486,12 +486,13 @@ No REPL sem argumentos, pede o número e confirma `[s/N]`; no shell, **não conf
 
 ### integracao
 
-**Para quê:** ver o relatório da branch de integração (`mabel/integracao`): o que levar
-à base e o que olhar primeiro.
+**Para quê:** ver as unidades do relatório de run: o que está pronto para entregar, o
+que está em andamento e a branch de integração (`mabel/integracao`), com o que olhar
+primeiro.
 
-Sem parâmetros (argumentos ignorados). Regrava `.mabel/integracao.md` e imprime o mesmo
-conteúdo: por item integrado, plano, arquivos alterados, prova, devoluções por gate,
-custo.
+Sem parâmetros (argumentos ignorados). Regrava `.mabel/run.md` e imprime as seções de
+unidade dele: por item integrado, plano, arquivos alterados, prova, devoluções por gate,
+custo. O `run.md` substituiu o `.mabel/integracao.md` (S.1).
 
 **Pontos a refinar**
 

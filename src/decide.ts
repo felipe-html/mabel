@@ -13,7 +13,7 @@ import { writeJson } from './json.ts';
 import { type Item, type PendingKind, TransitionError, getItem, itemCost } from './items.ts';
 import { LockError, acquireLock } from './lock.ts';
 import { autonomousDecisions, humanAttemptsSummary } from './pipeline.ts';
-import { writeIntegrationReport } from './report.ts';
+import { unitSections, writeRunReport } from './runreport.ts';
 import { type Project, ProjectError, resolveProject } from './project.ts';
 import type { PlanOutput } from './schemas/stages.ts';
 import { itemDir, readArtifact } from './stages.ts';
@@ -302,7 +302,7 @@ export function rejectCommand(args: string[]): Promise<number> {
     const release = acquireLock(home, project.id);
     try {
       const result = reject(db, home, project, item, reason, { cancel: parsed.values.cancelar });
-      writeIntegrationReport(db, home, project);
+      writeRunReport(db, home, project);
       process.stdout.write(
         result.to === 'cancelled'
           ? `#${item.number} revertido na integração e cancelado.\n`
@@ -329,7 +329,9 @@ export async function integrationCommand(): Promise<number> {
   const home = dataDir();
   const db = openDb(home);
   try {
-    process.stdout.write(writeIntegrationReport(db, home, resolveProject(db)));
+    const project = resolveProject(db);
+    writeRunReport(db, home, project);
+    process.stdout.write(`${unitSections(db, home, project).join('\n')}\n`);
     return 0;
   } catch (error) {
     if (error instanceof ProjectError) {

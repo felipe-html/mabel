@@ -33,7 +33,7 @@ function project(backlog: string, responses: unknown[]) {
     startQueue({ db: ctx.db, home: ctx.home, project: ctx.project, ...options }).done;
   const item = (n: number) => getItem(ctx.db, ctx.project.id, n)!;
   const show = (path: string) => tryGit(ctx.root, 'show', `${INTEGRATION}:${path}`);
-  const report = () => readFileSync(join(ctx.root, '.mabel', 'integracao.md'), 'utf8');
+  const report = () => readFileSync(join(ctx.root, '.mabel', 'run.md'), 'utf8');
   return { ...ctx, scenario, start, item, show, report };
 }
 
@@ -53,38 +53,40 @@ test('P.5 critério 1: relatório com as seções, regenerado a cada integraçã
   const q = project('\n## A\nprimeiro\n\n## B\nsegundo\n', [PLAN_RICH, execFor(1), review2]);
   const first = await q.start({ once: true, batch: false });
   assert.equal(first.end, 'once');
-  assert.match(q.report(), /^<!-- Gerado pelo Mabel[^\n]*\n# Integração · mabel\/integracao · 1 item desde a main\n/);
+  assert.match(q.report(), /\n## Integração\nmabel\/integracao = main \([0-9a-f]+\) \+ 1 item\n/);
 
   useScenario(q.root, [PLAN_OK, execFor(2), REVIEW]);
   await q.start();
-  const report = q.report(); if (process.env.SHOW_REPORT) writeFileSync("/private/tmp/claude-501/-Users-felipe-Pessoal-Harness-mabel--claude-worktrees-mabel-improvements-discussion-225138/e346bf7d-0ad0-4cd5-9eff-6ab8c4e90804/scratchpad/report.md", report);
-  assert.match(report, /# Integração · mabel\/integracao · 2 itens desde a main/);
+  const report = q.report();
+  assert.match(report, /mabel\/integracao = main \([0-9a-f]+\) \+ 2 itens/);
   assert.match(report, /Para levar à main: git merge --no-ff mabel\/integracao/);
-  const look = report.slice(report.indexOf('## Olhe primeiro'), report.indexOf('## #1'));
+  const look = report.slice(report.indexOf('### Olhe primeiro'), report.indexOf('### #1'));
   assert.match(look, /- #1 A: C1 sem prova \(sem `testeUnico` nem comando de teste no `verify`\)/);
   assert.match(look, /- #1 A: 1 suposição/);
   assert.match(look, /- #1 A: valide C2 — o botão aparece na tela/);
-  assert.ok(report.indexOf('## #1 A') < report.indexOf('## #2 B'), 'ordem de integração');
+  assert.ok(report.indexOf('### #1 A') < report.indexOf('### #2 B'), 'ordem de integração');
   assert.match(
     report,
-    /## #1 A · sem prova · 1 tentativa · US\$ [\d,]+\nCritérios\n {2}C1 novo {5}soma\(2, 3\) devolve 5 · test\/item1\.test\.js › item 1 existe · sem_prova\n {2}C2 humano {3}o botão aparece na tela · validação humana\nValidação humana: C2 o botão aparece na tela\nSuposições: arredonda para baixo\nDevoluções: —\nArquivos: 2 alterados, \+2 −0/,
+    /### #1 A · sem prova · 1 tentativa · US\$ [\d,]+\nCritérios\n {2}C1 novo {5}soma\(2, 3\) devolve 5 · test\/item1\.test\.js › item 1 existe · sem_prova\n {2}C2 humano {3}o botão aparece na tela · validação humana\nValidação humana: C2 o botão aparece na tela\nSuposições: arredonda para baixo\nDevoluções: —\nArquivos: 2 alterados, \+2 −0/,
   );
   // Não versionado: ignorado no repositório (projeto novo, pelo .gitignore do init).
-  assert.ok(tryGit(q.root, 'check-ignore', '-q', '.mabel/integracao.md') !== undefined);
-  // `mabel integracao` mostra o mesmo conteúdo.
+  assert.ok(tryGit(q.root, 'check-ignore', '-q', '.mabel/run.md') !== undefined);
+  // `mabel integracao` mostra as seções de unidade do run.md.
   const cli = q.cli('integracao');
   assert.equal(cli.status, 0, cli.stderr);
-  assert.match(cli.stdout, /# Integração · mabel\/integracao · 2 itens desde a main/);
+  assert.match(cli.stdout, /^## Prontas para entregar\n- mabel\/integracao \(2 tarefas\) · mabel entregar\n/);
+  assert.match(cli.stdout, /mabel\/integracao = main \([0-9a-f]+\) \+ 2 itens/);
+  assert.doesNotMatch(cli.stdout, /## Tarefas deste run/);
 });
 
-test('P.5: projeto antigo, sem o relatório no .gitignore, o ignora pelo info/exclude', async () => {
+test('S.1: projeto antigo, sem o run.md no .gitignore, o ignora pelo info/exclude', async () => {
   const q = project('\n## A\nprimeiro\n', [PLAN_OK, execFor(1), REVIEW]);
   writeFileSync(join(q.root, '.mabel', '.gitignore'), 'quadro.md\n');
   git(q.root, 'commit', '-q', '-m', 'gitignore antigo', '--', '.mabel/.gitignore');
   await q.start();
-  assert.ok(existsSync(join(q.root, '.mabel', 'integracao.md')));
-  assert.doesNotMatch(git(q.root, 'status', '--porcelain'), /integracao\.md/);
-  assert.match(readFileSync(join(q.root, '.git', 'info', 'exclude'), 'utf8'), /^\/\.mabel\/integracao\.md$/m);
+  assert.ok(existsSync(join(q.root, '.mabel', 'run.md')));
+  assert.doesNotMatch(git(q.root, 'status', '--porcelain'), /run\.md/);
+  assert.match(readFileSync(join(q.root, '.git', 'info', 'exclude'), 'utf8'), /^\/\.mabel\/run\.md$/m);
 });
 
 test('P.5 critério 2: rejeitar reverte só o item e o leva a planning com o motivo; --cancelar cancela', async () => {
@@ -114,7 +116,7 @@ test('P.5 critério 2: rejeitar reverte só o item e o leva a planning com o mot
   assert.equal(q.item(2).status, 'cancelled');
   assert.equal(q.show('src/item2.js'), undefined);
   assert.ok(q.show('src/item3.js'));
-  assert.doesNotMatch(readFileSync(join(q.root, '.mabel', 'integracao.md'), 'utf8'), /## #2/);
+  assert.doesNotMatch(readFileSync(join(q.root, '.mabel', 'run.md'), 'utf8'), /### #2/);
 
   // O item rejeitado é replanejado e volta à integração no próximo run.
   useScenario(q.root, [PLAN_OK, execFor(1, 'src/item1.js', 'export const item1 = "com frete";\n'), REVIEW]);

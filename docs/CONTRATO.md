@@ -93,6 +93,7 @@ leitura. O mesmo saldo aparece dentro de um projeto e fora dele.
 |---|---|---|---|
 | `.mabel/backlog.md` | Itens: título, descrição, critérios de aceite. | Humano (e `mabel add`) | Sim |
 | `.mabel/quadro.md` | Kanban gerado: colunas por etapa, custo, pendências. | Só o Mabel | Não |
+| `.mabel/run.md` | Relatório do último `run`: o que precisa do humano, o que está pronto para entregar, a integração e as tarefas do run. Reescrito ao fim de cada tarefa e no fim do `run`. | Só o Mabel | Não |
 | Banco SQLite | Estado de execução e auditoria. | Só o Mabel | Não |
 
 O backlog é a fonte da verdade do conteúdo dos itens. O banco é a fonte da verdade do

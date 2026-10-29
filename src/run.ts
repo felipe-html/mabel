@@ -19,7 +19,7 @@ import { type Item, type ItemStatus, getItemById, listItems, syncBacklog, transi
 import { writeJson } from './json.ts';
 import { type Notify, notify as systemNotify } from './notify.ts';
 import { finishIntegrated, openIntegration } from './integration.ts';
-import { writeIntegrationReport } from './report.ts';
+import { QUEUE_ENDINGS, RUN_REPORT_FILE, writeRunReport } from './runreport.ts';
 import { LockError, acquireLock } from './lock.ts';
 import { type AdvanceResult, advanceItem, autonomousDecisions } from './pipeline.ts';
 import { type Project, ProjectError, commitPendingMabel, mabelCommitted, resolveProject } from './project.ts';
@@ -409,7 +409,7 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; stop
     const cleaned = removeOrphanWorktrees(db, home, project, listItems(db, project.id));
     if (cleaned.length > 0) log.write(style.dim(`worktrees removidos: ${cleaned.map((n) => `#${n}`).join(', ')}`));
     finishIntegrated(db, project, listItems(db, project.id)).forEach(markDone);
-    writeIntegrationReport(db, home, project);
+    writeRunReport(db, home, project);
     return undefined;
   };
 
@@ -451,6 +451,8 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; stop
       current = undefined;
       log.flush();
       finalStates.set(target.number, getItemById(db, target.id).status);
+      // Se o processo cair, o relatório mostra até onde a fila foi.
+      writeRunReport(db, home, project);
 
       if (result.kind === 'interrupted') return { end: 'interrupted' };
       if (result.kind === 'paused' && stopping.signal.aborted && !abort.signal.aborted) {
@@ -480,6 +482,7 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; stop
       return result;
     } finally {
       record({ kind: 'stop', cause: 'queue', detail: end });
+      writeRunReport(db, home, project);
     }
   };
 
@@ -487,7 +490,7 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; stop
     const cost = db
       .prepare('SELECT coalesce(sum(cost_usd), 0) AS total FROM runs WHERE started_at >= ?')
       .get(startedAt.toISOString()) as { total: number };
-    if (end === 'empty' || end === 'once') notify(title, queueStatusLine(end, finalStates));
+    if (end === 'empty' || end === 'once') notify(title, `${queueStatusLine(end, finalStates)} · veja .mabel/${RUN_REPORT_FILE}`);
     else if (end === 'paused') notify(title, message ?? 'fila pausada');
     return {
       end,
@@ -505,21 +508,12 @@ export function notifyTitle(project: Project): string {
   return `Mabel · ${project.name}`;
 }
 
-const ENDINGS: Record<QueueEnd, string> = {
-  empty: 'fila vazia',
-  once: 'concluído',
-  interrupted: 'interrompido',
-  paused: 'pausado',
-  not_found: 'nada a fazer',
-  stopped: 'parado',
-};
-
 /** Fim da fila e estados finais, sem custo e tempo: `fila vazia · awaiting_merge 3 · needs_human 1`. */
 export function queueStatusLine(end: QueueEnd, finalStates: Map<number, ItemStatus>): string {
   const counts = new Map<ItemStatus, number>();
   for (const status of finalStates.values()) counts.set(status, (counts.get(status) ?? 0) + 1);
   const states = [...counts].map(([status, count]) => `${status} ${count}`).join(' · ') || 'nenhum item processado';
-  return `${ENDINGS[end]} · ${states}`;
+  return `${QUEUE_ENDINGS[end]} · ${states}`;
 }
 
 export function renderQueueSummary(result: QueueResult): string {

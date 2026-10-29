@@ -94,11 +94,11 @@ test('aviso no fim da fila, com o resumo sem custo e tempo', async () => {
   const q = queue('\n## A\nprimeiro\n\n## B\nsegundo\n', [...DONE.slice(0, 1), QUESTION, ...DONE.slice(1)]);
   assert.equal((await q.start()).end, 'empty');
   const name = q.project.name;
-  assert.deepEqual(q.notices, [[`Mabel · ${name}`, 'fila vazia · awaiting_merge 1 · needs_human 1']]);
+  assert.deepEqual(q.notices, [[`Mabel · ${name}`, 'fila vazia · awaiting_merge 1 · needs_human 1 · veja .mabel/run.md']]);
 
   const once = queue('\n## A\nprimeiro\n', DONE);
   await once.start({ once: true });
-  assert.deepEqual(once.notices.map(([, message]) => message), ['concluído · awaiting_merge 1']);
+  assert.deepEqual(once.notices.map(([, message]) => message), ['concluído · awaiting_merge 1 · veja .mabel/run.md']);
 });
 
 test('aviso na pausa, com o motivo', async () => {
@@ -119,7 +119,7 @@ test('aviso antes de cada pergunta no terminal: saldo, inbox e retomada', async 
   await offer.start({ interactive: true, confirm: async () => false, inbox: async () => {} });
   assert.deepEqual(offer.notices.map(([, message]) => message), [
     'aguardando você: 1 item aguarda você. Abrir a inbox agora?',
-    'fila vazia · needs_human 1',
+    'fila vazia · needs_human 1 · veja .mabel/run.md',
   ]);
 
   // Retomada: a inbox avisa antes de perguntar se a esteira volta.
