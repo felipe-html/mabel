@@ -8,8 +8,15 @@ import { select } from './menu.ts';
 import { displayPath, table } from './projects.ts';
 import { toolTarget } from './stream.ts';
 import { style } from './style.ts';
+import type { ArgSpec, OptionSpecs } from './options.ts';
 
 export const runsUsage = 'mabel runs [--limite <n>] | mabel runs <id>';
+
+export const runsOptions = {
+  limite: { type: 'string', value: '<n>', description: 'Quantas runs listar (padrão 20)' },
+} satisfies OptionSpecs;
+
+export const runsArgs: ArgSpec[] = [{ name: '<id>', description: 'Run a detalhar (o começo do id basta); sem ele, a lista' }];
 
 export class RunNotFoundError extends Error {}
 
@@ -106,6 +113,17 @@ interface ToolCallRow {
   is_error: number | null;
 }
 
+/** Posição de uma run do `exec` na conversa (` · mensagem 2 de 3`); vazio fora de conversa. */
+function sessionPosition(db: DatabaseSync, run: RunRow): string {
+  if (run.kind !== 'exec' || !run.session_id) return '';
+  const ids = db
+    .prepare("SELECT id FROM runs WHERE kind = 'exec' AND session_id = ? ORDER BY started_at, rowid")
+    .all(run.session_id)
+    .map((row) => row.id);
+  if (ids.length < 2) return '';
+  return ` · mensagem ${ids.indexOf(run.id) + 1} de ${ids.length}`;
+}
+
 /** Resumo da run, linha do tempo das ferramentas e caminhos dos arquivos brutos. */
 export function renderRunDetail(db: DatabaseSync, home: string, run: RunRow): string[] {
   const field = (label: string, value: string) => `  ${label.padEnd(11)}${value}`;
@@ -118,7 +136,7 @@ export function renderRunDetail(db: DatabaseSync, home: string, run: RunRow): st
   lines.push(field('status', `${run.status}${failure.length > 0 ? ` · ${failure.join(' · ')}` : ''}`));
   const requested = run.model_requested && run.model_requested !== run.model ? ` (pedido: ${run.model_requested})` : '';
   lines.push(field('modelo', `${modelOf(run)}${requested}`));
-  if (run.session_id) lines.push(field('sessão', run.session_id));
+  if (run.session_id) lines.push(field('sessão', `${run.session_id}${sessionPosition(db, run)}`));
   if (run.claude_version) lines.push(field('claude', run.claude_version));
   const timing = [`início ${formatWhen(run.started_at)}`];
   if (run.ended_at) timing.push(`fim ${formatWhen(run.ended_at)}`);
@@ -189,7 +207,7 @@ async function chooseAndShow(db: DatabaseSync, home: string, runs: RunRow[]): Pr
 export async function runsCommand(args: string[]): Promise<number> {
   let parsed;
   try {
-    parsed = parseArgs({ args, allowPositionals: true, options: { limite: { type: 'string' } } });
+    parsed = parseArgs({ args, allowPositionals: true, options: runsOptions });
   } catch (error) {
     process.stderr.write(`${(error as Error).message}\nUso: ${runsUsage}\n`);
     return 1;

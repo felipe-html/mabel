@@ -87,6 +87,20 @@ test('item crítico: sem "decide você"; a aprova e o item vai a planned', async
   assert.deepEqual(p.reasons(1), ['humano: inbox critérios aprovados']);
 });
 
+test('pergunta de regra crítica: sem "decide você" na inbox (G7)', async () => {
+  const p = setupProject('\n## Desconto\naplica desconto\n');
+  assert.equal(p.cli('status').status, 0);
+  const item = getItem(p.db, p.project.id, 1)!;
+  const pending = { questions: [{ texto: 'Desconto máximo?', sugestao: '10%', regraCritica: true }] };
+  p.db.prepare("UPDATE items SET status = 'needs_human', pending_kind = 'question_plan', pending = ? WHERE id = ?").run(JSON.stringify(pending), item.id);
+  const { io, out } = scripted(['d', '15%']);
+  await runInbox(p.db, p.home, p.project, io);
+  assert.ok(out.some((line) => line.includes('Desconto máximo? (regra crítica)')));
+  assert.ok(!out.some((line) => line.includes('d decide você')));
+  assert.ok(out.some((line) => line.includes('Regra crítica: a resposta é sua.')));
+  assert.equal(getItem(p.db, p.project.id, 1)!.nextInput?.answer, answerText([{ question: 'Desconto máximo?', answer: '15%' }]));
+});
+
 test('p pula o item, ctrl+c descarta só o item em andamento, plano incompleto e cancelamento', async () => {
   const p = inboxProject('\n## A\nprimeiro\n\n## B\nsegundo\n\n## C\nterceiro\n\n## D\nquarto\n', [
     QUESTIONS,

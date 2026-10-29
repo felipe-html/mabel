@@ -4,7 +4,8 @@ import { Interrupted, ask, interactive } from './ask.ts';
 import { dataDir, openDb } from './db.ts';
 import { type DecisionOptions, approve, cancel, respond } from './decisions.ts';
 import { renderItemDetail } from './decide.ts';
-import { type Item, type ItemStatus, type PendingKind, listItems } from './items.ts';
+import { fail } from './errors.ts';
+import { type Item, type ItemStatus, type Pending, type PendingKind, listItems } from './items.ts';
 import { writeJson } from './json.ts';
 import { humanAttemptsSummary } from './pipeline.ts';
 import { type Project, ProjectError, resolveProject } from './project.ts';
@@ -12,8 +13,11 @@ import { run } from './run.ts';
 import type { PlanOutput, Question } from './schemas/stages.ts';
 import { readArtifact } from './stages.ts';
 import { style } from './style.ts';
+import { type OptionSpecs, jsonOption } from './options.ts';
 
 export const inboxUsage = 'mabel inbox [--json]';
+
+export const inboxOptions = { json: jsonOption } satisfies OptionSpecs;
 
 /** Resposta gravada quando o humano devolve a pergunta ao agente. */
 export const DELEGATE = 'decida e registre como suposição.';
@@ -61,6 +65,61 @@ export function answerText(pairs: { question: string; answer: string }[]): strin
   return pairs.map(({ question, answer }, i) => `P${i + 1}: ${question}\nR${i + 1}: ${answer}`).join('\n');
 }
 
+/** Resposta gravada quando o humano confirma as suposições críticas sem corrigir. */
+const CONFIRM_ASSUMPTIONS = 'Confirmo as suposições.';
+
+function assumptionsQuestion(critical: string[]): string {
+  return `Suposições críticas: ${critical.join('; ')}`;
+}
+
+/**
+ * Respostas de `mabel responder --respostas` no texto que a inbox monta. Aceita uma lista,
+ * uma resposta por pergunta, ou `{ "perguntas": [...], "suposicoes_criticas": … }`, a forma
+ * exigida quando o item tem suposições críticas. Por pergunta: texto responde, `null` ou
+ * vazio aceita a sugestão e `DELEGATE` devolve ao agente, recusado em regra crítica (G7).
+ * Nas suposições críticas, `null` confirma e texto corrige; não há delegação.
+ */
+export function answersFromJson(value: unknown, pending: Pending): { text: string } | { error: string } {
+  const questions = pending.questions ?? [];
+  const critical = pending.criticalAssumptions ?? [];
+  if (questions.length === 0 && critical.length === 0) return { error: 'o item não tem perguntas; responda com texto' };
+  let answers: unknown;
+  let assumptions: unknown;
+  if (Array.isArray(value)) {
+    if (critical.length > 0) return { error: 'o item tem suposições críticas; use {"perguntas": [...], "suposicoes_criticas": null ou texto}' };
+    answers = value;
+  } else if (typeof value === 'object' && value !== null) {
+    const object = value as Record<string, unknown>;
+    answers = object.perguntas ?? [];
+    if (critical.length > 0 && !('suposicoes_criticas' in object)) {
+      return { error: 'confirme (null) ou corrija (texto) as suposições críticas em "suposicoes_criticas"' };
+    }
+    if (critical.length === 0 && 'suposicoes_criticas' in object) return { error: 'o item não tem suposições críticas' };
+    assumptions = object.suposicoes_criticas;
+  } else {
+    return { error: 'use uma lista JSON ou um objeto com "perguntas"' };
+  }
+  if (!Array.isArray(answers)) return { error: '"perguntas" precisa ser uma lista' };
+  if (answers.length !== questions.length) return { error: `${answers.length} respostas para ${questions.length} perguntas` };
+
+  const pairs: { question: string; answer: string }[] = [];
+  for (const [i, answer] of answers.entries()) {
+    const question = questions[i] as Question;
+    if (answer !== null && typeof answer !== 'string') return { error: `resposta ${i + 1}: use texto ou null` };
+    const text = (answer ?? '').trim();
+    if (text === DELEGATE && question.regraCritica) return { error: `resposta ${i + 1}: pergunta de regra crítica; a resposta é sua` };
+    if (!text && !question.sugestao) return { error: `resposta ${i + 1}: a pergunta não tem sugestão; responda com texto` };
+    pairs.push({ question: question.texto, answer: text || question.sugestao });
+  }
+  if (critical.length > 0) {
+    if (assumptions !== null && typeof assumptions !== 'string') return { error: 'suposições críticas: use texto ou null' };
+    const text = (assumptions ?? '').trim();
+    if (text === DELEGATE) return { error: 'suposições críticas: a decisão é sua; confirme (null) ou corrija' };
+    pairs.push({ question: assumptionsQuestion(critical), answer: text || CONFIRM_ASSUMPTIONS });
+  }
+  return { text: answerText(pairs) };
+}
+
 /** Item pulado: continua em `needs_human`. */
 const SKIP = Symbol('skip');
 type Answer = string | typeof SKIP;
@@ -86,14 +145,16 @@ async function confirmCancel(io: InboxIO, item: Item): Promise<boolean> {
 async function askQuestions(io: InboxIO, questions: Question[]): Promise<Answer[] | typeof SKIP> {
   const answers: Answer[] = [];
   for (const [i, question] of questions.entries()) {
-    io.write(`  ${i + 1}/${questions.length} ${question.texto}`);
+    io.write(`  ${i + 1}/${questions.length} ${question.texto}${question.regraCritica ? style.dim(' (regra crítica)') : ''}`);
     if (question.sugestao) io.write(`${INDENT}sugestão: ${question.sugestao}`);
-    const hint = `${question.sugestao ? 'enter aceita · ' : ''}texto responde · d decide você · p pula o item`;
+    // Regra crítica é decisão humana (G7): sem "decide você".
+    const delegate = !question.regraCritica;
+    const hint = [question.sugestao ? 'enter aceita' : '', 'texto responde', delegate ? 'd decide você' : '', 'p pula o item'].filter(Boolean).join(' · ');
     const answer = await choose<Answer>(io, hint, (input) => {
       if (input === 'p') return SKIP;
-      if (input === 'd') return DELEGATE;
+      if (input === 'd') return delegate ? DELEGATE : { retry: 'Regra crítica: a resposta é sua.' };
       if (input) return input;
-      return question.sugestao || { retry: 'Sem sugestão: digite a resposta, d ou p.' };
+      return question.sugestao || { retry: `Sem sugestão: digite a resposta${delegate ? ', d' : ''} ou p.` };
     });
     if (answer === SKIP) return SKIP;
     answers.push(answer);
@@ -121,10 +182,10 @@ async function questionsFlow(
     for (const assumption of critical) io.write(`  ! suposição crítica: ${assumption}`);
     // Suposição sobre regra crítica é decisão humana (G7): sem "decide você".
     const answer = await choose<Answer>(io, 'enter confirma · texto corrige · p pula o item', (input) =>
-      input === 'p' ? SKIP : input || 'Confirmo as suposições.',
+      input === 'p' ? SKIP : input || CONFIRM_ASSUMPTIONS,
     );
     if (answer === SKIP) return SKIP;
-    pairs.push({ question: `Suposições críticas: ${critical.join('; ')}`, answer });
+    pairs.push({ question: assumptionsQuestion(critical), answer });
   }
 
   let replan = false;
@@ -374,10 +435,9 @@ export function inboxJson(db: DatabaseSync, project: Project): Record<string, un
 export async function inboxCommand(args: string[]): Promise<number> {
   let json: boolean;
   try {
-    json = parseArgs({ args, options: { json: { type: 'boolean' } } }).values.json ?? false;
+    json = parseArgs({ args, options: inboxOptions }).values.json ?? false;
   } catch (error) {
-    process.stderr.write(`${(error as Error).message}\nUso: ${inboxUsage}\n`);
-    return 1;
+    return fail('argumento_invalido', (error as Error).message, inboxUsage);
   }
   const home = dataDir();
   const db = openDb(home);
@@ -396,10 +456,7 @@ export async function inboxCommand(args: string[]): Promise<number> {
     }
     resume = await inboxSession(db, home, project, terminalIO);
   } catch (error) {
-    if (error instanceof ProjectError) {
-      process.stderr.write(`${error.message}\n`);
-      return 1;
-    }
+    if (error instanceof ProjectError) return fail(error.code, error.message);
     throw error;
   } finally {
     db.close();

@@ -4,11 +4,13 @@ import { parseArgs } from 'node:util';
 import { Interrupted, ask, interactive } from './ask.ts';
 import { type ItemFields, parseBacklog, renderItemBlock, replaceItemBlock } from './backlog.ts';
 import { checkBalance, latestReadings, stageEstimate } from './balance.ts';
+import { type CatalogEntry, chooseReferences, referenceCatalog } from './capture.ts';
 import { dataDir, openDb } from './db.ts';
 import { ToolLog, summaryLine } from './exec.ts';
 import { formatWhen, truncate } from './format.ts';
 import { type Item, backlogPath, getItem, isStarted, listItems, syncBacklog } from './items.ts';
 import { select } from './menu.ts';
+import type { ArgSpec, OptionSpecs } from './options.ts';
 import { type Project, ProjectError, resolveProject } from './project.ts';
 import { liveReferences, referencesSection } from './references.ts';
 import type { RefineOutput } from './schemas/stages.ts';
@@ -17,7 +19,16 @@ import type { RunStage } from './runner.ts';
 import { runProbe } from './status.ts';
 import { style } from './style.ts';
 
-export const refineUsage = 'mabel refinar [<n>] [--refazer] [--aceitar | --descartar]';
+export const refineUsage = 'mabel refinar [<n>] [--refazer] [--aceitar | --descartar] | mabel refinar <n> --referencias';
+
+export const refineOptions = {
+  refazer: { type: 'boolean', description: 'Descarta a proposta pendente e pede outra ao agente' },
+  aceitar: { type: 'boolean', description: 'Grava a proposta inteira sem revisão (perguntas com sugestão viram decisões)' },
+  descartar: { type: 'boolean', description: 'Descarta a proposta pendente sem gravar nada' },
+  referencias: { type: 'boolean', description: 'Só escolhe as referências do item na lista, sem agente e sem custo' },
+} satisfies OptionSpecs;
+
+export const refineArgs: ArgSpec[] = [{ name: '<n>', description: 'Número do item; sem ele, a lista dos itens para refinar', values: 'item' }];
 
 // Propostas no banco ---------------------------------------------------------------------
 
@@ -213,10 +224,13 @@ export interface Additions {
   outOfScope: string[];
   decisions: string[];
   criticalConcepts: string[];
+  /** Lista nova de referências, escolhida no catálogo; ausente quando não muda. */
+  references?: string[];
 }
 
 export const isEmpty = (additions: Additions) =>
-  additions.criteria.length + additions.outOfScope.length + additions.decisions.length + additions.criticalConcepts.length === 0;
+  additions.criteria.length + additions.outOfScope.length + additions.decisions.length + additions.criticalConcepts.length === 0 &&
+  additions.references === undefined;
 
 /** Resposta a uma pergunta do refinamento, no formato que vai para `Decisões`. */
 export function decisionText(question: string, answer: string): string {
@@ -241,10 +255,13 @@ export interface ReviewIO {
   /** Lê uma linha; ctrl+c lança `Interrupted`. */
   ask: (prompt: string) => Promise<string>;
   write: (line: string) => void;
+  /** Escolha das referências no catálogo; `null` quando cancelada. Sem ela, a etapa não aparece. */
+  pickReferences?: (catalog: CatalogEntry[], current: string[]) => Promise<string[] | null>;
 }
 
 export const terminalReviewIO: ReviewIO = {
   ask,
+  pickReferences: chooseReferences,
   write: (line) => process.stdout.write(`${line}\n`),
 };
 
@@ -306,8 +323,22 @@ export function renderProposal(item: Item, proposal: RefineOutput): string[] {
   return lines;
 }
 
-/** Revisão no terminal: perguntas uma a uma, depois cada lista, a prévia e a gravação. */
-export async function reviewProposal(io: ReviewIO, item: Item, proposal: RefineOutput): Promise<ReviewResult> {
+const sameEntries = (a: string[], b: string[]) => {
+  const key = (list: string[]) => list.map((entry) => entry.trim().toLowerCase()).sort().join('\n');
+  return key(a) === key(b);
+};
+
+/** Etapa das referências: a lista do catálogo com as atuais marcadas; devolve a nova lista se mudou. */
+export async function reviewReferences(io: ReviewIO, item: Item, catalog: CatalogEntry[]): Promise<string[] | undefined> {
+  if (catalog.length === 0 || !io.pickReferences) return undefined;
+  io.write('');
+  io.write(style.bold('Referências') + style.dim(' (telas, operações de API e arquivos já capturados)'));
+  const chosen = await io.pickReferences(catalog, item.references);
+  return chosen && !sameEntries(chosen, item.references) ? chosen : undefined;
+}
+
+/** Revisão no terminal: perguntas uma a uma, depois cada lista, as referências, a prévia e a gravação. */
+export async function reviewProposal(io: ReviewIO, item: Item, proposal: RefineOutput, catalog: CatalogEntry[] = []): Promise<ReviewResult> {
   io.write(style.bold('Entendimento'));
   for (const line of proposal.entendimento.trim().split('\n')) io.write(`${INDENT}${line}`);
 
@@ -332,6 +363,8 @@ export async function reviewProposal(io: ReviewIO, item: Item, proposal: RefineO
     decisions,
     criticalConcepts: await reviewList(io, 'Regras críticas que o item toca', proposal.conceitosCriticos),
   };
+  const references = await reviewReferences(io, item, catalog);
+  if (references) additions.references = references;
 
   if (proposal.quebra.length > 0) {
     io.write('');
@@ -380,7 +413,7 @@ export function merge(fields: ItemFields, additions: Additions): ItemFields {
     outOfScope: union(fields.outOfScope, additions.outOfScope),
     decisions: union(fields.decisions, additions.decisions),
     criticalConcepts: union(fields.criticalConcepts, additions.criticalConcepts),
-    references: fields.references ?? [],
+    references: additions.references ?? fields.references ?? [],
   };
 }
 
@@ -401,6 +434,17 @@ export function applyRefinement(db: DatabaseSync, project: Project, item: Item, 
     writeFileSync(path, replaceItemBlock(text, entry, block));
   }
   decideProposal(db, refinement.id, 'accepted', additions);
+  syncBacklog(db, project);
+}
+
+/** Troca as referências do item no `backlog.md`, sem refinamento. Recusa item iniciado. */
+export function applyReferences(db: DatabaseSync, project: Project, item: Item, references: string[]): void {
+  if (isStarted(db, item.id)) throw new RefineError(`#${item.number} já entrou em planejamento; o conteúdo dele está congelado.`);
+  const path = backlogPath(project);
+  const text = readFileSync(path, 'utf8');
+  const entry = parseBacklog(text).find((parsed) => parsed.number === item.number);
+  if (!entry) throw new RefineError(`#${item.number} não está mais no backlog.md.`);
+  writeFileSync(path, replaceItemBlock(text, entry, renderItemBlock({ ...entry, references, number: item.number })));
   syncBacklog(db, project);
 }
 
@@ -484,6 +528,7 @@ function additionsSummary(additions: Additions): string {
     additions.outOfScope.length && count(additions.outOfScope.length, 'fora do escopo', 'fora do escopo'),
     additions.decisions.length && count(additions.decisions.length, 'decisão', 'decisões'),
     additions.criticalConcepts.length && count(additions.criticalConcepts.length, 'regra crítica', 'regras críticas'),
+    additions.references && count(additions.references.length, 'referência', 'referências'),
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(' · ') : 'nada acrescentado';
 }
@@ -574,7 +619,7 @@ export async function refineItem(
 
   let review: ReviewResult;
   try {
-    review = await reviewProposal(io, item, refinement.proposal);
+    review = await reviewProposal(io, item, refinement.proposal, referenceCatalog(project.root, listItems(db, project.id)));
   } catch (error) {
     if (!(error instanceof Interrupted)) throw error;
     io.write('');
@@ -626,19 +671,51 @@ async function chooseLoop(db: DatabaseSync, home: string, project: Project): Pro
   }
 }
 
+/** `mabel refinar <n> --referencias`: só a etapa das referências, gravada direto no item. */
+async function editReferences(db: DatabaseSync, project: Project, item: Item): Promise<number> {
+  if (!interactive()) {
+    process.stderr.write('--referencias escolhe numa lista e precisa do terminal. Sem ele, edite o campo "Referências:" no backlog.md.\n');
+    return 1;
+  }
+  if (isStarted(db, item.id)) {
+    process.stderr.write(`#${item.number} já entrou em planejamento; o conteúdo dele está congelado.\n`);
+    return 1;
+  }
+  const catalog = referenceCatalog(project.root, listItems(db, project.id));
+  if (catalog.length === 0) {
+    process.stderr.write('Nenhuma referência capturada. Capture com `mabel referencia api` ou `mabel referencia tela`.\n');
+    return 1;
+  }
+  process.stdout.write(`${style.bold(`#${item.number} ${item.title}`)}${style.dim(' · referências')}\n`);
+  const references = await reviewReferences(terminalReviewIO, item, catalog);
+  if (!references) {
+    process.stdout.write(style.dim('Nada mudou.\n'));
+    return 0;
+  }
+  applyReferences(db, project, item, references);
+  const updated = getItem(db, project.id, item.number);
+  process.stdout.write(`✓ #${item.number}: ${count(references.length, 'referência', 'referências')} · ${updated?.status ?? '?'}\n`);
+  if (updated?.status === 'backlog' && updated.statusReason) process.stdout.write(style.dim(`  ${updated.statusReason}\n`));
+  return 0;
+}
+
 export async function refineCommand(args: string[]): Promise<number> {
   let parsed;
   try {
     parsed = parseArgs({
       args,
       allowPositionals: true,
-      options: { refazer: { type: 'boolean' }, aceitar: { type: 'boolean' }, descartar: { type: 'boolean' } },
+      options: refineOptions,
     });
   } catch (error) {
     process.stderr.write(`${(error as Error).message}\nUso: ${refineUsage}\n`);
     return 1;
   }
   const { values, positionals } = parsed;
+  if (values.referencias && (values.aceitar || values.descartar || values.refazer)) {
+    process.stderr.write(`--referencias não se combina com --refazer, --aceitar ou --descartar.\nUso: ${refineUsage}\n`);
+    return 1;
+  }
   if (values.aceitar && values.descartar) {
     process.stderr.write(`Use --aceitar ou --descartar, não os dois.\nUso: ${refineUsage}\n`);
     return 1;
@@ -656,7 +733,7 @@ export async function refineCommand(args: string[]): Promise<number> {
     const project = resolveProject(db);
     syncBacklog(db, project);
     if (number === undefined) {
-      if (values.aceitar || values.descartar || values.refazer) {
+      if (values.aceitar || values.descartar || values.refazer || values.referencias) {
         process.stderr.write(`Informe o número do item.\nUso: ${refineUsage}\n`);
         return 1;
       }
@@ -670,6 +747,7 @@ export async function refineCommand(args: string[]): Promise<number> {
       process.stderr.write(`Item #${number} não existe.\n`);
       return 1;
     }
+    if (values.referencias) return await editReferences(db, project, item);
     const flags = { redo: values.refazer, accept: values.aceitar, discard: values.descartar };
     return await refineItem(db, home, project, item, flags, interactive() ? terminalReviewIO : undefined);
   } catch (error) {

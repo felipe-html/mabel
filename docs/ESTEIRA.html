@@ -338,8 +338,8 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
         <!-- Avulsos -->
         <rect class="box quiet" x="790" y="300" width="290" height="110" rx="6"/>
         <text class="title" x="808" y="328">Avulsos</text>
-        <text class="cmd" x="808" y="354">exec</text><text class="note" x="850" y="354">prompt auditado</text>
-        <text class="cmd" x="808" y="376">completion zsh</text>
+        <text class="cmd" x="808" y="354">exec</text><text class="note" x="850" y="354">conversa auditada</text>
+        <text class="cmd" x="808" y="376">comandos · completion</text>
 
         <!-- Setas -->
         <line class="arrow" x1="310" y1="110" x2="403" y2="110" marker-end="url(#ah)"/>
@@ -658,7 +658,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
   <div class="section-head">
     <span class="eyebrow">4 · Comandos</span>
     <h2>O que cada comando faz e devolve</h2>
-    <p>Na ordem da jornada. As saídas de terminal são exemplos ilustrativos montados a partir dos formatos do código, não capturas reais.</p>
+    <p>Na ordem da jornada. Quase todos aceitam <code>--json</code>, para o <code>mabel-ui</code>, e <code>mabel comandos</code> explica as opções de cada um. As saídas de terminal são exemplos ilustrativos montados a partir dos formatos do código, não capturas reais.</p>
   </div>
 
   <div class="groups">
@@ -689,16 +689,16 @@ Commitar o .mabel/ na branch main? [S/n]</pre>
         </article>
         <article class="cmd">
           <header><span class="name">add</span><span class="badge none">sem agente</span></header>
-          <p class="usage">mabel add "título" [--intencao] [--criterio]… [--fora-do-escopo]… [--depende n]… [--restricoes]</p>
-          <p>Acrescenta um bloco ao fim do backlog e sincroniza com o banco.</p>
+          <p class="usage">mabel add "título" [--intencao] [--criterio]… [--fora-do-escopo]… [--referencia]… [--depende n]… [--restricoes]</p>
+          <p>Acrescenta um bloco ao fim do backlog e sincroniza com o banco. No TTY, as referências do item são escolhidas numa lista do catálogo.</p>
           <p class="writes"><b>Grava:</b> o item em <code>.mabel/backlog.md</code>; estado <code>ready</code>, ou <code>backlog</code> se depende de item não concluído.</p>
 <pre class="term">Item #4 adicionado: Desconto por volume · ready
 Refinar o item agora com um agente? [s/N]</pre>
         </article>
         <article class="cmd">
           <header><span class="name">refinar</span><span class="badge agent">agente refinador</span></header>
-          <p class="usage">mabel refinar [n] [--refazer] [--aceitar | --descartar]</p>
-          <p>Proposta de critérios, limites e perguntas de negócio. Você aceita, edita ou descarta cada parte.</p>
+          <p class="usage">mabel refinar [n] [--refazer] [--aceitar | --descartar] · refinar n --referencias</p>
+          <p>Proposta de critérios, limites e perguntas de negócio. Você aceita, edita ou descarta cada parte. <code>--referencias</code> só escolhe as referências do item, sem agente e sem custo.</p>
           <p class="writes"><b>Grava:</b> só o que você aceita, no trecho do item no <code>backlog.md</code>: critérios, fora do escopo, <code>Decisões: pergunta → resposta</code>, regras críticas.</p>
 <pre class="term"><span class="a">▸ refinar · sonnet</span>
 Entendimento: desconto progressivo por quantidade…
@@ -707,7 +707,7 @@ Gravar no backlog? [S/n/d]</pre>
         </article>
         <article class="cmd">
           <header><span class="name">referencia</span><span class="badge none">sem agente</span></header>
-          <p class="usage">mabel referencia · api nome url · tela nome url-figma · tela nome --png arquivo</p>
+          <p class="usage">mabel referencia [--json] · api nome url · tela nome url-figma · tela nome --png arquivo</p>
           <p>Guarda cópias de APIs e telas para os itens citarem em <code>Referências:</code>. Os agentes leem a cópia congelada, nunca o link.</p>
           <p class="writes"><b>Grava:</b> <code>.mabel/referencias/api/nome.openapi.json</code> + <code>.md</code>; <code>telas/nome/tela.png</code> + <code>tela.md</code>.</p>
         </article>
@@ -725,7 +725,7 @@ Gravar no backlog? [S/n/d]</pre>
       <div class="cmds">
         <article class="cmd">
           <header><span class="name">run</span><span class="badge agent">planejador · executor · revisor</span></header>
-          <p class="usage">mabel run [--item n] [--uma] [--sem-lote] [--fundo]</p>
+          <p class="usage">mabel run [--item n] [--uma] [--sem-lote] [--fundo [--json]]</p>
           <p>Em lote: planeja todos os <code>ready</code>, oferece a inbox, depois executa os <code>planned</code> um a um até a fila acabar. <code>--sem-lote</code> leva cada item até o fim antes do próximo.</p>
           <p class="writes"><b>Grava:</b> estados e gates no SQLite; artefatos em <code>~/.mabel/items/&lt;id&gt;/</code>; runs em <code>~/.mabel/runs/</code>; commits na branch do item; merge em <code>mabel/integracao</code>; <code>quadro.md</code> e <code>integracao.md</code>.</p>
 <pre class="term"><span class="a">  ▸ planejar · opus</span>
@@ -771,7 +771,7 @@ Retomar a esteira agora? [S/n]</pre>
         </article>
         <article class="cmd">
           <header><span class="name">aprovar · responder · cancelar</span><span class="badge human">você decide</span></header>
-          <p class="usage">mabel aprovar n · responder n "texto" [--replanejar] · cancelar n</p>
+          <p class="usage">mabel aprovar n · responder n "texto" | --respostas arquivo.json [--replanejar] · cancelar n</p>
           <p>Os mesmos efeitos da inbox, avulsos. <code>aprovar</code> leva um item crítico a <code>planned</code>; <code>responder</code> retoma a sessão certa ou replaneja; <code>cancelar</code> tira o item da fila.</p>
         </article>
       </div>
@@ -838,9 +838,9 @@ com o motivo no próximo `mabel run`.</pre>
           <p>Auditoria por projeto: custo por etapa e modelo, gates reprovados, escalonamentos, decisões autônomas, pausas. <code>eventos</code> emite uma linha JSON por evento, para o <code>mabel-ui</code>.</p>
         </article>
         <article class="cmd">
-          <header><span class="name">exec · completion</span><span class="badge none">avulso</span></header>
-          <p class="usage">mabel exec "prompt" [--model] [--max-turns] [--max-budget-usd] · completion zsh</p>
-          <p><code>exec</code> roda um prompt solto no Claude Code com a mesma auditoria, fora de qualquer item. <code>completion</code> imprime o autocompletar do zsh.</p>
+          <header><span class="name">exec · comandos · completion</span><span class="badge none">avulso</span></header>
+          <p class="usage">mabel exec "prompt" [--model] [--max-turns] [--max-budget-usd] · comandos [--json] · completion zsh</p>
+          <p><code>exec</code> abre uma conversa no Claude Code, com a mesma auditoria e fora de qualquer item: cada mensagem é uma run que retoma a sessão, até <code>sair</code> ou Ctrl+D. <code>comandos</code> lista cada comando com as opções explicadas (em JSON, para outros programas). <code>completion</code> imprime o autocompletar do zsh.</p>
         </article>
       </div>
     </div>
@@ -848,7 +848,7 @@ com o motivo no próximo `mabel run`.</pre>
   </div>
 </section>
 
-<footer>Fonte: <code>src/pipeline.ts</code>, <code>src/stages.ts</code>, <code>src/schemas/stages.ts</code>, <code>prompts/*.md</code>, <code>docs/CONTRATO.md</code> e <code>docs/MENU.md</code>, branch <code>main</code> em 28/10/2026.</footer>
+<footer>Fonte: <code>src/pipeline.ts</code>, <code>src/stages.ts</code>, <code>src/schemas/stages.ts</code>, <code>prompts/*.md</code>, <code>docs/CONTRATO.md</code> e <code>docs/MENU.md</code>, branch <code>main</code> em 29/10/2026.</footer>
 
 </div>
 </body>

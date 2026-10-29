@@ -1,0 +1,32 @@
+{
+  "versao": 1,
+  "projetos": [
+    {
+      "id": "3f0c2a9e-5b7d-4e1a-9c8f-2d6b4a1e7c30",
+      "nome": "loja-online",
+      "raiz": "/Users/voce/projetos/loja-online",
+      "fila": "rodando",
+      "pausa": null,
+      "em_andamento": {
+        "item": 2,
+        "titulo": "Frete",
+        "etapa": "executar",
+        "papel": "executor",
+        "modelo": "sonnet",
+        "run": "a1b2c3d4-0003-4000-8000-000000000003",
+        "inicio": "2026-10-24T11:50:00-03:00",
+        "tentativa": 1,
+        "reprovacoes": 0,
+        "ultima_revisao": null
+      },
+      "inbox": 1,
+      "itens": {
+        "executing": 1,
+        "needs_human": 1
+      },
+      "runs": 3,
+      "custo_usd": 2.05,
+      "ultima_atividade": "2026-10-24T12:00:00-03:00"
+    }
+  ]
+}

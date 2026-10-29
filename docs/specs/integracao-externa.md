@@ -3,7 +3,10 @@
 O que a CLI precisa oferecer para ser usada por outros programas, a começar pela
 interface gráfica (repositório `mabel-ui`: app macOS e, depois, o controle remoto no iOS).
 Esta spec é o contrato entre os dois repositórios: o formato nasce aqui, com teste aqui, e
-o `mabel-ui` só o consome. Mudança de formato muda a versão.
+o `mabel-ui` só o consome. Remover ou mudar o sentido de um campo muda a versão; campo
+novo, não (ver "Compatibilidade").
+Pedidos entre os dois repositórios seguem `docs/INTEGRACAO.md` (issues com o rótulo
+`integracao`).
 
 Base no contrato: "Vários projetos-alvo em paralelo, cada um com a sua fila" e "A fila de
 um projeto roda em segundo plano" (`docs/CONTRATO.md`, escopo da v0), e a política de
@@ -42,11 +45,56 @@ Uma linha de JSON por chamada, com `"versao": 1` no topo.
 
 | Comando | Conteúdo |
 |---|---|
-| `mabel projetos --json` | Por projeto: `id`, `nome`, `raiz`, `fila` (`parada`, `rodando`, `pausada_por_saldo`, `aguardando_humano`), item e etapa em andamento, papel ativo, pendências da inbox, custo total, última atividade. |
+| `mabel projetos --json` | Por projeto: `id`, `nome`, `raiz`, `fila` (`parada`, `rodando`, `pausada_por_saldo`, `aguardando_humano`), item e etapa em andamento, papel ativo, pendências da inbox, custo total, última atividade. Em `em_andamento`: `tentativa` (no ciclo, a partir de 1; nula fora de executar, verificar e revisar), `reprovacoes` (revisões reprovadas desde o último plano aprovado) e `ultima_revisao` (`null` ou `{"resultado": "aprovada" \| "reprovada", "em"}`). |
 | `mabel status --json` | Do projeto atual: a fila por estado, as etapas em andamento e o saldo. |
 | `mabel saldo --json` | As duas janelas: `uso`, `reset`, `ritmo` (só 7d), `idade_leitura_s`, e a pausa em vigor com o motivo, se houver. |
 | `mabel inbox --json` | As pendências: item, tipo (`aprovar`, `responder`, `validar`), pergunta, sugestão, opções. |
 | `mabel projeto <nome> --json` | Diagnóstico de consumo: custo e uso de janela por etapa, por modelo e por item. |
+| `mabel comandos --json` | Por comando: `nome`, `descricao`, `uso`, `soNoShell`, `argumentos` (`nome`, `descricao`, `valores`, `escolhas`) e `opcoes` (`nome` com `--`, `tipo` `texto` ou `sinal`, `valor`, `descricao`, `repetivel`, `valores`). `valores` é a fonte do que se pode escolher: `item`, `projeto`, `stack`, `referencia`, `credencial`, `arquivo` ou `diretorio`. Dá ao cliente o formulário de cada comando sem repetir a CLI. |
+| `mabel referencia --json` | Do projeto atual, tudo o que um item pode citar em `Referências:`: `entrada` (pronta para gravar), `tipo` (`tela`, `api`, `arquivo`), `nome`, `detalhe` (arquivos da tela ou resumo da operação) e `itens` que já a citam. Cada operação de API é uma entrada. |
+
+### Erros
+
+Com `--json`, o erro sai no stderr numa linha, com código de saída diferente de 0:
+
+```json
+{"versao":1,"erro":{"codigo":"nao_encontrado","mensagem":"Item #99 não existe."}}
+```
+
+| Código | Quando |
+|---|---|
+| `argumento_faltando` | Falta um argumento (número do item, resposta, `--confirmar`). |
+| `argumento_invalido` | Opção desconhecida, valor ou arquivo inválido, combinação recusada. |
+| `saldo_baixo` | A política de saldo barrou o passo (`nascer`). |
+| `nao_encontrado` | Item, projeto ou nascimento inexistente. |
+| `estado_invalido` | O item ou a fila não está no estado que o comando pede (outro `run`, item que não aguarda resposta). |
+| `nao_e_projeto` | O diretório não é um projeto Mabel. |
+| `supervisor_indisponivel` | `run --fundo` sem o supervisor rodando. |
+| `falha_etapa` | A run do agente falhou ou deu saída inválida (`nascer`). |
+| `interno` | Erro inesperado da CLI. |
+
+Código novo não muda a versão. As ações que o app roda também aceitam `--json`:
+`aprovar` e `responder` devolvem `{"item": {"numero", "titulo", "estado"}}`; `run --fundo`,
+`{"projeto": {...}, "pid"}`; `parar`, `{"parada_pedida", "pid"}`; `projeto remover <nome>
+--confirmar <nome>`, `{"removido": {"id", "nome", "raiz"}, "avisos"}`. `responder` aceita
+`--respostas <arquivo.json>`, uma resposta por pergunta (`docs/specs/inbox.md`).
+
+### Exemplos
+
+`docs/specs/exemplos/` tem um exemplo real de cada saída `--json` (`projetos.json`,
+`status.json`, `saldo.json`, `inbox.json`, `projeto.json`, `nascer-*.json`) e um evento de
+cada tipo (`eventos.ndjson`). Quem os grava é `test/examples.test.ts`, rodando o CLI num
+cenário fixo; o teste falha se a saída mudar sem o exemplo ser regravado:
+
+```bash
+MABEL_GRAVAR_EXEMPLOS=1 npm test
+```
+
+Nos exemplos, ids, raízes e nomes de projeto são fixos, os horários partem de
+`2026-10-24T12:00:00-03:00` e o que depende do relógio (`idade_leitura_s`, `ritmo.esperado`)
+vem arredondado. A saída real é uma linha só; os `.json` estão formatados para leitura. O
+`mabel-ui` copia os arquivos, e a verificação dele compara a cópia com
+`../mabel/docs/specs/exemplos/`.
 
 ## Fluxo de eventos
 
@@ -54,18 +102,21 @@ Uma linha de JSON por chamada, com `"versao": 1` no topo.
 projetos, até o processo ser encerrado. O cliente mantém um só aberto e reabre se ele cair.
 
 ```json
-{"versao":1,"tipo":"etapa","projeto":"loja-online","item":12,"etapa":"executar","estado":"iniciou"}
-{"versao":1,"tipo":"ferramenta","projeto":"loja-online","item":12,"nome":"Edit"}
-{"versao":1,"tipo":"gate","projeto":"loja-online","item":12,"gate":"testes","resultado":"verde"}
-{"versao":1,"tipo":"inbox","projeto":"app-financas","item":7,"pendencias":2}
+{"versao":1,"tipo":"etapa","projeto":"loja-online","projeto_id":"3f0c2a9e-…","item":12,"etapa":"executar","estado":"iniciou"}
+{"versao":1,"tipo":"ferramenta","projeto":"loja-online","projeto_id":"3f0c2a9e-…","item":12,"nome":"Edit"}
+{"versao":1,"tipo":"gate","projeto":"loja-online","projeto_id":"3f0c2a9e-…","item":12,"gate":"testes","resultado":"verde"}
+{"versao":1,"tipo":"inbox","projeto":"app-financas","projeto_id":"8d2b…","pendencias":2}
 {"versao":1,"tipo":"saldo","janela":"5h","uso":0.22,"reset":"2026-10-23T16:40:00-03:00"}
-{"versao":1,"tipo":"fila","projeto":"loja-online","estado":"pausada_por_saldo"}
+{"versao":1,"tipo":"fila","projeto":"loja-online","projeto_id":"3f0c2a9e-…","estado":"pausada_por_saldo"}
 ```
 
 Tipos: `etapa` (iniciou, terminou, falhou), `ferramenta` (nome da ferramenta chamada pelo
 agente), `gate` (verde, vermelho), `revisao` (aprovada, reprovada), `inbox` (número de
 pendências do projeto), `saldo` (leitura nova), `fila` (mudança de estado da fila),
-`item` (transição de estado).
+`item` (transição de estado). Todo evento de projeto traz `projeto` (o nome) e
+`projeto_id`; o `saldo` não tem projeto, porque o saldo é da conta. Horários sempre no fuso
+local com o deslocamento, como nas saídas `--json`. Os campos exatos de cada tipo estão em
+`docs/specs/exemplos/eventos.ndjson`.
 
 ## Ações sem TTY
 

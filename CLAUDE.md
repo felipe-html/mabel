@@ -10,6 +10,8 @@ com agentes, de forma auditável e com intervenção humana só em regras de neg
 2. `docs/PLANO.md` — estado da implementação. O próximo passo é o primeiro item não marcado.
 3. `BACKLOG.md` — ideias em discussão. A seção do usuário é dele: não edite. A seção do
    Claude pode receber ideias novas que precisem ser aprofundadas.
+4. Pedidos do `mabel-ui`: `gh issue list --repo felipe-html/mabel --label integracao`.
+   Só implemente os com `aprovado`. Protocolo em `docs/INTEGRACAO.md`.
 
 ## Método
 
@@ -24,6 +26,11 @@ com agentes, de forma auditável e com intervenção humana só em regras de neg
   qualquer um deles atualiza o arquivo na mesma mudança. É HTML de arquivo único, sem build;
   a grade do fluxo tem 24 linhas contadas (`grid-template-rows` e `.rail`): nó ou fase nova
   na esteira ajusta essas contagens.
+- Issue com o rótulo `aprovado` pode ser implementada, mas o rótulo não autoriza mudança
+  no contrato. Antes de implementar, confira a issue contra o `docs/CONTRATO.md`. Se ela
+  ferir uma garantia, uma regra ou uma decisão do humano, não implemente: comente na issue
+  o trecho do contrato e o conflito, e espere a confirmação do usuário. Isso vale para
+  qualquer agente que receber a issue.
 
 ## Código
 

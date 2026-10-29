@@ -9,10 +9,16 @@ import { checkedOutAt, integratedItems, isAncestor } from './integration.ts';
 import { type Project, ProjectError, resolveProject } from './project.ts';
 import { lookFirstLines, renderIntegrationReport } from './report.ts';
 import { style } from './style.ts';
+import type { OptionSpecs } from './options.ts';
 
 // Entrega da integração (`docs/specs/entregar.md`): snapshot, PR e volta à base.
 
 export const deliverUsage = 'mabel entregar [--substituir] [--rascunho]';
+
+export const deliverOptions = {
+  substituir: { type: 'boolean', description: 'Troca a entrega aberta pela integração atual (o PR é atualizado)' },
+  rascunho: { type: 'boolean', description: 'Abre o PR como rascunho' },
+} satisfies OptionSpecs;
 
 const PREFIX = 'mabel/entrega/';
 /** O GitHub aceita 65.536 caracteres no corpo do PR; a margem cobre o que o `gh` acrescenta. */
@@ -447,7 +453,7 @@ export function checkDeliveries(db: DatabaseSync, project: Project): string[] {
 export function deliverCommand(args: string[]): number {
   let parsed;
   try {
-    parsed = parseArgs({ args, options: { substituir: { type: 'boolean' }, rascunho: { type: 'boolean' } } });
+    parsed = parseArgs({ args, options: deliverOptions });
   } catch (error) {
     process.stderr.write(`${(error as Error).message}\nUso: ${deliverUsage}\n`);
     return 1;

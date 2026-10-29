@@ -638,7 +638,8 @@ no banco e os diretórios (`runs/`, `items/`, `worktrees/`, `locks/`), registra 
 
 ### exec
 
-**Para quê:** rodar um prompt avulso no Claude Code, com a mesma auditoria das etapas.
+**Para quê:** conversar com o Claude Code fora do backlog (analisar o projeto, tirar
+dúvidas), com a mesma auditoria das etapas.
 
 | Parâmetro | Efeito |
 |---|---|
@@ -649,9 +650,32 @@ no banco e os diretórios (`runs/`, `items/`, `worktrees/`, `locks/`), registra 
 | `--allowed-tools <a,b>` | Ferramentas liberadas, separadas por vírgula |
 | `--cwd <dir>` | Diretório de trabalho (padrão: o atual); precisa existir |
 
-Mostra o cabeçalho (`▸ run abcd… · modelo · cwd`), cada ferramenta, o texto final e o
-resumo (turnos, duração, custo, tokens). Ctrl+C interrompe (130). No REPL sem argumentos,
-pede só o prompt.
+Mostra o cabeçalho (`▸ run abcd… · modelo · cwd`), cada ferramenta e o texto final.
+
+**No terminal, é uma conversa.** Todo `exec` abre uma sessão nova. Depois de cada
+resposta, o `exec ›` pede a próxima mensagem, que vira uma run nova retomando a mesma
+sessão do claude (`--resume`). A sessão só encerra por ação consciente:
+
+| Tecla | Efeito |
+|---|---|
+| `sair` ou Ctrl+D na linha vazia | Encerra e mostra o total da sessão (mensagens, duração, custo, tokens). Código 0 |
+| Enter na linha vazia | Nada; pede de novo |
+| Ctrl+C na pergunta | Lembra como encerrar |
+| Ctrl+C durante a resposta | Interrompe só aquela resposta e volta ao `exec ›`. Se a sessão ainda não tinha começado, a próxima mensagem abre uma nova (com aviso) |
+
+Cada resposta termina com uma linha curta (status, duração, custo). `--max-budget-usd`
+vale para a sessão inteira: cada mensagem recebe o que resta, e a sessão encerra quando
+ele acaba. `--max-turns` vale por mensagem; `--model`, `--allowed-tools` e `--cwd` ficam
+fixos na sessão. No `mabel runs <id>`, a run mostra a posição na conversa
+(`sessão … · mensagem 2 de 3`).
+
+**Sem terminal** (pipe, scripts, clientes), roda uma mensagem só, com o resumo completo
+(turnos, duração, custo, tokens). Ctrl+C interrompe (130). No REPL sem argumentos, pede
+só o prompt.
+
+A conversa é de leitura: sem `--allowed-tools`, as ferramentas que pedem permissão
+(Edit, Write, Bash que altera algo) são recusadas pelo `claude -p`, a menos que as suas
+configurações do `~/.claude` as liberem.
 
 **Pontos a refinar**
 
@@ -660,7 +684,8 @@ pede só o prompt.
 - Roda sem sandbox e sem hook de escopo: só as etapas recebem o `settings.json` com eles
   (`src/stages.ts`). Destoa do resto do Mabel.
 - No REPL não há como passar opções pelas perguntas.
-- Para que serve no fluxo? Hoje parece ferramenta de diagnóstico da fase 1 do plano.
+- A correção que sai de uma conversa ainda não vira item do backlog sozinha: o caminho
+  é o `add` ou o `refinar`.
 
 ### completion
 

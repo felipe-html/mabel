@@ -1,0 +1,8 @@
+{"versao":1,"tipo":"etapa","projeto":"loja-online","projeto_id":"3f0c2a9e-5b7d-4e1a-9c8f-2d6b4a1e7c30","item":1,"etapa":"planejar","estado":"iniciou"}
+{"versao":1,"tipo":"ferramenta","projeto":"loja-online","projeto_id":"3f0c2a9e-5b7d-4e1a-9c8f-2d6b4a1e7c30","item":1,"nome":"Write"}
+{"versao":1,"tipo":"gate","projeto":"loja-online","projeto_id":"3f0c2a9e-5b7d-4e1a-9c8f-2d6b4a1e7c30","item":1,"gate":"start","resultado":"verde"}
+{"versao":1,"tipo":"revisao","projeto":"loja-online","projeto_id":"3f0c2a9e-5b7d-4e1a-9c8f-2d6b4a1e7c30","item":1,"resultado":"aprovada"}
+{"versao":1,"tipo":"inbox","projeto":"loja-online","projeto_id":"3f0c2a9e-5b7d-4e1a-9c8f-2d6b4a1e7c30","pendencias":1}
+{"versao":1,"tipo":"saldo","janela":"5h","uso":0.22,"reset":"2026-10-24T14:00:00-03:00"}
+{"versao":1,"tipo":"fila","projeto":"loja-online","projeto_id":"3f0c2a9e-5b7d-4e1a-9c8f-2d6b4a1e7c30","estado":"rodando"}
+{"versao":1,"tipo":"item","projeto":"loja-online","projeto_id":"3f0c2a9e-5b7d-4e1a-9c8f-2d6b4a1e7c30","item":1,"de":"backlog","para":"ready","motivo":null}

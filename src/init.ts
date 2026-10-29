@@ -34,10 +34,15 @@ import {
 import { select } from './menu.ts';
 import { STACKS, type Stack, detectCommands, findStack, frameworkDomains, stackLabel } from './stacks.ts';
 import { style } from './style.ts';
+import type { OptionSpecs } from './options.ts';
 
 export const TEST_BASE_TITLE = 'Estabelecer base de testes';
 
 export const initUsage = `mabel init [--stack ${STACKS.map((stack) => stack.id).join('|')}]`;
+
+export const initOptions = {
+  stack: { type: 'string', value: '<id>', values: 'stack', description: 'Fixa a stack em vez de detectar pelo código' },
+} satisfies OptionSpecs;
 
 export interface TestBaseOptions {
   /** Projeto sem código: o item cria a estrutura mínima. */
@@ -269,7 +274,7 @@ export function createProject(db: DatabaseSync, root: string, input: NewProject)
 export async function init(args: string[]): Promise<number> {
   let values: { stack?: string };
   try {
-    ({ values } = parseArgs({ args, options: { stack: { type: 'string' } }, strict: true }));
+    ({ values } = parseArgs({ args, options: initOptions, strict: true }));
   } catch {
     process.stderr.write(`Uso: ${initUsage}\n`);
     return 1;

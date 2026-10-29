@@ -1,0 +1,13 @@
+{
+  "versao": 1,
+  "nascimentos": [
+    {
+      "id": "7e5d1c3b-9a2f-4b8e-a6d0-1f3c5e7a9b20",
+      "raiz": "/Users/voce/projetos/ferias-do-time",
+      "descricao": "um app de férias do time",
+      "estado": "proposta",
+      "rodada": 2,
+      "criado_em": "2026-10-24T12:00:00-03:00"
+    }
+  ]
+}

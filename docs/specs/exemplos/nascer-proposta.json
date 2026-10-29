@@ -1,0 +1,43 @@
+{
+  "versao": 1,
+  "nascimento": "7e5d1c3b-9a2f-4b8e-a6d0-1f3c5e7a9b20",
+  "estado": "proposta",
+  "rodada": 2,
+  "entendimento": "Um app para o time controlar férias.",
+  "perguntas": [],
+  "suposicoes": [
+    "Login pelo Google Workspace da empresa"
+  ],
+  "proposta": {
+    "stack": "node",
+    "stack_motivo": "o time já usa TypeScript",
+    "claude_md": "# Férias do time\n\nApp de controle de férias.\n",
+    "acrescimos_claude_md": [],
+    "regras_criticas": {
+      "caminhos": [
+        "src/aprovacoes/**"
+      ],
+      "conceitos": [
+        "Saldo de férias nunca fica negativo"
+      ]
+    },
+    "backlog": [
+      {
+        "titulo": "Pedido de férias",
+        "intencao": "A pessoa pede um período de férias.",
+        "criterios": [
+          "Pedido acima do saldo é recusado"
+        ],
+        "fora_do_escopo": [
+          "Aprovação pelo gestor"
+        ],
+        "decisoes": [],
+        "regras_criticas": [
+          "Saldo de férias nunca fica negativo"
+        ],
+        "depende_de": []
+      }
+    ]
+  },
+  "custo_usd": 0.32
+}

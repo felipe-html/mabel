@@ -17,6 +17,7 @@
 //   exit                código de saída (padrão: 0)
 //   hang                true: emite init e espera um SIGINT (sai com 130)
 //   delay_ms            espera antes de responder (etapa demorada que termina sozinha)
+//   wait_for            caminho: espera o arquivo existir antes de responder (etapa que o teste libera)
 //   cost                total_cost_usd (padrão: 0.01)
 //   rate_limit          { five_hour, seven_day, status } (utilização 0–1)
 //   session_id          id da sessão nova (padrão: aleatório); com --resume, usa o retomado
@@ -134,7 +135,13 @@ if (env.FAKE_CLAUDE_SCENARIO) {
     process.exitCode = response.exit ?? 0;
   };
   if (response.hang) waitForSigint();
-  else if (response.delay_ms) setTimeout(respond, response.delay_ms);
+  else if (response.wait_for) {
+    const timer = setInterval(() => {
+      if (!existsSync(response.wait_for)) return;
+      clearInterval(timer);
+      respond();
+    }, 20);
+  } else if (response.delay_ms) setTimeout(respond, response.delay_ms);
   else respond();
 } else {
   const fixture = env.FAKE_CLAUDE_FIXTURE ?? new URL('./stream-read-file.jsonl', import.meta.url);
