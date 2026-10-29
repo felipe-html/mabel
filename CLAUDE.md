@@ -19,6 +19,11 @@ com agentes, de forma auditável e com intervenção humana só em regras de neg
   fim. Mudança no contrato continua exigindo autorização antes.
 - Ao concluir uma tarefa do plano, marque-a e registre no histórico do `docs/PLANO.md`.
 - Ideia nova que não cabe na tarefa atual vai para a seção do Claude no `BACKLOG.md`.
+- `docs/ESTEIRA.html` é o fluxograma do funcionamento do Mabel: comandos e o que gravam,
+  agentes (modelo, ferramentas, limites, saída), gates, estados e pendências. Mudança em
+  qualquer um deles atualiza o arquivo na mesma mudança. É HTML de arquivo único, sem build;
+  a grade do fluxo tem 24 linhas contadas (`grid-template-rows` e `.rail`): nó ou fase nova
+  na esteira ajusta essas contagens.
 
 ## Código
 
