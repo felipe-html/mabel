@@ -50,6 +50,8 @@ Uma linha de JSON por chamada, com `"versao": 1` no topo.
 | `mabel saldo --json` | As duas janelas: `uso`, `reset`, `ritmo` (só 7d), `idade_leitura_s`, e a pausa em vigor com o motivo, se houver. |
 | `mabel inbox --json` | As pendências: item, tipo (`aprovar`, `responder`, `validar`), pergunta, sugestão, opções. |
 | `mabel projeto <nome> --json` | Diagnóstico de consumo: custo e uso de janela por etapa, por modelo e por item. |
+| `mabel comandos --json` | Por comando: `nome`, `descricao`, `uso`, `soNoShell`, `argumentos` (`nome`, `descricao`, `valores`, `escolhas`) e `opcoes` (`nome` com `--`, `tipo` `texto` ou `sinal`, `valor`, `descricao`, `repetivel`, `valores`). `valores` é a fonte do que se pode escolher: `item`, `projeto`, `stack`, `referencia`, `credencial`, `arquivo` ou `diretorio`. Dá ao cliente o formulário de cada comando sem repetir a CLI. |
+| `mabel referencia --json` | Do projeto atual, tudo o que um item pode citar em `Referências:`: `entrada` (pronta para gravar), `tipo` (`tela`, `api`, `arquivo`), `nome`, `detalhe` (arquivos da tela ou resumo da operação) e `itens` que já a citam. Cada operação de API é uma entrada. |
 
 ### Erros
 

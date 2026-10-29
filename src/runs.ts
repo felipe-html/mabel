@@ -8,8 +8,15 @@ import { select } from './menu.ts';
 import { displayPath, table } from './projects.ts';
 import { toolTarget } from './stream.ts';
 import { style } from './style.ts';
+import type { ArgSpec, OptionSpecs } from './options.ts';
 
 export const runsUsage = 'mabel runs [--limite <n>] | mabel runs <id>';
+
+export const runsOptions = {
+  limite: { type: 'string', value: '<n>', description: 'Quantas runs listar (padrão 20)' },
+} satisfies OptionSpecs;
+
+export const runsArgs: ArgSpec[] = [{ name: '<id>', description: 'Run a detalhar (o começo do id basta); sem ele, a lista' }];
 
 export class RunNotFoundError extends Error {}
 
@@ -200,7 +207,7 @@ async function chooseAndShow(db: DatabaseSync, home: string, runs: RunRow[]): Pr
 export async function runsCommand(args: string[]): Promise<number> {
   let parsed;
   try {
-    parsed = parseArgs({ args, allowPositionals: true, options: { limite: { type: 'string' } } });
+    parsed = parseArgs({ args, allowPositionals: true, options: runsOptions });
   } catch (error) {
     process.stderr.write(`${(error as Error).message}\nUso: ${runsUsage}\n`);
     return 1;

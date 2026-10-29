@@ -6,8 +6,13 @@ import { pendingItems } from './inbox.ts';
 import { isoLocal } from './json.ts';
 import { systemClock } from './run.ts';
 import { type RunOutcome, type RunStage, isUsageLimit } from './runner.ts';
+import { type OptionSpecs, jsonOption } from './options.ts';
 
 export const eventsUsage = 'mabel eventos --json';
+
+export const eventsOptions = {
+  json: { ...jsonOption, description: 'Obrigatória: uma linha de JSON por evento' },
+} satisfies OptionSpecs;
 
 /** Versão do formato do fluxo (`docs/specs/integracao-externa.md`). */
 export const EVENTS_VERSION = 1;
@@ -306,7 +311,7 @@ export function pollEvents(db: DatabaseSync, cursor: EventCursor): StreamEvent[]
 export async function eventsCommand(args: string[]): Promise<number> {
   let values;
   try {
-    ({ values } = parseArgs({ args, options: { json: { type: 'boolean' } } }));
+    ({ values } = parseArgs({ args, options: eventsOptions }));
   } catch (error) {
     return fail('argumento_invalido', (error as Error).message, eventsUsage);
   }

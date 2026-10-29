@@ -4,10 +4,15 @@ import { parseArgs } from 'node:util';
 import type { DatabaseSync } from 'node:sqlite';
 import { expired, expiryWarning } from './credentials.ts';
 import { dataDir, openDb } from './db.ts';
+import { fail } from './errors.ts';
+import { selectMany } from './menu.ts';
 import { type Item, isStarted, listItems, syncBacklog } from './items.ts';
+import { type ArgSpec, type OptionSpecs, jsonOption } from './options.ts';
 import { type Project, ProjectError, resolveProject } from './project.ts';
+import { writeJson } from './json.ts';
 import {
   NAME,
+  filesUnder,
   type OpenApi,
   asOpenApi,
   operationLabel,
@@ -23,11 +28,30 @@ import { style } from './style.ts';
 /** `mabel referencia`: captura e lista as referências do projeto (`docs/specs/referencias.md`). */
 
 export const referenceUsage = [
-  'mabel referencia',
+  'mabel referencia [--json]',
   'mabel referencia api <nome> <url>',
   'mabel referencia tela <nome> <url-figma> [--escala <n>]',
   'mabel referencia tela <nome> --png <arquivo>',
 ].join('\n       ');
+
+export const referenceOptions = {
+  escala: { type: 'string', value: '<n>', description: 'Escala da imagem exportada do Figma, de 0 a 4 (padrão 2)' },
+  png: { type: 'string', value: '<arquivo>', values: 'arquivo', description: 'Usa um PNG exportado à mão em vez de baixar do Figma' },
+  json: { ...jsonOption, description: 'Sem subcomando: o catálogo de referências em JSON, para outros programas' },
+} satisfies OptionSpecs;
+
+export const referenceArgs: ArgSpec[] = [
+  {
+    name: 'api | tela',
+    description: 'O que capturar; sem nada, lista as referências do projeto',
+    choices: [
+      { name: 'api', description: 'Grava um snapshot OpenAPI a partir da URL do Swagger' },
+      { name: 'tela', description: 'Exporta um frame do Figma (ou um PNG) como tela.png e tela.md' },
+    ],
+  },
+  { name: '<nome>', description: 'Nome da referência: minúsculas, dígitos e -' },
+  { name: '<url>', description: 'URL do OpenAPI/Swagger ou do frame do Figma (com node-id)' },
+];
 
 export class CaptureError extends Error {}
 
@@ -331,12 +355,118 @@ export function renderReferences(db: DatabaseSync, project: Project): string[] {
   return lines;
 }
 
+// Catálogo ----------------------------------------------------------------------------------
+
+/** Uma entrada que um item pode citar em `Referências:`, pronta para gravar. */
+export interface CatalogEntry {
+  entry: string;
+  kind: 'tela' | 'api' | 'arquivo';
+  /** Nome da tela ou da API; caminho do arquivo avulso. */
+  name: string;
+  /** Arquivos da tela, resumo da operação ou vazio. */
+  detail: string;
+  /** Itens (não cancelados) que já a citam. */
+  items: number[];
+}
+
+/**
+ * Tudo o que se pode citar hoje: cada tela, cada operação de cada snapshot (pelo método e
+ * caminho, nunca o snapshot inteiro) e os arquivos avulsos de `.mabel/referencias/`.
+ */
+export function referenceCatalog(root: string, items: Item[]): CatalogEntry[] {
+  const base = referencesRoot(root);
+  const citing = (matches: (entry: string) => boolean) => [...new Set(citingItems(items, matches).map(({ item }) => item.number))];
+  const same = (entry: string) => (other: string) => other.trim().toLowerCase() === entry.toLowerCase();
+  const catalog: CatalogEntry[] = [];
+
+  for (const name of listDir(join(base, 'telas'))) {
+    const entry = `tela: ${name}`;
+    const files = existsSync(screenDir(root, name)) ? filesUnder(screenDir(root, name)).map((file) => relative(screenDir(root, name), file)) : [];
+    if (files.length === 0) continue;
+    catalog.push({
+      entry,
+      kind: 'tela',
+      name,
+      detail: files.join(', '),
+      items: citing((other) => {
+        const ref = parseReference(other);
+        return !('error' in ref) && ref.kind === 'tela' && ref.name === name;
+      }),
+    });
+  }
+
+  for (const file of listDir(join(base, 'api')).filter((f) => f.endsWith('.openapi.json'))) {
+    const name = file.replace(/\.openapi\.json$/, '');
+    const spec = readSnapshot(root, name);
+    if (typeof spec === 'string') continue;
+    for (const op of operations(spec)) {
+      const entry = `api: ${name} ${operationLabel(op)}`;
+      catalog.push({
+        entry,
+        kind: 'api',
+        name,
+        detail: op.summary ?? op.operationId ?? '',
+        items: citing((other) => {
+          const ref = parseReference(other);
+          if ('error' in ref || ref.kind !== 'api' || ref.name !== name) return false;
+          return 'operationId' in ref ? ref.operationId === op.operationId : ref.method === op.method && ref.path === op.path;
+        }),
+      });
+    }
+  }
+
+  const loose = existsSync(base)
+    ? filesUnder(base)
+        .map((file) => relative(base, file).split('\\').join('/'))
+        .filter((path) => !path.startsWith('api/') && !path.startsWith('telas/'))
+    : [];
+  for (const path of loose) {
+    catalog.push({ entry: path, kind: 'arquivo', name: path, detail: '', items: citing(same(path)) });
+  }
+  return catalog;
+}
+
+/** Rótulo e dica de uma entrada para listas de escolha. */
+export function catalogHint(entry: CatalogEntry): string {
+  const cited = entry.items.length > 0 ? `itens ${entry.items.map((n) => `#${n}`).join(', ')}` : '';
+  return [entry.detail, cited].filter(Boolean).join(' · ');
+}
+
+export function catalogJson(catalog: CatalogEntry[]): Record<string, unknown> {
+  return {
+    referencias: catalog.map((entry) => ({
+      entrada: entry.entry,
+      tipo: entry.kind,
+      nome: entry.name,
+      detalhe: entry.detail,
+      itens: entry.items,
+    })),
+  };
+}
+
+/**
+ * Escolha das referências na lista do catálogo, com as já informadas marcadas. Devolve as
+ * entradas na ordem do catálogo, seguidas das informadas que não estão nele.
+ */
+export async function chooseReferences(catalog: CatalogEntry[], current: string[]): Promise<string[] | null> {
+  const key = (entry: string) => entry.trim().toLowerCase();
+  const preselected = catalog.flatMap((entry, i) => (current.some((other) => key(other) === key(entry.entry)) ? [i] : []));
+  const chosen = await selectMany(
+    catalog.map((entry) => ({ label: entry.entry, hint: style.dim(catalogHint(entry)) })),
+    preselected,
+    style,
+  );
+  if (chosen === null) return null;
+  const known = new Set(catalog.map((entry) => key(entry.entry)));
+  return [...chosen.map((i) => (catalog[i] as CatalogEntry).entry), ...current.filter((entry) => !known.has(key(entry)))];
+}
+
 // Comando -----------------------------------------------------------------------------------
 
 export async function referenceCommand(args: string[]): Promise<number> {
   let parsed;
   try {
-    parsed = parseArgs({ args, allowPositionals: true, options: { escala: { type: 'string' }, png: { type: 'string' } } });
+    parsed = parseArgs({ args, allowPositionals: true, options: referenceOptions });
   } catch (error) {
     process.stderr.write(`${(error as Error).message}\nUso: ${referenceUsage}\n`);
     return 1;
@@ -346,14 +476,13 @@ export async function referenceCommand(args: string[]): Promise<number> {
   const scale = values.escala === undefined ? 2 : Number(values.escala);
   const valid =
     kind === undefined
-      ? parsed.positionals.length === 0
-      : kind === 'api'
-        ? Boolean(name && url) && extra.length === 0 && values.png === undefined && values.escala === undefined
-        : kind === 'tela' && Boolean(name) && extra.length === 0 && (values.png === undefined) === Boolean(url);
-  if (!valid || !(scale > 0 && scale <= 4)) {
-    process.stderr.write(`Uso: ${referenceUsage}\n`);
-    return 1;
-  }
+      ? parsed.positionals.length === 0 && values.png === undefined && values.escala === undefined
+      : values.json !== undefined
+        ? false
+        : kind === 'api'
+          ? Boolean(name && url) && extra.length === 0 && values.png === undefined && values.escala === undefined
+          : kind === 'tela' && Boolean(name) && extra.length === 0 && (values.png === undefined) === Boolean(url);
+  if (!valid || !(scale > 0 && scale <= 4)) return fail('argumento_invalido', 'Argumentos inválidos.', referenceUsage);
 
   const home = dataDir();
   const db = openDb(home);
@@ -361,6 +490,10 @@ export async function referenceCommand(args: string[]): Promise<number> {
   try {
     const project = resolveProject(db);
     syncBacklog(db, project);
+    if (kind === undefined && values.json) {
+      writeJson(catalogJson(referenceCatalog(project.root, listItems(db, project.id))));
+      return 0;
+    }
     if (kind === undefined) {
       process.stdout.write(`${renderReferences(db, project).join('\n')}\n`);
       return 0;
@@ -402,6 +535,7 @@ export async function referenceCommand(args: string[]): Promise<number> {
     process.stdout.write(`${out.join('\n')}\n`);
     return 0;
   } catch (error) {
+    if (values.json && error instanceof ProjectError) return fail(error.code, error.message);
     if (error instanceof ProjectError || error instanceof CaptureError) {
       process.stderr.write(`${error.message}\n`);
       // 403 com o token vencido pela data registrada: o motivo provável, dito com todas as letras.

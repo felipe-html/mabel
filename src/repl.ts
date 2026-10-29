@@ -7,6 +7,7 @@ import { dataDir } from './db.ts';
 import { redrawFooter, startFooter } from './footer.ts';
 import {
   ArgsError,
+  type CommandSpec,
   type LineContext,
   type LineState,
   type Suggestion,
@@ -16,8 +17,10 @@ import {
   splitArgs,
 } from './line.ts';
 import type { Key } from './menu.ts';
+import type { ValueOption, ValueSource } from './options.ts';
 import { ProjectError, gitRoot, readConfig } from './project.ts';
 import { paint, style } from './style.ts';
+import { valuesFor } from './values.ts';
 
 export const HISTORY_LIMIT = 500;
 
@@ -28,6 +31,22 @@ export function replSuggestions(): Suggestion[] {
     ...replCommands().map(({ name, description, plannedStep }) => ({ name, description, plannedStep })),
     { name: 'sair', description: 'Fecha o Mabel' },
   ];
+}
+
+export function replCommandSpecs(): Record<string, CommandSpec> {
+  return Object.fromEntries(replCommands().map(({ name, options, args }) => [name, { options, args }]));
+}
+
+/** Valores lidos uma vez por linha: o banco não é aberto a cada tecla. */
+export function cachedValues(read: (source: ValueSource) => ValueOption[] = valuesFor): (source: ValueSource) => ValueOption[] {
+  const cache = new Map<ValueSource, ValueOption[]>();
+  return (source) => {
+    const cached = cache.get(source);
+    if (cached) return cached;
+    const values = read(source);
+    cache.set(source, values);
+    return values;
+  };
 }
 
 // Histórico ------------------------------------------------------------------------------
@@ -203,7 +222,7 @@ async function runCommand(command: Command, args: string[]): Promise<number> {
 /** Modo Mabel: laço de prompt com comandos `/`. Exige stdin e stdout interativos. */
 export async function repl(): Promise<number> {
   const path = historyPath();
-  const context: LineContext = { suggestions: replSuggestions(), history: loadHistory(path) };
+  const context: LineContext = { suggestions: replSuggestions(), commandSpecs: replCommandSpecs(), history: loadHistory(path) };
   let failed = false;
   let lastNotice: string | undefined;
   process.on('exit', restoreTerminal);
@@ -216,6 +235,7 @@ export async function repl(): Promise<number> {
       if (location.notice && location.notice !== lastNotice) process.stdout.write(`${style.dim(location.notice)}\n`);
       lastNotice = location.notice;
 
+      context.values = cachedValues();
       const result = await readLine(promptText(location, failed), context);
       if ('exit' in result) return 0;
       context.history = pushHistory(context.history, result.line.trim());

@@ -13,8 +13,11 @@ import { run } from './run.ts';
 import type { PlanOutput, Question } from './schemas/stages.ts';
 import { readArtifact } from './stages.ts';
 import { style } from './style.ts';
+import { type OptionSpecs, jsonOption } from './options.ts';
 
 export const inboxUsage = 'mabel inbox [--json]';
+
+export const inboxOptions = { json: jsonOption } satisfies OptionSpecs;
 
 /** Resposta gravada quando o humano devolve a pergunta ao agente. */
 export const DELEGATE = 'decida e registre como suposição.';
@@ -432,7 +435,7 @@ export function inboxJson(db: DatabaseSync, project: Project): Record<string, un
 export async function inboxCommand(args: string[]): Promise<number> {
   let json: boolean;
   try {
-    json = parseArgs({ args, options: { json: { type: 'boolean' } } }).values.json ?? false;
+    json = parseArgs({ args, options: inboxOptions }).values.json ?? false;
   } catch (error) {
     return fail('argumento_invalido', (error as Error).message, inboxUsage);
   }

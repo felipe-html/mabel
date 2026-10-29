@@ -21,6 +21,7 @@ import { signals, signalsComparison } from './refine.ts';
 import { queueLogPath, queueStatePath } from './supervisor.ts';
 import { itemDir } from './stages.ts';
 import { style } from './style.ts';
+import { type ArgSpec, type OptionSpecs, itemArg, jsonOption } from './options.ts';
 
 // Classificação para a remoção -----------------------------------------------------------
 
@@ -639,6 +640,25 @@ function shellQuote(text: string): string {
 // Comandos -------------------------------------------------------------------------------
 
 export const projectsUsage = 'mabel projetos [--removidos] [--json]';
+
+export const projectsOptions = {
+  removidos: { type: 'boolean', description: 'Lista as remoções feitas, com o que foi apagado' },
+  json: jsonOption,
+} satisfies OptionSpecs;
+export const projectOptions = {
+  confirmar: { type: 'string', value: '<nome>', values: 'projeto', description: 'Com remover: o nome do projeto de novo, para remover sem perguntar' },
+  json: jsonOption,
+} satisfies OptionSpecs;
+
+export const projectArgs: ArgSpec[] = [
+  {
+    name: '<nome> | remover',
+    description: 'Projeto a auditar; sem ele, a lista para escolher',
+    values: 'projeto',
+    choices: [{ name: 'remover', description: 'Apaga os dados do projeto no Mabel (o repositório fica)' }],
+  },
+  { name: '<nome>', description: 'Com remover: o projeto', values: 'projeto' },
+];
 export const projectUsage = 'mabel projeto <nome> [--json] | mabel projeto remover <nome> [--confirmar <nome>] [--json]';
 
 function withDb(action: (db: DatabaseSync, home: string) => number | Promise<number>): Promise<number> {
@@ -675,7 +695,7 @@ export function projectsCommand(args: string[]): Promise<number> {
   let removed: boolean;
   let json: boolean;
   try {
-    const { values } = parseArgs({ args, options: { removidos: { type: 'boolean' }, json: { type: 'boolean' } } });
+    const { values } = parseArgs({ args, options: projectsOptions });
     removed = values.removidos ?? false;
     json = values.json ?? false;
   } catch (error) {
@@ -704,7 +724,7 @@ export function projectsCommand(args: string[]): Promise<number> {
 export function projectCommand(args: string[]): Promise<number> {
   let parsed;
   try {
-    parsed = parseArgs({ args, allowPositionals: true, options: { confirmar: { type: 'string' }, json: { type: 'boolean' } } });
+    parsed = parseArgs({ args, allowPositionals: true, options: projectOptions });
   } catch (error) {
     return Promise.resolve(fail('argumento_invalido', (error as Error).message, projectUsage));
   }
