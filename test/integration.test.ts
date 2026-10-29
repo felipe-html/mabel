@@ -180,7 +180,7 @@ test('S.5 critério 17: tarefas na integração antiga viram a unidade legado no
   assert.equal(q.ref('mabel/spec/legado'), old);
   assert.equal(q.merges(), 'mabel: integra legado');
   assert.ok(q.show('src/item1.js'));
-  assert.match(q.runReportText(), /## Prontas para entregar\n- legado \(1\/1\)/);
+  assert.match(q.runReportText(), /## Prontas para entregar\n- legado \(1\/1\) · mabel entregar legado/);
 });
 
 test('dependência entre unidades: o avulso que depende de outra unidade concluída a recebe antes de começar', async () => {

@@ -323,3 +323,71 @@ export function specProblem(db: DatabaseSync, project: Pick<Project, 'id' | 'roo
   if (missing.length > 0) return `regra ${missing.join(', ')} não existe na spec ${slug}`;
   return null;
 }
+
+// Regras vigentes ------------------------------------------------------------------------
+
+/** Arquivo das regras de negócio vigentes, por assunto (`## <assunto>` e `- regra`). */
+export const CURRENT_RULES_FILE = 'regras.md';
+const RULES_HEADER = '# Regras vigentes\n';
+
+export interface AppliedChanges {
+  text: string;
+  /** Uma linha por alteração: o que foi feito (ou por que não). */
+  notes: string[];
+}
+
+const sameRule = (a: string, b: string) => a.trim().replace(/\s+/g, ' ').toLowerCase() === b.trim().replace(/\s+/g, ' ').toLowerCase();
+
+/**
+ * Aplica as alterações ao texto do `regras.md`: `incluir` acrescenta a regra no assunto (que
+ * é criado se faltar); `alterar` troca `antigo → novo` (sem a seta, ou sem o antigo, inclui);
+ * `remover` tira a regra igual ao texto.
+ */
+export function applyRuleChanges(current: string, changes: RuleChange[]): AppliedChanges {
+  const lines = (current.trim() ? current.replace(/\n+$/, '') : RULES_HEADER.trimEnd()).split('\n');
+  const notes: string[] = [];
+  const sectionOf = (subject: string) => lines.findIndex((line) => /^##\s/.test(line) && sameRule(line.replace(/^##\s+/, ''), subject));
+  const sectionEnd = (start: number) => {
+    let end = start + 1;
+    while (end < lines.length && !/^##?\s/.test(lines[end] as string)) end++;
+    while (end > start + 1 && !(lines[end - 1] as string).trim()) end--;
+    return end;
+  };
+  const include = (subject: string, text: string) => {
+    const start = sectionOf(subject);
+    if (start < 0) lines.push('', `## ${subject}`, `- ${text}`);
+    else lines.splice(sectionEnd(start), 0, `- ${text}`);
+  };
+  const find = (subject: string, text: string) => {
+    const start = sectionOf(subject);
+    if (start < 0) return -1;
+    for (let i = start + 1; i < sectionEnd(start); i++) {
+      const item = /^\s*[-*]\s+(.+)$/.exec(lines[i] as string)?.[1];
+      if (item && sameRule(item, text)) return i;
+    }
+    return -1;
+  };
+  for (const change of changes) {
+    if (change.acao === 'incluir') {
+      include(change.assunto, change.texto);
+      notes.push(`${change.assunto}: incluído "${change.texto}"`);
+    } else if (change.acao === 'remover') {
+      const at = find(change.assunto, change.texto);
+      if (at >= 0) {
+        lines.splice(at, 1);
+        notes.push(`${change.assunto}: removido "${change.texto}"`);
+      } else notes.push(`${change.assunto}: "${change.texto}" não estava nas regras vigentes; nada removido`);
+    } else {
+      const [before, after] = change.texto.split(/\s*(?:→|->)\s*/);
+      const at = after !== undefined ? find(change.assunto, before as string) : -1;
+      if (at >= 0) {
+        lines[at] = `- ${(after as string).trim()}`;
+        notes.push(`${change.assunto}: alterado "${before}" → "${(after as string).trim()}"`);
+      } else {
+        include(change.assunto, (after ?? change.texto).trim());
+        notes.push(`${change.assunto}: incluído "${(after ?? change.texto).trim()}" (alteração sem a regra antiga)`);
+      }
+    }
+  }
+  return { text: `${lines.join('\n')}\n`, notes };
+}

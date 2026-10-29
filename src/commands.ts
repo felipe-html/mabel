@@ -3,7 +3,7 @@ import { birthArgs, birthCommand, birthOptions, birthUsageFull } from './birth.t
 import { referenceArgs, referenceCommand, referenceOptions, referenceUsage } from './capture.ts';
 import { credentialArgs, credentialCommand, credentialOptions, credentialUsage } from './credentials.ts';
 import { completionCommand, completionUsage, commandsCommand, commandsUsage } from './completion.ts';
-import { deliverCommand, deliverOptions, deliverUsage } from './delivery.ts';
+import { deliverArgs, deliverCommand, deliverOptions, deliverUsage } from './delivery.ts';
 import { askPrompt, exec, execArgs, execOptions, execUsage } from './exec.ts';
 import {
   approveCommand,
@@ -201,9 +201,10 @@ export const commands: Command[] = [
   },
   {
     name: 'entregar',
-    description: 'Publica um snapshot da integração e abre o PR com o relatório; volta o checkout para a base',
+    description: 'Prova e entrega uma unidade (spec ou avulso) por PR; volta o checkout para a base',
     usage: deliverUsage,
     options: deliverOptions,
+    args: deliverArgs,
     run: deliverCommand,
   },
   {

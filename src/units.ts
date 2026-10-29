@@ -3,6 +3,7 @@ import { git, tryGit, withTrailers } from './git.ts';
 import { checkedOutAt, conflictedFiles, integrationWorktree, isAncestor, removeTemp, unitOf } from './integration.ts';
 import { type Item, listItems, updateItem } from './items.ts';
 import type { Project } from './project.ts';
+import { getSpecRecord, setSpecStatus } from './specs.ts';
 import { branchExists, deleteBranch, isMerged, shell, specBranch, unitBranch } from './worktree.ts';
 
 // Branch por unidade (S.5, `docs/specs/specs-e-entrega.md`): a spec tem a sua branch, o
@@ -88,7 +89,8 @@ export function openUnits(db: DatabaseSync, project: Project, items = listItems(
     units.set(name, unit);
   }
   return [...units.values()]
-    .filter((unit) => branchExists(project.root, unit.branch))
+    // Unidade cuja branch já chegou à base não tem o que entregar (o `run` a leva a done).
+    .filter((unit) => branchExists(project.root, unit.branch) && !isAncestor(project.root, unit.branch, project.config.baseBranch))
     .sort((a, b) => a.first.localeCompare(b.first))
     .map(({ first: _, ...unit }) => unit);
 }
@@ -352,6 +354,47 @@ export function bringDependencies(home: string, db: DatabaseSync, project: Proje
     setBranch(project, target, merged.commit, old);
   }
   return undefined;
+}
+
+// Entrega (S.6) ----------------------------------------------------------------------------
+
+export type DeliveryProof = { kind: 'ok' } | { kind: 'conflict'; files: string[] } | { kind: 'red'; verify: VerifyResult };
+
+/**
+ * Prova da entrega (regra do merge queue): num worktree temporário, a base mais o merge do
+ * snapshot e a verificação do projeto. Testa exatamente o que vai entrar.
+ */
+export function proveDelivery(home: string, project: Project, snapshot: string): DeliveryProof {
+  return withTemp(home, project, git(project.root, 'rev-parse', project.config.baseBranch), (path) => {
+    const files = mergeBranch(path, snapshot, 'mabel: prova da entrega');
+    if (files) return { kind: 'conflict', files };
+    const verify = verifyAt(project, path);
+    return verify && !verify.ok ? { kind: 'red', verify } : { kind: 'ok' };
+  });
+}
+
+/** Snapshot de várias unidades juntas (`--com`): merge das outras sobre a primeira. */
+export function combineUnits(home: string, project: Project, branches: string[]): { commit: string } | { files: string[]; branch: string } {
+  const [first, ...rest] = branches as [string, ...string[]];
+  return withTemp(home, project, git(project.root, 'rev-parse', first), (path) => {
+    for (const branch of rest) {
+      const files = mergeBranch(path, branch, `mabel: junta ${branch} na entrega`);
+      if (files) return { files, branch };
+    }
+    return { commit: git(path, 'rev-parse', 'HEAD') };
+  });
+}
+
+/** Specs com todas as tarefas concluídas na base: `entregue`. */
+export function markDeliveredSpecs(db: DatabaseSync, project: Project, items: Item[], notes: string[]): void {
+  const specs = new Set(items.flatMap((item) => (item.spec ? [item.spec] : [])));
+  for (const slug of specs) {
+    const tasks = items.filter((item) => item.spec === slug && item.status !== 'cancelled');
+    if (tasks.length === 0 || !tasks.every((item) => item.status === 'done')) continue;
+    if (getSpecRecord(db, project.id, slug)?.status === 'entregue') continue;
+    setSpecStatus(db, project.id, slug, 'entregue');
+    notes.push(`spec ${slug} entregue`);
+  }
 }
 
 /** Unidades das quais a unidade depende (tarefas dela que dependem de outra unidade fora da base). */

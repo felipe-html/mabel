@@ -4,7 +4,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
 import { ask, confirm } from './ask.ts';
 import { dataDir, openDb } from './db.ts';
-import { openDelivery } from './delivery.ts';
+import { openDeliveries, unitArg } from './delivery.ts';
 import { DecisionError, approve, cancel, reject, respond } from './decisions.ts';
 import { fail } from './errors.ts';
 import { formatCost } from './format.ts';
@@ -314,10 +314,10 @@ export function rejectCommand(args: string[]): Promise<number> {
         const list = result.dependents.map((n) => `#${n}`).join(', ');
         process.stdout.write(`Atenção: ${list} depende(m) de #${item.number} e continua(m) concluído(s); rejeite-o(s) se for o caso.\n`);
       }
-      const delivery = openDelivery(db, project.id);
-      if (delivery?.items.includes(item.number)) {
+      const delivery = openDeliveries(db, project.id).find((open) => open.items.includes(item.number));
+      if (delivery) {
         process.stdout.write(
-          `O #${item.number} está na entrega aberta (${delivery.prUrl ?? delivery.branch}). Rode mabel entregar --substituir para tirá-lo do PR.\n`,
+          `O #${item.number} está na entrega aberta (${delivery.prUrl ?? delivery.branch}). Rode mabel entregar ${unitArg(delivery.unit.split('+')[0] as string)} --substituir para tirá-lo do PR.\n`,
         );
       }
       return 0;

@@ -281,6 +281,9 @@ const migrations: string[] = [
     updated_at  TEXT NOT NULL
   );
   `,
+  `
+  ALTER TABLE deliveries ADD COLUMN unit TEXT NOT NULL DEFAULT 'integracao';
+  `,
 ];
 
 function migrate(db: DatabaseSync): void {

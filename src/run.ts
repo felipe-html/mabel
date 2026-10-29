@@ -19,7 +19,7 @@ import { type Item, type ItemStatus, getItemById, listItems, syncBacklog, transi
 import { writeJson } from './json.ts';
 import { type Notify, notify as systemNotify } from './notify.ts';
 import { finishIntegrated, unitOf } from './integration.ts';
-import { openUnitModel, removeDeliveredBranches } from './units.ts';
+import { markDeliveredSpecs, openUnitModel, removeDeliveredBranches } from './units.ts';
 import { QUEUE_ENDINGS, RUN_REPORT_FILE, writeRunReport } from './runreport.ts';
 import { LockError, acquireLock } from './lock.ts';
 import { type AdvanceResult, advanceItem, autonomousDecisions } from './pipeline.ts';
@@ -409,6 +409,7 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; stop
     finishIntegrated(db, project, listItems(db, project.id)).forEach(markDone);
     const delivered: string[] = [];
     removeDeliveredBranches(project, listItems(db, project.id), delivered);
+    markDeliveredSpecs(db, project, listItems(db, project.id), delivered);
     for (const note of delivered) log.write(style.dim(note));
     const opened = openUnitModel(home, db, project);
     for (const note of opened.notes) log.write(style.dim(note));

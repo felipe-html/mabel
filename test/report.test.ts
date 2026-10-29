@@ -74,7 +74,7 @@ test('P.5 critério 1: relatório com as seções, regenerado a cada integraçã
   // `mabel integracao` mostra as seções de unidade do run.md.
   const cli = q.cli('integracao');
   assert.equal(cli.status, 0, cli.stderr);
-  assert.match(cli.stdout, /^## Prontas para entregar\n- avulso #1 A\n- avulso #2 B\n/);
+  assert.match(cli.stdout, /^## Prontas para entregar\n- avulso #1 A · mabel entregar #1\n- avulso #2 B · mabel entregar #2\n/);
   assert.match(cli.stdout, /main \([0-9a-f]+\) \+ 2 unidades/);
   assert.doesNotMatch(cli.stdout, /## Tarefas deste run/);
 });

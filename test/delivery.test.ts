@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -9,6 +9,7 @@ import { git, tryGit } from '../src/git.ts';
 import { getItem, syncBacklog } from '../src/items.ts';
 import { integrationSection } from '../src/report.ts';
 import { type QueueOptions, startQueue } from '../src/run.ts';
+import { setSpecStatus } from '../src/specs.ts';
 import { PLAN, REVIEW_OK, setupProject, useScenario } from './helpers.ts';
 
 const FAKE_GH = fileURLToPath(new URL('./fixtures/fake-gh.mjs', import.meta.url));
@@ -16,7 +17,10 @@ const INTEGRATION = 'mabel/integracao';
 const PLAN_OK = { structured_output: PLAN };
 const REVIEW = { structured_output: REVIEW_OK };
 const PR = 'https://github.com/dono/app/pull/42';
-const BRANCH = /^mabel\/entrega\/\d{4}-\d{2}-\d{2}$/;
+const SPEC_BRANCH = 'mabel/spec/pedidos';
+const UNIT = { unit: 'pedidos' };
+const SPEC_FILE = '# Pedidos\n\n## História\nH.\n\n## Regras\n\n### R1 Regra\n- caso → resultado (borda)\n\n## Fora do escopo\nNada.\n';
+const task = (n: number) => `\n## Item ${n}\ndescrição ${n}\nSpec: pedidos\nRegras: R1\n`;
 
 const execFor = (n: number) => ({
   structured_output: {
@@ -55,11 +59,16 @@ function useGh(dir: string, responses: Record<string, unknown> | null) {
   };
 }
 
-/** Projeto com integração, remoto `origin` (repositório nu) e `n` itens integrados. */
+/** Projeto com integração, remoto `origin` (repositório nu) e `n` tarefas da spec `pedidos` concluídas. */
 async function integrated(n: number, { remote = true } = {}) {
-  const backlog = Array.from({ length: n }, (_, i) => `\n## Item ${i + 1}\ndescrição ${i + 1}\n`).join('');
+  const backlog = Array.from({ length: n }, (_, i) => task(i + 1)).join('');
   const ctx = setupProject(backlog, { integracao: INTEGRATION });
   Object.assign(ctx.project.config, { setup: null, verify: [{ name: 'existe', command: 'true' }] });
+  mkdirSync(join(ctx.root, '.mabel', 'specs'), { recursive: true });
+  writeFileSync(join(ctx.root, '.mabel', 'specs', 'pedidos.md'), SPEC_FILE);
+  setSpecStatus(ctx.db, ctx.project.id, 'pedidos', 'aceita');
+  git(ctx.root, 'add', '.mabel');
+  git(ctx.root, 'commit', '-q', '-m', 'spec');
   syncBacklog(ctx.db, ctx.project);
   const origin = mkdtempSync(join(tmpdir(), 'mabel-origin-'));
   if (remote) {
@@ -81,7 +90,7 @@ async function integrated(n: number, { remote = true } = {}) {
 
 /** Item a mais, integrado depois da entrega. */
 async function integrateAnother(q: Awaited<ReturnType<typeof integrated>>, n: number) {
-  writeFileSync(q.path, `${readFileSync(q.path, 'utf8')}\n## Item ${n}\ndescrição ${n}\n`);
+  writeFileSync(q.path, `${readFileSync(q.path, 'utf8')}${task(n)}`);
   syncBacklog(q.db, q.project);
   useScenario(q.root, [PLAN_OK, execFor(n), REVIEW]);
   await q.start();
@@ -90,21 +99,22 @@ async function integrateAnother(q: Awaited<ReturnType<typeof integrated>>, n: nu
 test('entregar critério 1: snapshot da integração, push, PR com o relatório e a entrega gravada', async () => {
   const q = await integrated(3);
   const calls = useGh(q.root, GH_OK);
-  const result = deliver(q.db, q.home, q.project);
+  const result = deliver(q.db, q.home, q.project, UNIT);
   assert.equal(result.code, 0, result.lines.join('\n'));
   const delivery = result.delivery!;
-  assert.match(delivery.branch, BRANCH);
-  assert.equal(git(q.root, 'rev-parse', `${delivery.branch}^`), q.ref(INTEGRATION), 'snapshot + o commit do documento');
-  assert.equal(delivery.snapshot, q.ref(INTEGRATION));
+  assert.equal(delivery.branch, 'mabel/entrega/pedidos');
+  assert.equal(delivery.unit, 'pedidos');
+  assert.equal(git(q.root, 'rev-parse', `${delivery.branch}^`), q.ref(SPEC_BRANCH), 'snapshot da unidade + o commit do documento');
+  assert.equal(delivery.snapshot, q.ref(SPEC_BRANCH));
   assert.equal(q.remoteRef(delivery.branch), q.ref(delivery.branch));
   assert.deepEqual(delivery.items, [1, 2, 3]);
   assert.equal(delivery.prUrl, PR);
 
   const create = calls().find((call) => call.argv[0] === 'pr' && call.argv[1] === 'create')!;
-  assert.deepEqual(create.argv.slice(2, 8), ['--base', 'main', '--head', delivery.branch, '--title', 'Mabel: 3 itens (#1, #2, #3)']);
+  assert.deepEqual(create.argv.slice(2, 8), ['--base', 'main', '--head', delivery.branch, '--title', 'Mabel: pedidos (#1, #2, #3)']);
   assert.ok(!create.argv.includes('--draft'));
-  assert.match(create.body ?? '', /^Faça o merge com merge commit \("Create a merge commit"[^\n]*\n\nResumo: integracao · \d{4}-\d{2}-\d{2} · /);
-  assert.match(create.body ?? '', /\n# Entrega: integracao\n/);
+  assert.match(create.body ?? '', /^Faça o merge com merge commit \("Create a merge commit"[^\n]*\n\nResumo: pedidos · \d{4}-\d{2}-\d{2} · /);
+  assert.match(create.body ?? '', /\n# Entrega: pedidos\n\nSpec: \.mabel\/specs\/pedidos\.md \([0-9a-f]+\) · Base: main/);
   assert.match(create.body ?? '', /## Olhe primeiro/);
   assert.match(create.body ?? '', /- #3 Item 3 · merge [0-9a-f]{7}/);
   assert.doesNotMatch(create.body ?? '', /git merge --no-ff/);
@@ -117,48 +127,47 @@ test('entregar critério 1: snapshot da integração, push, PR com o relatório 
   assert.match(result.lines.join('\n'), /Faça o merge com merge commit, sem squash nem rebase\. Depois, na main: git pull/);
 
   // O relatório da integração aponta a entrega aberta.
-  assert.match(integrationSection(q.db, q.home, q.project).join('\n'), new RegExp(`ou: mabel entregar\nEntrega aberta: ${delivery.branch} · ${PR}`));
+  assert.match(integrationSection(q.db, q.home, q.project).join('\n'), new RegExp(`Para entregar: mabel entregar <unidade>[^\n]*\nEntrega aberta: pedidos · ${delivery.branch} · ${PR}`));
 });
 
 test('entregar critérios 2 e 5: a entrega fica no snapshot; aberta, recusa sem flag e --substituir abre outra', async () => {
   const q = await integrated(1);
   useGh(q.root, GH_OK);
-  const first = deliver(q.db, q.home, q.project).delivery!;
+  const first = deliver(q.db, q.home, q.project, UNIT).delivery!;
   await integrateAnother(q, 2);
-  assert.notEqual(q.ref(INTEGRATION), first.commit);
-  assert.equal(q.ref(first.branch), first.commit, 'a integração andou, a entrega não');
+  assert.notEqual(q.ref(SPEC_BRANCH), first.snapshot);
+  assert.equal(q.ref(first.branch), first.commit, 'a unidade andou, a entrega não');
   assert.deepEqual(listDeliveries(q.db, q.project.id)[0]?.items, [1]);
 
-  const again = deliver(q.db, q.home, q.project);
+  const again = deliver(q.db, q.home, q.project, UNIT);
   assert.equal(again.code, 1);
   assert.match(again.lines.join('\n'), /Já há uma entrega aberta.+--substituir/);
 
   const second = 'https://github.com/dono/app/pull/43';
   const replacing = useGh(q.root, { ...GH_OK, 'pr create': { stdout: second } });
-  const replaced = deliver(q.db, q.home, q.project, { replace: true, draft: true });
+  const replaced = deliver(q.db, q.home, q.project, { ...UNIT, replace: true, draft: true });
   assert.equal(replaced.code, 0, replaced.lines.join('\n'));
-  assert.match(replaced.delivery!.branch, /^mabel\/entrega\/\d{4}-\d{2}-\d{2}-2$/);
+  assert.equal(replaced.delivery!.branch, 'mabel/entrega/pedidos-2');
   assert.deepEqual(replaced.delivery!.items, [1, 2]);
   const [old, current] = listDeliveries(q.db, q.project.id);
   assert.equal(old?.status, 'replaced');
   assert.equal(current?.status, 'open');
-  // A integração é refeita a partir da base a cada run: a nova entrega não contém a anterior.
-  assert.ok(q.ref(first.branch), 'a branch local anterior fica');
+  assert.equal(q.ref(first.branch), undefined, 'a branch local anterior sai: a nova a contém');
   const log = replacing();
   assert.ok(log.some((call) => call.argv.join(' ') === `pr close ${PR} --comment Substituído por ${second}`));
   assert.ok(log.some((call) => call.argv[1] === 'create' && call.argv.includes('--draft')));
 
   // Nada novo na integração: --substituir não troca.
-  const same = deliver(q.db, q.home, q.project, { replace: true });
+  const same = deliver(q.db, q.home, q.project, { ...UNIT, replace: true });
   assert.equal(same.code, 0);
-  assert.match(same.lines.join('\n'), /já tem tudo o que está na integração/);
+  assert.match(same.lines.join('\n'), /já tem tudo o que está na unidade/);
   assert.equal(listDeliveries(q.db, q.project.id).length, 2);
 });
 
 test('entregar critério 3: repositório sem merge commit recusa antes de criar a branch', async () => {
   const q = await integrated(1);
   const calls = useGh(q.root, { ...GH_OK, 'repo view': { stdout: '{"mergeCommitAllowed":false}' } });
-  const result = deliver(q.db, q.home, q.project);
+  const result = deliver(q.db, q.home, q.project, UNIT);
   assert.equal(result.code, 1);
   assert.match(result.lines.join('\n'), /não permite merge commit[\s\S]+Allow merge commits/);
   assert.equal(tryGit(q.root, 'branch', '--list', 'mabel/entrega/*'), '');
@@ -169,7 +178,7 @@ test('entregar critério 3: repositório sem merge commit recusa antes de criar 
 test('entregar critério 4: sem gh publica e mostra o corpo; sem remoto, só a branch e o git merge', async () => {
   const q = await integrated(1);
   useGh(q.root, null);
-  const result = deliver(q.db, q.home, q.project);
+  const result = deliver(q.db, q.home, q.project, UNIT);
   assert.equal(result.code, 0, result.lines.join('\n'));
   const branch = result.delivery!.branch;
   assert.equal(q.remoteRef(branch), q.ref(branch));
@@ -180,17 +189,17 @@ test('entregar critério 4: sem gh publica e mostra o corpo; sem remoto, só a b
 
   // Entrega aberta sem PR: rodar de novo retoma (com o gh agora), com a mesma entrega.
   useGh(q.root, GH_OK);
-  const resumed = deliver(q.db, q.home, q.project);
+  const resumed = deliver(q.db, q.home, q.project, UNIT);
   assert.equal(resumed.code, 0, resumed.lines.join('\n'));
   assert.equal(resumed.delivery!.id, result.delivery!.id);
   assert.equal(listDeliveries(q.db, q.project.id)[0]?.prUrl, PR);
 
   const local = await integrated(1, { remote: false });
   useGh(local.root, GH_OK);
-  const offline = deliver(local.db, local.home, local.project);
+  const offline = deliver(local.db, local.home, local.project, UNIT);
   assert.equal(offline.code, 0, offline.lines.join('\n'));
   assert.match(offline.lines.join('\n'), new RegExp(`sem remoto: para levar à main, git merge --no-ff ${offline.delivery!.branch}`));
-  assert.equal(git(local.root, 'rev-parse', `${offline.delivery!.branch}^`), local.ref(INTEGRATION));
+  assert.equal(git(local.root, 'rev-parse', `${offline.delivery!.branch}^`), local.ref(SPEC_BRANCH));
 });
 
 test('entregar: remoto no Bitbucket publica, mostra o link do PR e não chama o gh', async () => {
@@ -198,7 +207,7 @@ test('entregar: remoto no Bitbucket publica, mostra o link do PR e não chama o 
   git(q.root, 'remote', 'set-url', 'origin', 'git@ssh.bitbucket.org:seasolutions/app.git');
   git(q.root, 'remote', 'set-url', '--push', 'origin', q.origin);
   const calls = useGh(q.root, GH_OK);
-  const result = deliver(q.db, q.home, q.project);
+  const result = deliver(q.db, q.home, q.project, UNIT);
   assert.equal(result.code, 0, result.lines.join('\n'));
   const branch = result.delivery!.branch;
   assert.equal(q.remoteRef(branch), q.ref(branch));
@@ -225,10 +234,10 @@ test('entregar: URL do PR e repositório pelo remoto', () => {
     newPrUrl(bitbucket, 'mabel/entrega/2026-10-22', 'main'),
     'https://bitbucket.org/seasolutions/app/pull-requests/new?source=mabel%2Fentrega%2F2026-10-22&dest=main',
   );
-  assert.equal(deliveryTitle([3]), 'Mabel: 1 item (#3)');
-  const long = deliveryTitle(Array.from({ length: 30 }, (_, i) => i + 100));
+  assert.equal(deliveryTitle('avulso-3', [3]), 'Mabel: avulso-3 (#3)');
+  const long = deliveryTitle('pedidos', Array.from({ length: 30 }, (_, i) => i + 100));
   assert.ok(long.length <= 70, long);
-  assert.match(long, /^Mabel: 30 itens \(#100, #101, .+, …\)$/);
+  assert.match(long, /^Mabel: pedidos \(#100, #101, .+, …\)$/);
 });
 
 test('entregar critério 6: checkout da raiz volta à base só se estiver na integração e limpo', async () => {
@@ -236,7 +245,7 @@ test('entregar critério 6: checkout da raiz volta à base só se estiver na int
   useGh(q.root, GH_OK);
   git(q.root, 'switch', '-q', INTEGRATION);
   writeFileSync(join(q.root, 'README.md'), 'alterado\n');
-  const dirty = deliver(q.db, q.home, q.project);
+  const dirty = deliver(q.db, q.home, q.project, UNIT);
   assert.equal(dirty.code, 0);
   assert.match(dirty.lines.join('\n'), /Checkout da raiz em mabel\/integracao com alterações; não troquei para a main\./);
   assert.equal(git(q.root, 'branch', '--show-current'), INTEGRATION);
@@ -247,14 +256,14 @@ test('entregar critério 6: checkout da raiz volta à base só se estiver na int
   await integrateAnother(q, 2);
   git(q.root, 'commit', '-q', '-m', 'backlog', '--', '.mabel/backlog.md');
   git(q.root, 'switch', '-q', INTEGRATION);
-  const clean = deliver(q.db, q.home, q.project, { replace: true });
+  const clean = deliver(q.db, q.home, q.project, { ...UNIT, replace: true });
   assert.equal(clean.code, 0, clean.lines.join('\n'));
   assert.match(clean.lines.join('\n'), /checkout da raiz: mabel\/integracao → main/);
   assert.equal(git(q.root, 'branch', '--show-current'), 'main');
 
   git(q.root, 'switch', '-q', '-c', 'outra');
   await integrateAnother(q, 3);
-  const other = deliver(q.db, q.home, q.project, { replace: true });
+  const other = deliver(q.db, q.home, q.project, { ...UNIT, replace: true });
   assert.equal(other.code, 0, other.lines.join('\n'));
   assert.doesNotMatch(other.lines.join('\n'), /checkout da raiz|não troquei/);
   assert.equal(git(q.root, 'branch', '--show-current'), 'outra');
@@ -263,7 +272,7 @@ test('entregar critério 6: checkout da raiz volta à base só se estiver na int
 test('entregar critérios 7 e 8: merge só no remoto avisa; merge na base leva a merged e os itens a done', async () => {
   const q = await integrated(2);
   useGh(q.root, GH_OK);
-  const delivery = deliver(q.db, q.home, q.project).delivery!;
+  const delivery = deliver(q.db, q.home, q.project, UNIT).delivery!;
 
   // O PR foi integrado no GitHub: merge commit na main do remoto, a main local parada.
   const tree = git(q.root, 'rev-parse', `${delivery.commit}^{tree}`);
@@ -276,11 +285,11 @@ test('entregar critérios 7 e 8: merge só no remoto avisa; merge na base leva a
 
   git(q.root, 'pull', '-q', '--ff-only');
   // Sem `run` no meio: a próxima entrega já vê a anterior na base e não recusa.
-  const next = deliver(q.db, q.home, q.project);
+  const next = deliver(q.db, q.home, q.project, UNIT);
   assert.equal(next.code, 0, next.lines.join('\n'));
   assert.deepEqual(next.lines, [
     `entrega ${delivery.branch} na main; branch local apagada`,
-    'Nada a entregar: a mabel/integracao não tem itens fora da main.',
+    'Nada a entregar: a unidade pedidos não tem tarefa concluída fora da main.',
   ]);
   useScenario(q.root, []);
   await q.start();
@@ -293,7 +302,7 @@ test('entregar critérios 7 e 8: merge só no remoto avisa; merge na base leva a
 test('entregar critério 9: PR integrado por squash explica e mostra o conserto', async () => {
   const q = await integrated(1);
   useGh(q.root, GH_OK);
-  const delivery = deliver(q.db, q.home, q.project).delivery!;
+  const delivery = deliver(q.db, q.home, q.project, UNIT).delivery!;
   useGh(q.root, { 'pr view': { stdout: '{"state":"MERGED"}' } });
   const notes = checkDeliveries(q.db, q.project).join('\n');
   assert.match(notes, /sem merge commit \(squash ou rebase\)/);
@@ -307,16 +316,16 @@ test('entregar critério 9: PR integrado por squash explica e mostra o conserto'
 test('entregar critério 10: rejeitar item da entrega aberta avisa sobre o --substituir', async () => {
   const q = await integrated(2);
   useGh(q.root, GH_OK);
-  deliver(q.db, q.home, q.project);
+  deliver(q.db, q.home, q.project, UNIT);
   const out = q.cli('rejeitar', '2', 'refazer');
   assert.equal(out.status, 0, out.stderr);
-  assert.match(out.stdout, new RegExp(`O #2 está na entrega aberta \\(${PR.replace(/[.?/]/g, '\\$&')}\\)\\. Rode mabel entregar --substituir`));
+  assert.match(out.stdout, new RegExp(`O #2 está na entrega aberta \\(${PR.replace(/[.?/]/g, '\\$&')}\\)\\. Rode mabel entregar pedidos --substituir`));
 });
 
 test('entregar critério 11: remoção do projeto leva as entregas e o corpo do PR', async () => {
   const q = await integrated(1);
   useGh(q.root, GH_OK);
-  const delivery = deliver(q.db, q.home, q.project).delivery!;
+  const delivery = deliver(q.db, q.home, q.project, UNIT).delivery!;
   const summary = q.cli('projeto', 'remover', q.project.name);
   assert.match(summary.stdout, /banco: .*deliveries/);
   assert.match(summary.stdout, /entregas\//);
@@ -329,7 +338,7 @@ test('entregar critério 11: remoção do projeto leva as entregas e o corpo do 
 test('entregar: corpo acima do limite corta o documento na última linha inteira e aponta o arquivo', async () => {
   const q = await integrated(3);
   useGh(q.root, GH_OK);
-  const delivery = deliver(q.db, q.home, q.project).delivery!;
+  const delivery = deliver(q.db, q.home, q.project, UNIT).delivery!;
   const full = deliveryBody(q.project, delivery);
   assert.ok(full.length < BODY_LIMIT);
   const limit = full.indexOf('## Tarefas');
@@ -337,7 +346,7 @@ test('entregar: corpo acima do limite corta o documento na última linha inteira
   assert.ok(cut.length <= limit, `${cut.length}`);
   assert.match(cut, /^Faça o merge[\s\S]*## Olhe primeiro/);
   assert.doesNotMatch(cut, /## Tarefas/);
-  assert.match(cut, /\n\n… documento cortado; a íntegra está em \.mabel\/entregas\/[\d-]+-integracao\.md na branch mabel\/entrega\/[\d-]+\.\n$/);
+  assert.match(cut, /\n\n… documento cortado; a íntegra está em \.mabel\/entregas\/[\d-]+-pedidos\.md na branch mabel\/entrega\/pedidos\.\n$/);
 });
 
 test('entregar: integração desligada e nada a entregar', async () => {
@@ -347,7 +356,7 @@ test('entregar: integração desligada e nada a entregar', async () => {
   git(empty.root, 'branch', INTEGRATION);
   const result = deliver(empty.db, empty.home, empty.project);
   assert.equal(result.code, 0);
-  assert.deepEqual(result.lines, ['Nada a entregar: a mabel/integracao não tem itens fora da main.']);
+  assert.deepEqual(result.lines, ['Nada a entregar: nenhuma unidade com tarefa concluída fora da base.']);
   const cli = empty.cli('entregar');
   assert.equal(cli.status, 0, cli.stderr);
   assert.match(cli.stdout, /Nada a entregar/);

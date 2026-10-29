@@ -2,6 +2,7 @@ import { writeFileSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
 import { balanceOf, formatReset, latestReadings } from './balance.ts';
 import { formatCost, formatDuration } from './format.ts';
+import { unitArg } from './delivery.ts';
 import { unitOf } from './integration.ts';
 import { type Unit, openUnits, readIntegrationState } from './units.ts';
 import { specBranch, unitBranch } from './worktree.ts';
@@ -165,7 +166,7 @@ function integrationWarnings(db: DatabaseSync, project: Project, items: Item[]):
 function readyToDeliver(db: DatabaseSync, project: Project, items: Item[]): string[] {
   if (project.config.integracao) {
     const units = openUnits(db, project, items);
-    return units.length > 0 ? units.map((unit) => `- ${unitLine(unit, items)}`) : ['Nada.'];
+    return units.length > 0 ? units.map((unit) => `- ${unitLine(unit, items)} · mabel entregar ${unitArg(unit.name)}`) : ['Nada.'];
   }
   const own = items.filter((item) => item.status === 'awaiting_merge' && item.branch);
   return own.length > 0 ? own.map((item) => `- #${item.number} ${item.title} · ${item.branch}`) : ['Nada.'];

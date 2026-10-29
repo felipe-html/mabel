@@ -111,7 +111,7 @@ Ordem em que aparecem na lista (a mesma de `src/commands.ts`).
 | `responder` | `responder <n> "<resposta>" [--replanejar]` | sim | número, resposta, replanejar? | não | igual |
 | `cancelar` | `cancelar <n>` | sim | número + confirmação | não | igual, **sem confirmação** |
 | `integracao` | `integracao` | sim | não | não | igual |
-| `entregar` | `entregar [--substituir] [--rascunho]` | sim | não | não | igual |
+| `entregar` | `entregar [<slug> \| #<n>] [--com <unidade>]… [--parcial] [--substituir] [--rascunho]` | sim | — (o próprio comando abre o menu das unidades) | não | sem unidade lista as prontas; parcial exige `--parcial` |
 | `rejeitar` | `rejeitar <n> "<motivo>" [--cancelar]` | sim | número, motivo, cancelar? | **sim** | igual |
 | `exec` | `exec "<prompt>" [--model] [--max-turns] [--max-budget-usd] [--allowed-tools] [--cwd]` | não | prompt | não | igual |
 | `status` | `status [--atualizar]` | não (mostra o quadro se houver) | não | não | igual |
@@ -557,32 +557,49 @@ custo. O `run.md` substituiu o `.mabel/integracao.md` (S.1).
 
 ### entregar
 
-**Para quê:** levar a integração à base por PR (`docs/specs/entregar.md`).
+**Para quê:** levar uma unidade de entrega (spec ou avulso) à base por PR, provada antes
+(`docs/specs/entregar.md`, S.6 de `docs/specs/specs-e-entrega.md`).
 
 | Parâmetro | Efeito |
 |---|---|
-| `--substituir` | Com uma entrega aberta, abre outra com a integração atual e fecha o PR anterior |
+| (nenhum) | TTY: menu das unidades com tarefas concluídas fora da base. Fora dele: a lista, com o comando de cada uma (código 0) |
+| `<slug>` · `#<n>` | A unidade: o slug da spec (ou `legado`) ou o número de uma tarefa (a unidade dela; no avulso, ele mesmo) |
+| `--com <unidade>` | Entrega junto a unidade de que esta depende, numa branch só (`mabel/entrega/a+b`); pode repetir |
+| `--parcial` | Entrega a spec com tarefas ainda não concluídas; sem ele, o TTY pergunta `Entregar só o que está pronto? [s/N]` e fora dele recusa |
+| `--substituir` | Com uma entrega aberta da unidade, abre outra com a branch atual dela e fecha o PR anterior |
 | `--rascunho` | Abre o PR como rascunho |
 
-Cria `mabel/entrega/<data>` no commit atual da integração (o `run` pode seguir integrando
-sem mudar o PR) mais um commit do Mabel só com o documento de entrega
-(`.mabel/entregas/<data>-integracao.md`: resumo, olhe primeiro, decisões, suposições,
-critérios e prova, desvios e tarefas; trailer `Mabel-Entrega`), publica no remoto da base e
-abre o PR pelo `gh`, com o documento como corpo (cortado acima de 60.000 caracteres). Pelo
-merge do PR, o documento chega à base junto do código. Recusa se o repositório não permitir merge commit (squash e rebase impedem o `done`).
-Sem `gh` ou com o remoto no Bitbucket, mostra o endereço para abrir o PR e o arquivo do corpo;
-sem remoto, o `git merge --no-ff`.
+Passos: (1) a unidade tem tarefa concluída; tarefa dela ainda aberta → entrega parcial;
+(2) unidade que depende de outra fora da base → recusa, com a sugestão `--com`; (3)
+snapshot = a branch da unidade (com `--com`, um merge das branches feito pelo Mabel); (4)
+**prova**: num worktree temporário, a base mais o merge do snapshot (com `rerere`) e a
+verificação do projeto — conflito recusa ("faça o merge da base na unidade"), vermelho
+recusa com a saída; nada é criado; (5) documento de entrega
+(`.mabel/entregas/<data>-<unidade>.md`: resumo com os assuntos das regras alteradas, spec
+e base, olhe primeiro — inclusive entrega parcial e conflito visto na integração —,
+decisões, suposições, critérios e prova, desvios, tarefas e regras vigentes alteradas) e as
+alterações da spec (ou do campo `Regras vigentes:` do avulso) aplicadas ao
+`.mabel/regras.md` do snapshot (`incluir`; `alterar` com `antigo → novo`, sem a seta
+inclui; `remover`); (6) `mabel/entrega/<unidade>` = snapshot + um commit do Mabel só com
+esses dois arquivos (`mabel: entrega <unidade>`, trailer `Mabel-Entrega`); (7) publica no
+remoto da base e abre o PR pelo `gh`, com o documento como corpo (cortado acima de 60.000
+caracteres) e o título `Mabel: <unidade> (#n, …)`. Recusa se o repositório não permitir
+merge commit (squash e rebase impedem o `done`). Sem `gh` ou com o remoto no Bitbucket,
+mostra o endereço para abrir o PR e o arquivo do corpo; sem remoto, o `git merge --no-ff`.
 Volta o checkout da raiz para a base só se ele estiver na integração ou numa entrega e sem
-alteração versionada. Uma entrega aberta por projeto; a que ficou sem PR é retomada ao
-rodar de novo. Não pega a trava do projeto: lê a integração uma vez.
+alteração versionada. Uma entrega aberta por unidade; a que ficou sem PR é retomada ao
+rodar de novo. Não pega a trava do projeto.
 
-Na abertura do `run`: entrega na base vira `merged` (branch local apagada); integrada só
-no remoto ou por squash, o `run` avisa o que fazer.
+Na abertura do `run`: entrega na base vira `merged` (branch local apagada), as tarefas da
+unidade vão a `done`, a branch da unidade é apagada e a spec com todas as tarefas
+concluídas vira `entregue`; o `regras.md` da base já tem as alterações (vieram no merge).
+Integrada só no remoto ou por squash, o `run` avisa o que fazer.
 
 **Pontos a refinar**
 
 - PR fechado sem merge no GitHub não é detectado: a entrega continua aberta até o
   `--substituir`.
+- A prova roda o `setup` e o `verify` inteiros a cada entrega, sem cache.
 
 ### rejeitar
 

@@ -393,7 +393,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
         <ul>
           <li>Commita na base o que está pendente no <code>.mabel/</code></li>
           <li>Confere sandbox e pega a trava do projeto</li>
-          <li>Marca <code>done</code> o que já chegou à base e apaga a branch da unidade entregue; remove worktrees órfãos</li>
+          <li>Marca <code>done</code> o que já chegou à base, apaga a branch da unidade entregue e leva a spec com todas as tarefas concluídas a <code>entregue</code>; remove worktrees órfãos</li>
           <li>Migração: tarefas na <code>mabel/integracao</code> antiga viram a unidade <code>legado</code> (<code>mabel/spec/legado</code>)</li>
           <li>Merge da base em cada unidade aberta (<code>mabel/spec/slug</code>, <code>mabel/avulso/n-slug</code>), com rerere; conflito pausa a unidade: as tarefas dela não são escolhidas</li>
           <li>Refaz <code>mabel/integracao</code> a partir da base com o merge de cada unidade, na ordem da primeira integração; unidade que conflita fica de fora, com aviso no <code>run.md</code>; depois, a verificação do projeto nela (vermelho: aviso)</li>
@@ -582,7 +582,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       <div class="node human">
         <span class="kicker">Você</span>
         <h4>Entrega ou rejeita</h4>
-        <p><code>mabel entregar</code> abre o PR para a base; o merge é seu. No próximo <code>run</code>, o item vira <code>done</code>. <code>mabel rejeitar</code> reverte a tarefa na branch da spec (no avulso, a branch volta à base) e a devolve a <code>planning</code> (ou <code>cancelled</code>); a integração é refeita no próximo <code>run</code>.</p>
+        <p><code>mabel entregar &lt;unidade&gt;</code> prova base + unidade e abre o PR para a base, com o documento e as regras vigentes alteradas; o merge é seu. No próximo <code>run</code>, o item vira <code>done</code>. <code>mabel rejeitar</code> reverte a tarefa na branch da spec (no avulso, a branch volta à base) e a devolve a <code>planning</code> (ou <code>cancelled</code>); a integração é refeita no próximo <code>run</code>.</p>
       </div>
     </div>
     <figcaption>A linha tracejada à esquerda é o ciclo de tentativas: toda reprovação (↺) volta ao executor. As caixas laranja à direita param o item em <code>needs_human</code> até você responder pela inbox.</figcaption>
@@ -818,10 +818,10 @@ Retomar a esteira agora? [S/n]</pre>
         </article>
         <article class="cmd">
           <header><span class="name">entregar</span><span class="badge human">você pede</span></header>
-          <p class="usage">mabel entregar [--substituir] [--rascunho]</p>
-          <p>Snapshot da integração mais o documento de entrega, e PR para a base com o documento no corpo. O merge é seu; no próximo <code>run</code> os itens viram <code>done</code>, e o documento fica na base junto do código.</p>
-          <p class="writes"><b>Grava:</b> branch <code>mabel/entrega/&lt;data&gt;</code> = snapshot + commit <code>mabel: entrega integracao</code> só com <code>.mabel/entregas/&lt;data&gt;-integracao.md</code> (trailer <code>Mabel-Entrega</code>; a base não recebe commit), push no remoto, PR pelo <code>gh</code>. Sem <code>gh</code>: o endereço e o arquivo do corpo.</p>
-<pre class="term">Entrega mabel/entrega/2026-10-28 · 3 itens desde a main
+          <p class="usage">mabel entregar [slug | #n] [--com unidade] [--parcial] [--substituir] [--rascunho]</p>
+          <p>Entrega uma unidade (spec ou avulso). Parcial pede confirmação (TTY) ou <code>--parcial</code>; dependência fora da base recusa, com a sugestão <code>--com</code>. Antes de criar qualquer branch, a <b>prova</b>: base + merge do snapshot da unidade num worktree temporário, e a verificação do projeto; conflito ou vermelho recusam. Depois, o documento de entrega e o PR para a base. O merge é seu; no próximo <code>run</code> as tarefas viram <code>done</code>, a spec vira <code>entregue</code>, e o documento e as regras vigentes ficam na base junto do código.</p>
+          <p class="writes"><b>Grava:</b> branch <code>mabel/entrega/&lt;unidade&gt;</code> = snapshot da branch da unidade + commit <code>mabel: entrega &lt;unidade&gt;</code> só com <code>.mabel/entregas/&lt;data&gt;-&lt;unidade&gt;.md</code> e o <code>.mabel/regras.md</code> com as alterações da unidade (trailer <code>Mabel-Entrega</code>; a base não recebe commit), push no remoto, PR pelo <code>gh</code>; a entrega no SQLite, uma aberta por unidade. Sem <code>gh</code>: o endereço e o arquivo do corpo.</p>
+<pre class="term">Entrega mabel/entrega/exportar-csv · exportar-csv · 3 tarefas desde a main
 <span class="g">PR aberto: https://github.com/…/pull/31</span></pre>
         </article>
         <article class="cmd">

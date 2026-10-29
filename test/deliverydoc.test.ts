@@ -57,20 +57,23 @@ test('S.2 critérios 3 e 4: documento na branch de entrega, base sem commit do M
   const scenario = join(q.home, 'gh.json');
   writeFileSync(scenario, JSON.stringify({ 'auth status': {}, 'repo view': { stdout: '{"mergeCommitAllowed":true}' } }));
   Object.assign(process.env, { MABEL_GH_BIN: join(q.home, 'sem-gh'), FAKE_GH_SCENARIO: scenario, FAKE_GH_LOG: `${scenario}.log` });
-  const result = deliver(q.db, q.home, q.project);
+  // Dois avulsos numa entrega só (`--com`).
+  const result = deliver(q.db, q.home, q.project, { unit: '#2', with: ['#1'] });
   assert.equal(result.code, 0, result.lines.join('\n'));
   const delivery = result.delivery!;
+  assert.equal(delivery.branch, 'mabel/entrega/avulso-2+avulso-1');
 
   // A base não recebe commit do Mabel (G10).
   assert.equal(git(q.root, 'rev-parse', 'main'), mainBefore);
-  const name = `${delivery.branch.slice('mabel/entrega/'.length)}-integracao`;
+  const name = (/Documento: \.mabel\/entregas\/(\S+)\.md/.exec(result.lines.join('\n'))?.[1]) as string;
+  assert.match(name, /^\d{4}-\d{2}-\d{2}-avulso-2\+avulso-1$/);
   const path = `.mabel/entregas/${name}.md`;
   assert.equal(git(q.root, 'diff-tree', '--no-commit-id', '--name-only', '-r', delivery.branch), path, 'commit só com o documento');
-  assert.match(git(q.root, 'log', '-1', '--format=%B', delivery.branch), new RegExp(`^mabel: entrega integracao\\n\\nMabel-Entrega: ${name}\\n?$`));
-  assert.match(result.lines.join('\n'), new RegExp(`Documento: ${path.replace(/\./g, '\\.')}`));
+  assert.match(git(q.root, 'log', '-1', '--format=%B', delivery.branch), new RegExp(`^mabel: entrega avulso-2\\+avulso-1\\n\\nMabel-Entrega: ${name.replace('+', '\\+')}\\n?$`));
+  assert.match(result.lines.join('\n'), new RegExp(`Documento: ${path.replace(/[.+]/g, '\\$&')}`));
 
   const doc = git(q.root, 'show', `${delivery.branch}:${path}`);
-  assert.match(doc, /^Resumo: integracao · \d{4}-\d{2}-\d{2} · — · Qual banco\? → Postgres; Frete entra no total\? → Não\n\n# Entrega: integracao\n\nBase: main \([0-9a-f]+\) · 2 tarefas · US\$ /);
+  assert.match(doc, /^Resumo: avulso-2\+avulso-1 · \d{4}-\d{2}-\d{2} · — · Qual banco\? → Postgres; Frete entra no total\? → Não\n\n# Entrega: avulso-2\+avulso-1\n\nBase: main \([0-9a-f]+\) · 2 tarefas · US\$ /);
   const at = (title: string) => doc.indexOf(`\n## ${title}\n`);
   const order = ['Olhe primeiro', 'Decisões', 'Suposições do agente', 'Critérios e prova', 'Desvios', 'Tarefas'].map(at);
   assert.ok(order.every((p) => p > 0), doc);

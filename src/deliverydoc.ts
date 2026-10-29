@@ -98,12 +98,22 @@ export interface DeliveryDocInput {
   /** Snapshot entregue: só as tarefas integradas até ele. */
   snapshot: string;
   date: string;
+  /** Tarefas entregues; sem elas, as alcançáveis da integração até o snapshot. */
+  items?: Item[];
+  /** Specs da entrega, como aparecem no cabeçalho: `.mabel/specs/<slug>.md (abc1234)`. */
+  specs?: string[];
+  /** Assuntos das regras vigentes alteradas (o resumo os lista). */
+  subjects?: string[];
+  /** O que a entrega fez no `regras.md`. */
+  ruleNotes?: string[];
+  /** Avisos do Mabel para o "Olhe primeiro": entrega parcial, conflito visto na integração. */
+  warnings?: string[];
 }
 
 /** Conteúdo do documento de entrega. A primeira linha é o resumo, achado pelo `Grep`. */
 export function renderDeliveryDoc(db: DatabaseSync, home: string, project: Project, input: DeliveryDocInput): string {
   const base = project.config.baseBranch;
-  const entries = integratedItems(db, project, input.snapshot).map((item) => entry(home, item));
+  const entries = (input.items ?? integratedItems(db, project, input.snapshot)).map((item) => entry(home, item));
   const items = entries.map((e) => e.item);
   const decisions = decisionsOf(project, items);
   const assumptions = entries.flatMap(({ item, plan, execution }) =>
@@ -116,13 +126,15 @@ export function renderDeliveryDoc(db: DatabaseSync, home: string, project: Proje
   const main = decisions.slice(0, 2).map((d) => d.replace(/^[^:]+: /, '').replace(/ \([^()]*\d{4}-\d{2}-\d{2}\)$/, '')).join('; ') || '—';
   const baseCommit = tryGit(project.root, 'rev-parse', '--short', base) ?? '?';
 
+  const subjects = [...new Set(input.subjects ?? [])].join(', ') || '—';
+  const specs = input.specs && input.specs.length > 0 ? `Spec: ${input.specs.join(', ')} · ` : '';
   const lines = [
-    `Resumo: ${input.unit} · ${input.date} · — · ${main}`,
+    `Resumo: ${input.unit} · ${input.date} · ${subjects} · ${main}`,
     '',
     `# Entrega: ${input.unit}`,
     '',
-    `Base: ${base} (${baseCommit}) · ${plural(items.length, 'tarefa', 'tarefas')} · ${formatCost(cost)}`,
-    ...section('Olhe primeiro', bullets(entries.flatMap(lookFirst)), 'Nada: todos os critérios provados.'),
+    `${specs}Base: ${base} (${baseCommit}) · ${plural(items.length, 'tarefa', 'tarefas')} · ${formatCost(cost)}`,
+    ...section('Olhe primeiro', bullets([...(input.warnings ?? []), ...entries.flatMap(lookFirst)]), 'Nada: todos os critérios provados.'),
     ...section('Decisões', bullets(decisions)),
     ...section('Suposições do agente', bullets([...assumptions, ...autonomous])),
     ...section('Critérios e prova', [
@@ -135,6 +147,7 @@ export function renderDeliveryDoc(db: DatabaseSync, home: string, project: Proje
       'Tarefas',
       bullets(items.map((item) => `#${item.number} ${item.title} · merge ${(item.integratedCommit ?? '').slice(0, 7)} · ${formatCost(itemCost(db, item.id))}`)),
     ),
+    ...(input.ruleNotes && input.ruleNotes.length > 0 ? section('Regras vigentes alteradas', bullets(input.ruleNotes)) : []),
   ];
   return `${lines.join('\n')}\n`;
 }

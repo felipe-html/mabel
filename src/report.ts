@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { formatCost } from './format.ts';
 import { tryGit } from './git.ts';
-import { openDelivery } from './delivery.ts';
+import { openDeliveries } from './delivery.ts';
 import { integratedItems } from './integration.ts';
 import { readIntegrationState } from './units.ts';
 import { type Item, itemCost } from './items.ts';
@@ -114,15 +114,9 @@ function itemSection(db: DatabaseSync, project: Project, { item, plan, execution
   return lines;
 }
 
-/** Linhas do "Olhe primeiro" dos itens integrados (até `upTo`, se dado). */
-export function lookFirstLines(db: DatabaseSync, home: string, project: Project, upTo?: string): string[] {
-  return integratedItems(db, project, upTo).flatMap((item) => lookFirst(entry(home, item)));
-}
-
 function howToDeliver(db: DatabaseSync, project: Project): string[] {
-  const lines = [`Para levar à ${project.config.baseBranch}: git merge --no-ff ${project.config.integracao}`, 'ou: mabel entregar'];
-  const open = openDelivery(db, project.id);
-  if (open) lines.push(`Entrega aberta: ${open.branch} · ${open.prUrl ?? 'sem PR'}`);
+  const lines = ['Para entregar: mabel entregar <unidade> (a integração é só para teste)'];
+  for (const open of openDeliveries(db, project.id)) lines.push(`Entrega aberta: ${open.unit} · ${open.branch} · ${open.prUrl ?? 'sem PR'}`);
   return lines;
 }
 
