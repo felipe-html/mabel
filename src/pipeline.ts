@@ -96,6 +96,7 @@ export function startGate(
   rules: CriticalRules,
   approved: boolean,
   declared: string[] = [],
+  bug = false,
 ): StartVerdict {
   if (!plan) return { kind: 'incomplete', reason: invalid ?? 'saída estruturada ausente' };
   if (plan.perguntas.length > 0) return { kind: 'questions', questions: plan.perguntas };
@@ -105,6 +106,10 @@ export function startGate(
     return { kind: 'incomplete', reason: `critérios sem verificação: ${unverified.map((c) => c.id).join(', ')}` };
   }
   if (plan.escopo.length === 0) return { kind: 'incomplete', reason: 'plano sem escopo de arquivos' };
+  // Bug: a reprodução é provada pelo teste vermelho na base (comportamento novo).
+  if (bug && !plan.criterios.some((c) => /reprodu[çc][ãa]o/i.test(c.texto) && c.verificacao === 'teste' && c.comportamento === 'novo')) {
+    return { kind: 'incomplete', reason: 'bug sem critério de reprodução com teste de comportamento novo (vermelho na base)' };
+  }
   // O gate de escopo reprova toda escrita no `.mabel/` e no `.git/`: o plano que os inclui
   // reprovaria na execução, por mais certo que o código estivesse.
   const reserved = plan.escopo.filter((glob) => /^(\.\/)?\.(mabel|git)(\/|$)/.test(glob));
@@ -432,6 +437,7 @@ async function planStep(env: PipelineEnv, item: Item): Promise<Step> {
     readCriticalRules(env.project.root),
     item.approvedAt !== null,
     item.criticalConcepts,
+    item.kind === 'bug',
   );
   switch (verdict.kind) {
     case 'questions': {

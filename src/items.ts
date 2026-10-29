@@ -144,6 +144,7 @@ interface ItemRow {
   spec_rules: string;
   spec_context: string | null;
   kind: 'bug' | null;
+  rule_changes: string;
 }
 
 /**
@@ -197,6 +198,7 @@ function fromRow(row: ItemRow): Item {
     spec: row.spec,
     rules: JSON.parse(row.spec_rules) as string[],
     kind: row.kind,
+    ruleChanges: JSON.parse(row.rule_changes) as string[],
     specContext: row.spec_context ? (JSON.parse(row.spec_context) as SpecExcerpt) : null,
   };
 }
@@ -282,6 +284,7 @@ export function contentHash(fields: ItemFields, referencesDigest?: string, excer
   // Tarefa de spec: o trecho citado entra no hash; spec alterada muda a tarefa não iniciada.
   if (fields.spec) content.push({ spec: fields.spec, rules: fields.rules ?? [], excerpt: excerpt ? excerptDigest(excerpt) : null });
   if (fields.kind) content.push({ kind: fields.kind });
+  if (fields.ruleChanges && fields.ruleChanges.length > 0) content.push({ ruleChanges: fields.ruleChanges });
   return createHash('sha256').update(JSON.stringify(content)).digest('hex');
 }
 
@@ -355,6 +358,9 @@ export function satisfiedNumbers(items: Item[], integration: boolean): Set<numbe
  * Motivo pelo qual o item não está pronto para planejar, ou `null` quando está.
  * `referenceProblem`: a primeira referência que não confere (`references.ts`).
  */
+/** Critério de reprodução do bug: o primeiro, gravado pelo refinamento. */
+export const REPRODUCTION = /^reprodu[çc][ãa]o:/i;
+
 export function notReadyReason(
   item: Item,
   satisfied: Set<number>,
@@ -367,6 +373,9 @@ export function notReadyReason(
   // Item declarado crítico: os critérios vêm do humano (escritos ou aceitos no refinamento).
   if (item.criticalConcepts.length > 0 && item.criteria.length === 0) {
     return `regra crítica sem critérios: escreva os critérios ou rode \`mabel refinar ${item.number}\``;
+  }
+  if (item.kind === 'bug' && !item.criteria.some((criterion) => REPRODUCTION.test(criterion))) {
+    return `bug sem critério de reprodução: escreva "Reprodução: passos → esperado (hoje: obtido)" ou rode \`mabel refinar ${item.number}\``;
   }
   if (referenceProblem) return referenceProblem;
   if (!item.dependsOn.every((dep) => satisfied.has(dep))) return 'dependências pendentes';
@@ -542,6 +551,7 @@ export function syncBacklog(db: DatabaseSync, project: Project): SyncResult {
       spec: entry.spec,
       rules: entry.rules,
       kind: entry.kind,
+      ruleChanges: entry.ruleChanges,
     };
     const excerpt = entryExcerpt(project, entry);
     const hash = contentHash(fields, entry.references.length > 0 ? referencesDigest(project.root, entry.references) : undefined, excerpt);
@@ -549,9 +559,9 @@ export function syncBacklog(db: DatabaseSync, project: Project): SyncResult {
     if (!item) {
       db.prepare(
         `INSERT INTO items (id, project_id, number, position, title, intent, criteria, depends_on, restrictions,
-           out_of_scope, decisions, critical_concepts, item_references, spec, spec_rules, spec_context, kind, content_hash,
-           status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'backlog', ?, ?)`,
+           out_of_scope, decisions, critical_concepts, item_references, spec, spec_rules, spec_context, kind, rule_changes,
+           content_hash, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'backlog', ?, ?)`,
       ).run(
         randomUUID(),
         project.id,
@@ -570,6 +580,7 @@ export function syncBacklog(db: DatabaseSync, project: Project): SyncResult {
         JSON.stringify(entry.rules),
         excerpt ? JSON.stringify(excerpt) : null,
         entry.kind,
+        JSON.stringify(entry.ruleChanges),
         hash,
         now,
         now,
@@ -591,7 +602,7 @@ export function syncBacklog(db: DatabaseSync, project: Project): SyncResult {
         db.prepare(
           `UPDATE items SET title = ?, intent = ?, criteria = ?, depends_on = ?, restrictions = ?,
              out_of_scope = ?, decisions = ?, critical_concepts = ?, item_references = ?, spec = ?, spec_rules = ?,
-             spec_context = ?, kind = ?, content_hash = ?, updated_at = ?
+             spec_context = ?, kind = ?, rule_changes = ?, content_hash = ?, updated_at = ?
            WHERE id = ?`,
         ).run(
           fields.title,
@@ -607,6 +618,7 @@ export function syncBacklog(db: DatabaseSync, project: Project): SyncResult {
           JSON.stringify(entry.rules),
           excerpt ? JSON.stringify(excerpt) : null,
           entry.kind,
+          JSON.stringify(entry.ruleChanges),
           hash,
           now,
           item.id,

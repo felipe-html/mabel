@@ -298,7 +298,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
         <text class="cmd" x="38" y="86">nascer</text><circle class="dot" cx="104" cy="82" r="4"/><text class="ag" x="114" y="86">agente nascer</text>
         <text class="cmd" x="38" y="108">init</text><text class="note" x="104" y="108">cria o .mabel/</text>
         <text class="cmd" x="38" y="130">add</text><text class="note" x="104" y="130">item no backlog.md</text>
-        <text class="cmd" x="38" y="152">refinar</text><circle class="dot" cx="104" cy="148" r="4"/><text class="ag" x="114" y="152">agente refinador</text>
+        <text class="cmd" x="38" y="152">refinar</text><circle class="dot" cx="104" cy="148" r="4"/><text class="ag" x="114" y="152">especificador</text>
         <text class="cmd" x="38" y="174">referencia</text><text class="note" x="124" y="174">telas e APIs</text>
         <text class="cmd" x="38" y="196">credencial</text><text class="note" x="124" y="196">validade do token</text>
 
@@ -357,7 +357,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
         <text class="lbl back" x="593" y="268">resposta → retoma</text>
       </svg>
     </div>
-    <figcaption>Os pontos azuis são agentes. Fora o <code>nascer</code> e o <code>refinar</code>, todos rodam dentro do <code>mabel run</code>. As setas laranja são as voltas que dependem de você.</figcaption>
+    <figcaption>Os pontos azuis são agentes. Fora o <code>nascer</code>, o <code>especificar</code> e o <code>refinar</code>, todos rodam dentro do <code>mabel run</code>. As setas laranja são as voltas que dependem de você.</figcaption>
   </figure>
 </section>
 
@@ -395,7 +395,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
           <li>Confere sandbox e pega a trava do projeto</li>
           <li>Cria ou atualiza <code>mabel/integracao</code> a partir da base</li>
           <li>Remove worktrees órfãos; marca <code>done</code> o que já chegou à base</li>
-          <li>Sincroniza o backlog: tarefa com <code>Spec:</code> só vai a <code>ready</code> com a spec aceita e as regras citadas existentes</li>
+          <li>Sincroniza o backlog: tarefa com <code>Spec:</code> só vai a <code>ready</code> com a spec aceita e as regras citadas existentes; bug, só com o critério <code>Reprodução:</code></li>
         </ul>
       </div>
       <div class="exits">
@@ -443,7 +443,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       <div class="node gate">
         <span class="kicker">Gate de início · G2</span>
         <h4>O plano pode ser executado?</h4>
-        <p>Sem perguntas; com critérios, cada um com <code>teste</code> ou <code>humano</code>; com escopo, fora de <code>.mabel/</code> e <code>.git/</code>; e aprovação humana se toca regra crítica.</p>
+        <p>Sem perguntas; com critérios, cada um com <code>teste</code> ou <code>humano</code>; com escopo, fora de <code>.mabel/</code> e <code>.git/</code>; no bug, o critério de reprodução com <code>teste</code> de comportamento <code>novo</code> (vermelho na base); e aprovação humana se toca regra crítica.</p>
       </div>
       <div class="exits">
         <div class="exit human"><span class="k">needs_human · question_plan</span><span>restaram perguntas</span></div>
@@ -612,13 +612,14 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       </dl>
     </article>
     <article class="agent-card">
-      <header><h3>Refinador</h3><span class="where">mabel refinar · prompts/refinar.md</span></header>
+      <header><h3>Especificador</h3><span class="where">mabel especificar · mabel refinar · etapa specify · prompts/especificar.md</span></header>
       <dl>
-        <dt>Quando</dt><dd>Item em <code>backlog</code> ou <code>ready</code> que nunca foi planejado.</dd>
-        <dt>Run</dt><dd><code>sonnet</code> · Read Glob Grep · 30 turnos · US$ 1 · na raiz do projeto</dd>
-        <dt>Recebe</dt><dd>O item e o código. Procura o que só você sabe.</dd>
-        <dt>Devolve</dt><dd><code>entendimento</code>, <code>criterios</code> que faltam, <code>foraDoEscopo</code>, <code>perguntas</code> de negócio, <code>conceitosCriticos</code>, <code>quebra</code> sugerida.</dd>
-        <dt>Depois</dt><dd>O que você aceita entra no bloco do item no <code>backlog.md</code>; respostas viram <code>Decisões:</code>.</dd>
+        <dt>Quando</dt><dd>Spec de <code>.mabel/specs/</code> não entregue (<code>especificar</code>) ou avulso em <code>backlog</code> ou <code>ready</code> que nunca foi planejado (<code>refinar</code>).</dd>
+        <dt>Run</dt><dd><code>sonnet</code> (<code>models.refine</code>) · Read Glob Grep · 30 turnos · US$ 1 por rodada · na raiz do projeto · até 5 rodadas na mesma sessão (<code>--resume</code>)</dd>
+        <dt>Recebe</dt><dd>O rascunho da spec (ou o avulso), o código, o <code>.mabel/regras.md</code> (com orçamento de 20.000 caracteres; acima, aviso de consolidar) e, por <code>Grep</code>, as entregas anteriores. Nas rodadas seguintes, as respostas e as regras que elas mexem.</dd>
+        <dt>Devolve</dt><dd>Example Mapping: <code>historia</code>, <code>regras</code> com <code>exemplos</code> (situação → resultado, <code>borda</code>), <code>perguntas</code> (≤ 5, cada uma de um exemplo sem resultado), <code>decisoes</code>, <code>foraDoEscopo</code>, <code>conceitosCriticos</code>, <code>alteracoesRegrasVigentes</code>, <code>tarefas</code>, <code>sugestaoQuebra</code>, <code>reproducao</code> (bug).</dd>
+        <dt>Limites</dt><dd>Exemplo sem resultado e sem pergunta, mais de 5 perguntas, pergunta na última rodada, tarefa citando regra que não existe ou bug sem reprodução: correção pedida na mesma sessão, uma vez.</dd>
+        <dt>Depois</dt><dd>Você responde (enter aceita a sugestão, texto responde, <code>p</code> adia) e revisa parte a parte. <code>especificar</code> grava a spec, as tarefas e o estado <code>aceita</code>; <code>refinar</code>, o bloco do avulso.</dd>
       </dl>
     </article>
     <article class="agent-card">
@@ -697,20 +698,24 @@ Commitar o .mabel/ na branch main? [S/n]</pre>
 Refinar o item agora com um agente? [s/N]</pre>
         </article>
         <article class="cmd">
-          <header><span class="name">especificar</span><span class="badge human">você aceita</span></header>
-          <p class="usage">mabel especificar [slug] [--aceitar]</p>
-          <p>Lista e valida as specs de <code>.mabel/specs/</code>; <code>--aceitar</code> aceita a spec escrita à mão que passa na validação. Planejador, executor e revisor recebem a história, as regras citadas com exemplos (critérios de aceite), as decisões e o fora do escopo.</p>
-          <p class="writes"><b>Grava:</b> estado da spec no SQLite (<code>aceita</code>). Respostas da inbox de tarefa de spec vão para as <code>Decisões</code> da spec.</p>
+          <header><span class="name">especificar</span><span class="badge agent">especificador</span></header>
+          <p class="usage">mabel especificar [slug] [--refazer] [--aceitar | --descartar]</p>
+          <p>Example Mapping sobre a spec de <code>.mabel/specs/slug.md</code> (o rascunho pode ser só a história): rodadas de perguntas nascidas dos exemplos sem resultado, até a spec ficar válida, e a revisão parte a parte (história, regras com exemplos, decisões, fora do escopo, regras críticas, alterações nas regras vigentes, tarefas), com a sugestão de quebra e o tamanho. Sem proposta pendente, <code>--aceitar</code> aceita a spec escrita à mão que passa na validação; com ela, responde com as sugestões e grava. Planejador, executor e revisor recebem a história, as regras citadas com exemplos (critérios de aceite), as decisões e o fora do escopo.</p>
+          <p class="writes"><b>Grava:</b> <code>.mabel/specs/slug.md</code>, as tarefas no fim do <code>backlog.md</code> com <code>Spec:</code>, <code>Regras:</code> e <code>Depende de:</code>, e no SQLite o estado <code>aceita</code>, as métricas de tamanho (regras, exemplos, rodadas, perguntas, tarefas) e a proposta (<code>spec_proposals</code>). Respostas da inbox de tarefa de spec vão para as <code>Decisões</code> da spec.</p>
+<pre class="term"><span class="a">▸ especificar · sonnet</span>
+1/2 Pedido cancelado entra? <span class="d">(R2 Cancelados)</span>
+    sugestão: Não
+Tamanho: 3 regras · 3 exemplos · 2 rodadas · 2 perguntas · 2 tarefas
+Gravar? [S/n/d]</pre>
         </article>
         <article class="cmd">
-          <header><span class="name">refinar</span><span class="badge agent">agente refinador</span></header>
+          <header><span class="name">refinar</span><span class="badge agent">especificador</span></header>
           <p class="usage">mabel refinar [n] [--refazer] [--aceitar | --descartar] · refinar n --referencias</p>
-          <p>Proposta de critérios, limites e perguntas de negócio. Você aceita, edita ou descarta cada parte. <code>--referencias</code> só escolhe as referências do item, sem agente e sem custo.</p>
-          <p class="writes"><b>Grava:</b> só o que você aceita, no trecho do item no <code>backlog.md</code>: critérios, fora do escopo, <code>Decisões: pergunta → resposta</code>, regras críticas.</p>
-<pre class="term"><span class="a">▸ refinar · sonnet</span>
-Entendimento: desconto progressivo por quantidade…
-? Desconto acumula com cupom? <span class="d">[sugestão: não]</span>
-Gravar no backlog? [S/n/d]</pre>
+          <p>O mesmo motor do <code>especificar</code>, sobre um avulso, com uma tarefa só. Em <code>Tipo: bug</code>, os cartões viram reprodução (passos, esperado, obtido). Proposta com mais de uma tarefa sugere transformar o avulso em spec. <code>--referencias</code> só escolhe as referências do item, sem agente e sem custo.</p>
+          <p class="writes"><b>Grava:</b> só o que você aceita, no trecho do item no <code>backlog.md</code>: regras e exemplos como critérios (a reprodução do bug primeiro), fora do escopo, <code>Decisões: pergunta → resposta</code>, regras críticas e <code>Regras vigentes:</code> (aplicadas na entrega). Bug sem <code>Reprodução:</code> fica em <code>backlog</code>.</p>
+<pre class="term"><span class="a">▸ especificar · sonnet</span>
+1/1 Desconto acumula com cupom? <span class="d">(R2 Cupom)</span>
+Gravar? [S/n/d]</pre>
         </article>
         <article class="cmd">
           <header><span class="name">referencia</span><span class="badge none">sem agente</span></header>

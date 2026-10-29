@@ -78,14 +78,33 @@ export interface ExecuteOutput {
   impedimento?: string;
 }
 
-/** Proposta de refinamento de um item do backlog; o humano revisa antes de gravar. */
-export interface RefineOutput {
-  entendimento: string;
-  criterios: string[];
+/** Exemplo de uma regra (Example Mapping): situação → resultado; `resultado` vazio vira pergunta. */
+export interface SpecifyExample {
+  situacao: string;
+  resultado: string;
+  borda: boolean;
+}
+
+/**
+ * Proposta do motor de especificação (`mabel especificar` e `mabel refinar`); o humano
+ * responde as perguntas, rodada a rodada, e revisa antes de gravar.
+ */
+export interface SpecifyOutput {
+  historia: string;
+  regras: { id: string; texto: string; exemplos: SpecifyExample[] }[];
+  /** No máximo 5 por rodada; `regra` é o id da regra cujo exemplo ficou sem resultado. */
+  perguntas: (Question & { regra: string })[];
+  /** "pergunta → resposta" das rodadas. */
+  decisoes: string[];
   foraDoEscopo: string[];
-  perguntas: Question[];
+  /** Copiados de `regras-criticas.md`. */
   conceitosCriticos: string[];
-  quebra: { titulo: string; intencao: string }[];
+  alteracoesRegrasVigentes: { assunto: string; acao: 'incluir' | 'alterar' | 'remover'; texto: string }[];
+  /** `dependeDe` usa a posição na lista, como no `nascer`. */
+  tarefas: { titulo: string; intencao: string; regras: string[]; dependeDe: number[] }[];
+  sugestaoQuebra: { titulo: string; historia: string }[];
+  /** Só no avulso `Tipo: bug`; vazios nos outros. */
+  reproducao: { passos: string; esperado: string; obtido: string };
 }
 
 /** O parecer não declara aprovação: o Mabel a calcula (`reviewVerdict`). */
@@ -94,13 +113,30 @@ export interface ReviewOutput {
   problemas: { gravidade: 'bloqueante' | 'menor'; descricao: string; arquivo?: string }[];
 }
 
-export const refineSchema: Schema = object({
-  entendimento: str,
-  criterios: strings,
+export const specifySchema: Schema = object({
+  historia: str,
+  regras: {
+    type: 'array',
+    items: object({
+      id: str,
+      texto: str,
+      exemplos: { type: 'array', items: object({ situacao: str, resultado: str, borda: { type: 'boolean' } }) },
+    }),
+  },
+  perguntas: { type: 'array', items: object({ texto: str, sugestao: str, regraCritica: { type: 'boolean' }, regra: str }) },
+  decisoes: strings,
   foraDoEscopo: strings,
-  perguntas: questions,
   conceitosCriticos: strings,
-  quebra: { type: 'array', items: object({ titulo: str, intencao: str }) },
+  alteracoesRegrasVigentes: {
+    type: 'array',
+    items: object({ assunto: str, acao: { type: 'string', enum: ['incluir', 'alterar', 'remover'] }, texto: str }),
+  },
+  tarefas: {
+    type: 'array',
+    items: object({ titulo: str, intencao: str, regras: strings, dependeDe: { type: 'array', items: { type: 'integer' } } }),
+  },
+  sugestaoQuebra: { type: 'array', items: object({ titulo: str, historia: str }) },
+  reproducao: object({ passos: str, esperado: str, obtido: str }),
 });
 
 export const planSchema: Schema = object({

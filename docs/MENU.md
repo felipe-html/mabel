@@ -12,7 +12,7 @@ comportamento parece não ter sido intencional, o texto diz "a confirmar".
 
 - [Como o menu aparece](#como-o-menu-aparece)
 - [Mapa rápido](#mapa-rápido)
-- Comandos: [init](#init) · [add](#add) · [refinar](#refinar) · [referencia](#referencia) · [credencial](#credencial) · [run](#run) · [inbox](#inbox) · [item](#item) ·
+- Comandos: [init](#init) · [add](#add) · [especificar](#especificar) · [refinar](#refinar) · [referencia](#referencia) · [credencial](#credencial) · [run](#run) · [inbox](#inbox) · [item](#item) ·
   [aprovar](#aprovar) · [responder](#responder) · [cancelar](#cancelar) ·
   [integracao](#integracao) · [entregar](#entregar) · [rejeitar](#rejeitar) · [status](#status) · [runs](#runs) ·
   [projetos](#projetos) · [projeto](#projeto) · [exec](#exec) · [completion](#completion)
@@ -101,7 +101,8 @@ Ordem em que aparecem na lista (a mesma de `src/commands.ts`).
 |---|---|---|---|---|---|
 | `init` | `init [--stack node\|python\|go\|rust]` | não (cria) | — (o próprio comando pergunta) | não | sem perguntas |
 | `add` | `add "<título>" [--intencao] [--criterio]… [--fora-do-escopo]… [--depende]… [--restricoes]` | sim | — (o próprio comando pergunta) | não | exige título e `--intencao` |
-| `refinar` | `refinar [<n>] [--refazer] [--aceitar \| --descartar]` | sim | — (o próprio comando abre o menu de itens) | não | sem `<n>` lista; com `<n>` mostra a proposta; `--aceitar` grava |
+| `especificar` | `especificar [<slug>] [--refazer] [--aceitar \| --descartar]` | sim | não | não | sem `<slug>` lista; com `<slug>` roda a primeira rodada e mostra a proposta e as perguntas; `--aceitar` responde com as sugestões e grava (sem proposta: aceita a spec do arquivo) |
+| `refinar` | `refinar [<n>] [--refazer] [--aceitar \| --descartar]` | sim | — (o próprio comando abre o menu de itens) | não | sem `<n>` lista; com `<n>` roda a primeira rodada e mostra a proposta e as perguntas; `--aceitar` responde com as sugestões e grava |
 | `referencia` | `referencia` · `referencia api <nome> <url>` · `referencia tela <nome> <url-figma> [--escala <n>]` · `referencia tela <nome> --png <arquivo>` | sim | não | não | igual |
 | `credencial` | `credencial` · `credencial figma --expira <AAAA-MM-DD>` | não (global) | não | não | igual |
 | `run` | `run [--item <n>] [--uma] [--sem-lote]` | sim | não | **sim** | sem perguntas; política decide |
@@ -212,57 +213,88 @@ o `backlog.md`.
 
 ### especificar
 
-**Para quê:** ver, validar e aceitar as specs de `.mabel/specs/` (`docs/specs/specs-e-entrega.md`).
+**Para quê:** especificar uma funcionalidade com um agente, pelo Example Mapping (história →
+regras → exemplos → perguntas), e aceitar a spec (`docs/specs/specs-e-entrega.md`).
 
 | Parâmetro | Efeito |
 |---|---|
-| `<slug>` | A spec em `.mabel/specs/<slug>.md`; sem ele, lista as specs com estado e tarefas |
-| `--aceitar` | Aceita a spec como está, se passar na validação (regra com exemplo, algum exemplo `(borda)`, nenhum `→ ?`, fora do escopo declarado) |
-
-Tarefa com `Spec:` só vai a `ready` com a spec aceita, válida e com as `Regras:` citadas.
-
-### refinar
-
-**Para quê:** antes do planejamento, pedir a um agente uma proposta de critérios, fora do
-escopo, decisões de negócio e regras críticas de um item, e gravar no `backlog.md` só o que
-você aceitar. Spec: `docs/specs/refinamento.md`.
-
-| Parâmetro | Efeito |
-|---|---|
-| (nenhum) | TTY: menu dos itens refináveis com estado e situação; o escolhido abre a revisão e o menu volta ao terminar (`q` sai). Fora de TTY: tabela `# · título · estado · refinamento` |
-| `<n>` (aceita `#3`) | Usa a proposta pendente ou roda o agente; no TTY abre a revisão, fora dele imprime a proposta e como aceitar |
-| `--refazer` | Descarta a proposta pendente e roda o agente de novo |
-| `--aceitar` | Grava a proposta como veio (perguntas com sugestão viram decisões; as sem sugestão ficam para o planejamento). Pensado para fora do TTY |
+| (nenhum) | Lista as specs de `.mabel/specs/` com estado, tarefas, validade, proposta pendente e tamanho |
+| `<slug>` | A spec em `.mabel/specs/<slug>.md` (o rascunho pode ser só a história). Continua a proposta pendente ou roda o agente; no TTY, responde as perguntas rodada a rodada e abre a revisão; fora dele, roda a primeira rodada e imprime a proposta e as perguntas |
+| `--refazer` | Descarta a proposta pendente e começa uma conversa nova |
+| `--aceitar` | Com proposta pendente: responde as perguntas com as sugestões (as sem sugestão ficam para o planejamento), segue as rodadas e grava sem revisão. Sem ela: aceita a spec como está no arquivo, se passar na validação |
 | `--descartar` | Descarta a proposta pendente sem gravar |
 
-Só itens em `backlog` ou `ready` que nunca entraram em planejamento. Situações: `não
-refinado`, `proposta pendente`, `proposta desatualizada` (o item mudou depois da
-proposta; o agente roda de novo), `refinado`, `descartado`. Item já refinado: no TTY,
-pergunta `Pedir outra proposta ao agente? [s/N]` antes de gastar outra run.
+Validação da spec: regra com exemplo, algum exemplo `(borda)`, nenhum `→ ?`, fora do escopo
+declarado. Tarefa com `Spec:` só vai a `ready` com a spec aceita, válida e com as `Regras:`
+citadas. Spec `entregue` não é especificada de novo; spec `aceita` pergunta antes de pedir
+outra proposta (TTY).
 
-**A run:** etapa `refine`, só leitura (`Read`, `Glob`, `Grep`) na raiz do projeto, com as
-travas das outras etapas; modelo `models.refine` (padrão `sonnet`), limites
-`limits.refine` (30 turnos, US$ 1). Antes dela, a política de saldo numa chamada: sem
-leitura recente faz a chamada mínima; saldo baixo ou acima do ritmo pergunta
-`Refinar mesmo assim? [s/N]` (TTY) ou recusa. Ctrl+C interrompe a run (sai com 130).
+**Rodadas:** etapa `specify`, só leitura (`Read`, `Glob`, `Grep`) na raiz, com as travas
+do refinamento e o modelo e os limites de `refine` no config, até 5 rodadas na mesma
+sessão. O agente recebe o rascunho, o código, o `.mabel/regras.md` (até 20.000 caracteres;
+acima, o Mabel avisa e pede para consolidar) e acha as entregas anteriores com `Grep`. Cada
+exemplo sem resultado dedutível vira pergunta (no máximo 5 por rodada). A rodada seguinte
+recebe as respostas e as regras que elas mexem. Saída inválida (exemplo sem resultado e sem
+pergunta, mais de 5 perguntas, regra citada que não existe) volta ao agente uma vez, na
+mesma sessão. Ctrl+C deixa a proposta pendente com as respostas já dadas.
 
 **Revisão (TTY)**
 
 | Etapa | Entradas aceitas |
 |---|---|
-| Entendimento do agente | — (só leitura) |
-| Cada pergunta, com a sugestão | Enter aceita a sugestão · texto responde · `p` deixa para o planejamento |
-| Critérios, fora do escopo, regras críticas propostos | Enter aceita · `e` edita um a um (Enter mantém, `-` remove, texto substitui, depois acrescenta até linha vazia) · `-` descarta |
-| Quebra sugerida | — (informativa; crie os itens com `/add`) |
-| Prévia do bloco e `Gravar no backlog? [S/n/d]` | Enter grava · `n` deixa a proposta pendente · `d` descarta |
+| Cada pergunta, com a regra e a sugestão | Enter aceita a sugestão · texto responde · `p` deixa para o planejamento |
+| História | Enter aceita · `e` edita |
+| Regras e exemplos | Enter aceita · `e` edita uma a uma (texto da regra, depois os exemplos como lista) |
+| Decisões, fora do escopo, regras críticas, alterações nas regras vigentes | Enter aceita · `e` edita um a um · `-` descarta |
+| Tarefas | Enter aceita · `e` edita uma a uma (Enter mantém, `-` remove, texto troca o título) · `-` descarta |
+| Sugestão de quebra e tamanho | — (informativos) |
+| Prévia (spec e tarefas) e `Gravar? [S/n/d]` | Enter grava · `n` deixa a proposta pendente · `d` descarta |
 
-Respostas viram `Decisões: - <pergunta> → <resposta>`. A gravação acrescenta sem repetir
-entradas iguais, regrava só o trecho do item no `backlog.md` e sincroniza. Ctrl+C na
-revisão deixa a proposta pendente.
+**Grava:** `.mabel/specs/<slug>.md` (a proposta substitui o rascunho), as tarefas no fim do
+`backlog.md` com `Spec:`, `Regras:` e `Depende de:` (nenhuma, se a spec já tinha tarefas),
+o estado `aceita` e as métricas de tamanho (regras, exemplos, rodadas, perguntas, tarefas).
 
 **Pontos a refinar**
 
-- A quebra sugerida não é aplicada; criar os itens e ajustar o original é manual.
+- `--json` e passos sem TTY para clientes, no desenho do `nascer` (fora desta entrega).
+- `especificar --de <n>` (transformar um avulso em spec) não existe: escrever o rascunho é manual.
+- Reespecificar uma spec com tarefas não ajusta as tarefas existentes.
+
+### refinar
+
+**Para quê:** antes do planejamento, especificar um avulso com o mesmo motor do
+[especificar](#especificar) (Example Mapping, uma tarefa só) e gravar no `backlog.md` só o
+que você aceitar. Specs: `docs/specs/refinamento.md` e `docs/specs/specs-e-entrega.md`.
+
+| Parâmetro | Efeito |
+|---|---|
+| (nenhum) | TTY: menu dos itens refináveis com estado e situação; o escolhido abre a conversa e o menu volta ao terminar (`q` sai). Fora de TTY: tabela `# · título · estado · refinamento` |
+| `<n>` (aceita `#3`) | Continua a proposta pendente ou roda o agente; no TTY responde as perguntas e abre a revisão, fora dele imprime a proposta, as perguntas e como aceitar |
+| `--refazer` | Descarta a proposta pendente e começa uma conversa nova |
+| `--aceitar` | Responde as perguntas com as sugestões (as sem sugestão ficam para o planejamento), segue as rodadas e grava sem revisão |
+| `--descartar` | Descarta a proposta pendente sem gravar |
+
+Só avulsos (sem `Spec:`) em `backlog` ou `ready` que nunca entraram em planejamento; tarefa
+de spec aponta para o `especificar`. Situações: `não refinado`, `perguntas pendentes`,
+`proposta pendente`, `proposta desatualizada` (o item mudou depois da proposta, ou é do
+refinamento antigo; o agente roda de novo), `refinado`, `descartado`. Item já refinado: no
+TTY, pergunta `Pedir outra proposta ao agente? [s/N]` antes de gastar outra run. Antes da
+primeira rodada, a política de saldo numa chamada: sem leitura recente faz a chamada
+mínima; saldo baixo ou acima do ritmo pergunta `Refinar mesmo assim? [s/N]` (TTY) ou recusa.
+
+**Revisão (TTY):** a mesma do `especificar`, sem as tarefas; com a etapa das referências e,
+em `Tipo: bug`, a reprodução (passos, esperado, obtido hoje). Prévia do bloco e
+`Gravar? [S/n/d]`.
+
+**Grava:** regras e exemplos como `Critérios:` (`<regra>: situação → resultado`; no bug, a
+`Reprodução: passos → esperado (hoje: obtido)` primeiro), respostas como
+`Decisões: - <pergunta> → <resposta>`, fora do escopo, regras críticas e `Regras vigentes:`
+(aplicadas na entrega). A história vira a intenção só se o item não tinha. Acrescenta sem
+repetir entradas iguais, regrava só o trecho do item e sincroniza. Proposta com mais de uma
+tarefa sugere transformar o avulso em spec.
+
+**Pontos a refinar**
+
 - Comentários HTML no meio do bloco do item somem quando a proposta é gravada.
 - `--aceitar` e `--descartar` exigem o número; não há "aceitar todas as pendentes".
 - O `run` não avisa sobre itens `ready` nunca refinados.

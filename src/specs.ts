@@ -80,7 +80,7 @@ export function renderExample(example: SpecExample): string {
 }
 
 /** `pedidos: incluir "texto"`. */
-function parseChange(line: string): RuleChange | undefined {
+export function parseChange(line: string): RuleChange | undefined {
   const found = /^(.+?):\s*(incluir|alterar|remover)\s+"?(.*?)"?\s*$/i.exec(line.trim());
   if (!found) return undefined;
   return { assunto: (found[1] as string).trim(), acao: (found[2] as string).toLowerCase() as RuleChangeAction, texto: found[3] as string };
@@ -257,6 +257,29 @@ export interface SpecRecord {
   slug: string;
   status: SpecStatus;
   acceptedAt: string | null;
+}
+
+/** Tamanho da spec no aceite do motor (S7), para a análise de 2026-11-05. */
+export interface SpecMetrics {
+  regras: number;
+  exemplos: number;
+  rodadas: number;
+  perguntas: number;
+  tarefas: number;
+}
+
+export function setSpecMetrics(db: DatabaseSync, projectId: string, slug: string, metrics: SpecMetrics): void {
+  db.prepare('UPDATE specs SET metrics = ?, updated_at = ? WHERE project_id = ? AND slug = ?').run(
+    JSON.stringify(metrics),
+    new Date().toISOString(),
+    projectId,
+    slug,
+  );
+}
+
+export function getSpecMetrics(db: DatabaseSync, projectId: string, slug: string): SpecMetrics | null {
+  const row = db.prepare('SELECT metrics FROM specs WHERE project_id = ? AND slug = ?').get(projectId, slug) as { metrics: string | null } | undefined;
+  return row?.metrics ? (JSON.parse(row.metrics) as SpecMetrics) : null;
 }
 
 export function getSpecRecord(db: DatabaseSync, projectId: string, slug: string): SpecRecord | undefined {

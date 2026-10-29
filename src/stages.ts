@@ -16,8 +16,8 @@ import {
   birthSchema,
   executeSchema,
   planSchema,
-  refineSchema,
   reviewSchema,
+  specifySchema,
 } from './schemas/stages.ts';
 import { type Schema, validate } from './schemas/validate.ts';
 import { originBranch } from './worktree.ts';
@@ -25,6 +25,7 @@ import { originBranch } from './worktree.ts';
 /** Ferramentas que existem na etapa (`--tools`); o `init` precisa listar exatamente estas. */
 export const STAGE_TOOLS: Record<RunStage, string[]> = {
   refine: ['Read', 'Glob', 'Grep'],
+  specify: ['Read', 'Glob', 'Grep'],
   birth: ['Read', 'Glob', 'Grep'],
   plan: ['Read', 'Glob', 'Grep'],
   execute: ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'Bash'],
@@ -34,6 +35,7 @@ export const STAGE_TOOLS: Record<RunStage, string[]> = {
 /** Ferramentas liberadas sem pedir (`--allowedTools`); no `dontAsk`, o resto é negado. */
 export const STAGE_ALLOWED: Record<RunStage, string[]> = {
   refine: STAGE_TOOLS.refine,
+  specify: STAGE_TOOLS.specify,
   birth: STAGE_TOOLS.birth,
   plan: STAGE_TOOLS.plan,
   execute: STAGE_TOOLS.execute,
@@ -57,7 +59,8 @@ export const EXECUTE_DISALLOWED = [
 ];
 
 export const SCHEMAS: Record<RunStage, Schema> = {
-  refine: refineSchema,
+  refine: specifySchema,
+  specify: specifySchema,
   birth: birthSchema,
   plan: planSchema,
   execute: executeSchema,
@@ -65,7 +68,8 @@ export const SCHEMAS: Record<RunStage, Schema> = {
 };
 
 const PROMPT_FILES: Record<RunStage, string> = {
-  refine: 'refinar.md',
+  refine: 'especificar.md',
+  specify: 'especificar.md',
   birth: 'nascer.md',
   plan: 'planejar.md',
   execute: 'executar.md',
@@ -305,6 +309,12 @@ export function planPrompt(ctx: StageContext, input: PlanPromptInput = {}): stri
     ),
     ...section('Fora do escopo', bullet(item.outOfScope, '')),
     ...section('Decisões já tomadas pelo humano', bullet(item.decisions, '')),
+    ...section(
+      'Bug',
+      item.kind === 'bug'
+        ? 'O item corrige um defeito. O critério de reprodução (`Reprodução: …`) precisa de um critério `teste` com `comportamento: novo`, com "Reprodução" no texto: o teste falha no código base e passa no item.'
+        : '',
+    ),
     ...section(
       'Regras críticas declaradas no backlog',
       item.criticalConcepts.length > 0
