@@ -360,9 +360,19 @@ integrar os itens.
 
 **Durante**
 
-- Abertura: cria ou atualiza a branch de integração (pode pausar a fila se ela estiver
-  aberta num worktree ou divergir da base com conflito), remove worktrees órfãos, marca
-  `done` os itens já levados à base e regrava o relatório da integração.
+- Abertura (com integração): marca `done` as tarefas cuja unidade chegou à base e apaga a
+  branch da unidade entregue; no primeiro `run` deste modelo, migra as tarefas da
+  `mabel/integracao` antiga para a unidade `legado` (`mabel/spec/legado`); faz o merge da
+  base em cada unidade aberta (`mabel/spec/<slug>`, `mabel/avulso/<n>-<slug>`), com
+  `rerere` — conflito **pausa a unidade** (as tarefas dela não são escolhidas; as outras
+  seguem); refaz a `mabel/integracao` a partir da base com o merge de cada unidade aberta,
+  na ordem da primeira integração (a que conflita fica de fora, com aviso); roda a
+  verificação do projeto nela (vermelho: aviso). Pausa a fila só se a `mabel/integracao`
+  estiver aberta num worktree fora do Mabel. Remove worktrees órfãos e regrava o `run.md`.
+- Cada tarefa nasce da branch da sua unidade (criada da base na primeira tarefa); antes,
+  recebe o merge das unidades de que depende e que ainda não chegaram à base. Aprovada, entra
+  por merge na branch da unidade (a da tarefa é apagada) e a unidade entra na integração:
+  conflito ou verificação vermelha ali vão ao `run.md` com a tarefa, sem desfazer nada.
 - Antes de cada etapa com agente, aplica a política de saldo: pode fazer uma chamada
   mínima (haiku) para ler o saldo, **perguntar** se segue (TTY), **esperar** o reset da
   janela de 5h ou o ritmo de 7 dias (com contagem regressiva), ou **pausar** (7 dias
@@ -529,9 +539,9 @@ No REPL sem argumentos, pede o número e confirma `[s/N]`; no shell, **não conf
 
 ### integracao
 
-**Para quê:** ver as unidades do relatório de run: o que está pronto para entregar, o
-que está em andamento e a branch de integração (`mabel/integracao`), com o que olhar
-primeiro.
+**Para quê:** ver as unidades do relatório de run: o que está pronto para entregar (spec
+com tarefas concluídas, `n/total`, ou avulso), o que está em andamento e a integração
+(`base (commit) + unidades · de fora · verificação`), com o que olhar primeiro.
 
 Sem parâmetros (argumentos ignorados). Regrava `.mabel/run.md` e imprime as seções de
 unidade dele: por item integrado, plano, arquivos alterados, prova, devoluções por gate,
@@ -539,7 +549,8 @@ custo. O `run.md` substituiu o `.mabel/integracao.md` (S.1).
 
 **Pontos a refinar**
 
-- É só leitura: para levar a integração à base, `entregar` (abaixo) ou `git merge`.
+- É só leitura: para levar uma unidade à base, `entregar` (abaixo). A integração é só para
+  teste e nunca é entregue.
 - Não atualiza estados: itens já levados à base só viram `done` no próximo `run` (a
   confirmar se o relatório os mostra até lá).
 - Não tem atalho para abrir o diff de um item.
@@ -575,26 +586,28 @@ no remoto ou por squash, o `run` avisa o que fazer.
 
 ### rejeitar
 
-**Para quê:** desfazer a entrega de um item integrado e devolvê-lo ao planejamento.
+**Para quê:** desfazer uma tarefa concluída na branch da unidade e devolvê-la ao
+planejamento.
 
 | Parâmetro | Efeito |
 |---|---|
-| `<n>` | Item em `awaiting_merge` com commit na integração |
+| `<n>` | Tarefa em `awaiting_merge` com merge na branch da unidade |
 | `"<motivo>"` | Obrigatório; vai para o replanejamento |
 | `--cancelar` | Cancela o item em vez de replanejar |
 
-Pega a trava do projeto (não roda junto com `run`). Reverte o merge do item na branch de
-integração num worktree temporário. Conflito no revert: nada muda e a mensagem aponta os
-itens integrados depois nos mesmos arquivos ("rejeite antes #…"). Item já na base: recusa
-("reverta por lá"). Avisa os itens integrados que dependem dele (não os reverte). Regrava
-o relatório.
+Pega a trava do projeto (não roda junto com `run`). Tarefa de spec: reverte o merge dela
+na branch da spec num worktree temporário; conflito no revert: nada muda e a mensagem
+aponta as tarefas concluídas depois nos mesmos arquivos ("rejeite antes #…"). Avulso: a
+branch dele volta ao commit da base. A integração não é revertida: o próximo `run` a refaz.
+Tarefa já na base: recusa ("reverta por lá"). Avisa as tarefas concluídas que dependem
+dela (não as reverte). Regrava o relatório.
 
 No REPL sem argumentos: número, motivo, `Cancelar o item em vez de replanejar? [s/N]`.
 
 **Pontos a refinar**
 
-- Sem confirmação no shell, apesar de reescrever a branch de integração.
-- Dependentes ficam na integração quebrados; poderia oferecer rejeitá-los junto.
+- Sem confirmação no shell, apesar de reescrever a branch da unidade.
+- Dependentes ficam concluídos e quebrados; poderia oferecer rejeitá-los junto.
 - Não há rejeição para item em `awaiting_merge` sem integração (`integracao: null`): ali
   a "rejeição" é só não fazer o merge, e o item fica parado.
 

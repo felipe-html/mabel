@@ -20,7 +20,7 @@ import {
   specifySchema,
 } from './schemas/stages.ts';
 import { type Schema, validate } from './schemas/validate.ts';
-import { originBranch } from './worktree.ts';
+import { itemOrigin } from './worktree.ts';
 
 /** Ferramentas que existem na etapa (`--tools`); o `init` precisa listar exatamente estas. */
 export const STAGE_TOOLS: Record<RunStage, string[]> = {
@@ -399,7 +399,7 @@ export interface ReviewPromptInput {
 
 export function reviewPrompt(ctx: StageContext, input: ReviewPromptInput): string {
   if (input.resuming) return `${INTERRUPTED} Termine a revisão com a saída estruturada.`;
-  const base = originBranch(ctx.project.config);
+  const base = itemOrigin(ctx.project, ctx.item);
   const tests = input.execution.criterios.map(
     (criterion) => `${criterion.id}: ${criterion.testes.map((t) => `\`${t.arquivo}\` › ${t.nome}`).join(', ') || '(nenhum)'}`,
   );

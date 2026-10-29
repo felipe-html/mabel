@@ -282,7 +282,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
   <div class="section-head">
     <span class="eyebrow">1 · Visão geral</span>
     <h2>A jornada em cinco blocos</h2>
-    <p>Você prepara o backlog, o <code>run</code> consome a fila com três agentes, para quando precisa de você e deixa os itens prontos na branch de integração. Só você leva a integração à branch principal.</p>
+    <p>Você prepara o backlog, o <code>run</code> consome a fila com três agentes, para quando precisa de você e deixa cada tarefa pronta na branch da sua unidade (spec ou avulso). A <code>mabel/integracao</code>, refeita a cada <code>run</code>, só serve para teste. Só você leva a unidade à base.</p>
   </div>
   <figure>
     <div class="scroll">
@@ -393,13 +393,15 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
         <ul>
           <li>Commita na base o que está pendente no <code>.mabel/</code></li>
           <li>Confere sandbox e pega a trava do projeto</li>
-          <li>Cria ou atualiza <code>mabel/integracao</code> a partir da base</li>
-          <li>Remove worktrees órfãos; marca <code>done</code> o que já chegou à base</li>
+          <li>Marca <code>done</code> o que já chegou à base e apaga a branch da unidade entregue; remove worktrees órfãos</li>
+          <li>Migração: tarefas na <code>mabel/integracao</code> antiga viram a unidade <code>legado</code> (<code>mabel/spec/legado</code>)</li>
+          <li>Merge da base em cada unidade aberta (<code>mabel/spec/slug</code>, <code>mabel/avulso/n-slug</code>), com rerere; conflito pausa a unidade: as tarefas dela não são escolhidas</li>
+          <li>Refaz <code>mabel/integracao</code> a partir da base com o merge de cada unidade, na ordem da primeira integração; unidade que conflita fica de fora, com aviso no <code>run.md</code>; depois, a verificação do projeto nela (vermelho: aviso)</li>
           <li>Sincroniza o backlog: tarefa com <code>Spec:</code> só vai a <code>ready</code> com a spec aceita e as regras citadas existentes; bug, só com o critério <code>Reprodução:</code></li>
         </ul>
       </div>
       <div class="exits">
-        <div class="exit pause"><span class="k">pausa</span><span>integração aberta num worktree ou com conflito com a base</span></div>
+        <div class="exit pause"><span class="k">pausa</span><span><code>mabel/integracao</code> aberta num worktree fora do Mabel</span></div>
       </div>
       <!-- 3 -->
       <div class="node gate">
@@ -420,10 +422,10 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       <div class="node">
         <span class="kicker">Mabel</span>
         <h4>Prepara o worktree</h4>
-        <p>Worktree e branch próprias do item (G5), a partir da integração; roda o <code>setup</code> do projeto.</p>
+        <p>Worktree e branch próprias da tarefa (G5), a partir da branch da unidade (a da spec ou a do avulso, criada da base na primeira tarefa); antes, o merge das unidades de que ela depende e que ainda não chegaram à base; roda o <code>setup</code> do projeto.</p>
       </div>
       <div class="exits">
-        <div class="exit stop"><span class="k">blocked</span><span><code>setup</code> falhou</span></div>
+        <div class="exit stop"><span class="k">blocked</span><span><code>setup</code> falhou, ou conflito ao trazer a unidade da dependência</span></div>
       </div>
       <!-- 6 -->
       <div class="node agent">
@@ -501,8 +503,8 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       <!-- 15 -->
       <div class="node">
         <span class="kicker">Mabel</span>
-        <h4>Traz a integração para o item</h4>
-        <p>Merge de <code>mabel/integracao</code> no worktree: o que entra na integração é o que foi verificado.</p>
+        <h4>Traz a unidade para a tarefa</h4>
+        <p>Merge da branch da unidade no worktree, se ela andou: o que entra nela é o que foi verificado.</p>
       </div>
       <div class="exits">
         <div class="exit human"><span class="k">needs_human · integration_conflict</span><span>arquivos em conflito</span></div>
@@ -569,17 +571,18 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       <!-- 23 -->
       <div class="node">
         <span class="kicker">Mabel · G10</span>
-        <h4>Integra o item</h4>
-        <p>Commit de merge em <code>mabel/integracao</code> (trailers <code>Mabel-Item</code> e <code>Mabel-Unidade</code>), apaga worktree e branch do item. A fila regrava <code>.mabel/run.md</code> e passa ao próximo item.</p>
+        <h4>Merge na unidade e na integração</h4>
+        <p>Commit de merge da tarefa na branch da unidade (trailers <code>Mabel-Item</code> e <code>Mabel-Unidade</code>); apaga worktree e branch da tarefa; a da unidade fica até a entrega. Depois, merge da unidade em <code>mabel/integracao</code> (rerere) e a verificação nela. A fila regrava <code>.mabel/run.md</code> e passa ao próximo item.</p>
       </div>
       <div class="exits">
-        <div class="exit stop"><span class="k">failed</span><span>merge na integração falhou</span></div>
+        <div class="exit stop"><span class="k">failed</span><span>merge na branch da unidade falhou</span></div>
+        <div class="exit pause"><span class="k">aviso</span><span>conflito ou vermelho na integração: vai ao <code>run.md</code> com a tarefa, sem desfazer nada</span></div>
       </div>
       <!-- 24 -->
       <div class="node human">
         <span class="kicker">Você</span>
         <h4>Entrega ou rejeita</h4>
-        <p><code>mabel entregar</code> abre o PR da integração para a base; o merge é seu. No próximo <code>run</code>, o item vira <code>done</code>. <code>mabel rejeitar</code> reverte o item na integração e o devolve a <code>planning</code> (ou <code>cancelled</code>).</p>
+        <p><code>mabel entregar</code> abre o PR para a base; o merge é seu. No próximo <code>run</code>, o item vira <code>done</code>. <code>mabel rejeitar</code> reverte a tarefa na branch da spec (no avulso, a branch volta à base) e a devolve a <code>planning</code> (ou <code>cancelled</code>); a integração é refeita no próximo <code>run</code>.</p>
       </div>
     </div>
     <figcaption>A linha tracejada à esquerda é o ciclo de tentativas: toda reprovação (↺) volta ao executor. As caixas laranja à direita param o item em <code>needs_human</code> até você responder pela inbox.</figcaption>
@@ -739,7 +742,7 @@ Gravar? [S/n/d]</pre>
           <header><span class="name">run</span><span class="badge agent">planejador · executor · revisor</span></header>
           <p class="usage">mabel run [--item n] [--uma] [--sem-lote] [--fundo [--json]]</p>
           <p>Em lote: planeja todos os <code>ready</code>, oferece a inbox, depois executa os <code>planned</code> um a um até a fila acabar. <code>--sem-lote</code> leva cada item até o fim antes do próximo.</p>
-          <p class="writes"><b>Grava:</b> estados e gates no SQLite; artefatos em <code>~/.mabel/items/&lt;id&gt;/</code>; runs em <code>~/.mabel/runs/</code>; commits na branch do item; merge em <code>mabel/integracao</code>; <code>quadro.md</code> e <code>run.md</code> (reescrito ao fim de cada tarefa e no fim do <code>run</code>).</p>
+          <p class="writes"><b>Grava:</b> estados e gates no SQLite; artefatos em <code>~/.mabel/items/&lt;id&gt;/</code>; runs em <code>~/.mabel/runs/</code>; commits na branch do item; merge na branch da unidade e dela em <code>mabel/integracao</code> (refeita a cada <code>run</code>); estado da integração (incluídas, conflitos, pausadas, verificação) no SQLite; <code>quadro.md</code> e <code>run.md</code> (reescrito ao fim de cada tarefa e no fim do <code>run</code>).</p>
 <pre class="term"><span class="a">  ▸ planejar · opus</span>
 <span class="d">    → Read src/pedidos.ts ✓</span>
 #4 Desconto por volume: planning → planned
@@ -798,7 +801,7 @@ Retomar a esteira agora? [S/n]</pre>
             <tr><td>question_execute</td><td>Executor perguntou ou supôs sobre regra crítica</td><td><code>executing</code>, mesma tentativa; <code>--replanejar</code> → <code>planning</code></td></tr>
             <tr><td>attempts_exhausted</td><td>Três tentativas reprovadas</td><td><code>executing</code>, ciclo novo com modelo escalado</td></tr>
             <tr><td>environment_block</td><td>Impedimento confirmado fora do sandbox</td><td><code>executing</code>, retoma a sessão da execução</td></tr>
-            <tr><td>integration_conflict</td><td>Merge da integração no item com conflito</td><td><code>executing</code>, sessão nova que resolve o conflito</td></tr>
+            <tr><td>integration_conflict</td><td>Merge da branch da unidade na tarefa com conflito</td><td><code>executing</code>, sessão nova que resolve o conflito</td></tr>
           </tbody>
         </table>
       </div>
@@ -810,7 +813,7 @@ Retomar a esteira agora? [S/n]</pre>
         <article class="cmd">
           <header><span class="name">integracao</span><span class="badge none">leitura</span></header>
           <p class="usage">mabel integracao</p>
-          <p>As unidades do relatório de run: prontas para entregar, em andamento e o que está em <code>mabel/integracao</code> esperando a base, com o que olhar primeiro.</p>
+          <p>As unidades do relatório de run: prontas para entregar (spec com tarefas concluídas, avulso), em andamento e a integração (base + unidades incluídas, as de fora, a verificação), com o que olhar primeiro.</p>
           <p class="writes"><b>Grava:</b> <code>.mabel/run.md</code>: precisa de você, prontas para entregar, em andamento, integração (por item: plano, arquivos, prova, devoluções, custo) e as tarefas do run.</p>
         </article>
         <article class="cmd">
@@ -824,8 +827,8 @@ Retomar a esteira agora? [S/n]</pre>
         <article class="cmd">
           <header><span class="name">rejeitar</span><span class="badge human">você decide</span></header>
           <p class="usage">mabel rejeitar n "motivo" [--cancelar]</p>
-          <p>Reverte o merge do item na integração, num worktree temporário. Avisa os itens integrados que dependem dele.</p>
-<pre class="term">#4 revertido na integração: volta ao planejamento
+          <p>Tarefa de spec: reverte o merge dela na branch da spec, num worktree temporário. Avulso: a branch dele volta ao commit da base. Avisa as tarefas concluídas que dependem dela.</p>
+<pre class="term">#4 revertido na mabel/spec/exportar-csv: volta ao planejamento
 com o motivo no próximo `mabel run`.</pre>
         </article>
       </div>

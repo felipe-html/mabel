@@ -142,7 +142,8 @@ test('entregar critérios 2 e 5: a entrega fica no snapshot; aberta, recusa sem 
   const [old, current] = listDeliveries(q.db, q.project.id);
   assert.equal(old?.status, 'replaced');
   assert.equal(current?.status, 'open');
-  assert.equal(q.ref(first.branch), undefined, 'a branch local anterior sai: a nova a contém');
+  // A integração é refeita a partir da base a cada run: a nova entrega não contém a anterior.
+  assert.ok(q.ref(first.branch), 'a branch local anterior fica');
   const log = replacing();
   assert.ok(log.some((call) => call.argv.join(' ') === `pr close ${PR} --comment Substituído por ${second}`));
   assert.ok(log.some((call) => call.argv[1] === 'create' && call.argv.includes('--draft')));

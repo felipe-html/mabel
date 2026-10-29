@@ -5,6 +5,7 @@ import { formatCost } from './format.ts';
 import { tryGit } from './git.ts';
 import { openDelivery } from './delivery.ts';
 import { integratedItems } from './integration.ts';
+import { readIntegrationState } from './units.ts';
 import { type Item, itemCost } from './items.ts';
 import { MABEL_DIR, type Project } from './project.ts';
 import { type ProofResult, proofLabel } from './proof.ts';
@@ -125,6 +126,18 @@ function howToDeliver(db: DatabaseSync, project: Project): string[] {
   return lines;
 }
 
+/** `main (a1b2c3d) + 2 unidades (a, b) · 1 de fora (c) · verificação: verde`. */
+function integrationLine(db: DatabaseSync, project: Project, baseCommit: string): string {
+  const state = readIntegrationState(db, project.id);
+  const base = project.config.baseBranch;
+  if (!state) return `${base} (${baseCommit}) + nenhuma unidade`;
+  const parts = [`${base} (${state.base}) + ${plural(state.included.length, 'unidade', 'unidades')}${state.included.length > 0 ? ` (${state.included.join(', ')})` : ''}`];
+  const out = [...new Set([...state.conflicts.map((c) => c.unit), ...state.paused.map((p) => p.unit)])].filter((unit) => !state.included.includes(unit));
+  if (out.length > 0) parts.push(`${out.length} de fora (${out.join(', ')})`);
+  parts.push(`verificação: ${state.verify === null ? '—' : state.verify.ok ? 'verde' : 'vermelha'}`);
+  return parts.join(' · ');
+}
+
 /**
  * Seção "Integração" do `run.md`: a branch sobre a base, como entregar, o "olhe primeiro" e
  * o detalhe de cada item, com os títulos um nível abaixo.
@@ -135,7 +148,7 @@ export function integrationSection(db: DatabaseSync, home: string, project: Proj
   if (!integration) return ['Desligada (`integracao: null` no config): cada item fica na própria branch.'];
   const entries = integratedItems(db, project).map((item) => entry(home, item));
   const baseCommit = tryGit(project.root, 'rev-parse', '--short', base) ?? '?';
-  const lines = [`${integration} = ${base} (${baseCommit}) + ${plural(entries.length, 'item', 'itens')}`];
+  const lines = [integrationLine(db, project, baseCommit)];
   if (entries.length === 0) return lines;
   lines.push('', ...howToDeliver(db, project), `Para devolver um item: mabel rejeitar <n> "<motivo>"`);
   const first = entries.flatMap(lookFirst);

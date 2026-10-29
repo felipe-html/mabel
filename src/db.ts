@@ -273,6 +273,14 @@ const migrations: string[] = [
   ALTER TABLE specs ADD COLUMN metrics TEXT;
   ALTER TABLE items ADD COLUMN rule_changes TEXT NOT NULL DEFAULT '[]';
   `,
+  `
+  ALTER TABLE items ADD COLUMN unit TEXT;
+  CREATE TABLE integration_state (
+    project_id  TEXT PRIMARY KEY REFERENCES projects(id),
+    state       TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+  );
+  `,
 ];
 
 function migrate(db: DatabaseSync): void {

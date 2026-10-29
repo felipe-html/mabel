@@ -2,7 +2,9 @@ import { writeFileSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
 import { balanceOf, formatReset, latestReadings } from './balance.ts';
 import { formatCost, formatDuration } from './format.ts';
-import { integratedItems, unitOf } from './integration.ts';
+import { unitOf } from './integration.ts';
+import { type Unit, openUnits, readIntegrationState } from './units.ts';
+import { specBranch, unitBranch } from './worktree.ts';
 import { type Item, type ItemStatus, listItems } from './items.ts';
 import { type Project, mabelPath } from './project.ts';
 import { ensureIgnored, integrationSection } from './report.ts';
@@ -126,17 +128,55 @@ function needsYou(db: DatabaseSync, project: Project, items: Item[], session: Se
       .get(project.id, session.startId) as { detail: string } | undefined;
     if (pause) lines.push(`- Fila pausada: ${pause.detail}`);
   }
+  lines.push(...integrationWarnings(db, project, items));
   return lines.length > 0 ? lines : ['Nada.'];
 }
 
+/** Branch da unidade pelo nome (`avulso-<n>` ou o slug da spec). */
+function branchOfUnit(items: Item[], unit: string): string {
+  const avulso = /^avulso-(\d+)$/.exec(unit);
+  const item = avulso ? items.find((i) => i.number === Number(avulso[1])) : undefined;
+  return item ? unitBranch(item) : specBranch(unit);
+}
+
+/** Unidades pausadas, conflitos e verificação vermelha na integração (S4): avisos para o humano. */
+function integrationWarnings(db: DatabaseSync, project: Project, items: Item[]): string[] {
+  const state = project.config.integracao ? readIntegrationState(db, project.id) : undefined;
+  if (!state) return [];
+  const base = project.config.baseBranch;
+  const lines = state.paused.map(
+    (p) => `- Unidade ${p.unit} pausada: conflito da ${base} em ${p.files.join(', ')} (resolva o merge da ${base} na ${p.branch})`,
+  );
+  for (const conflict of state.conflicts) {
+    const branches = [conflict.unit, ...conflict.others].map((unit) => branchOfUnit(items, unit));
+    const since = conflict.item !== null ? ` (desde #${conflict.item})` : '';
+    lines.push(
+      branches.length > 1
+        ? `- Integração: ${branches.join(' × ')} conflitam em ${conflict.files.join(', ')}${since}`
+        : `- Integração: ${branches[0]} conflita com a integração em ${conflict.files.join(', ')}${since}`,
+    );
+  }
+  if (state.verify && !state.verify.ok) {
+    lines.push(`- Integração: verificação vermelha em \`${state.verify.command}\`${state.verify.item ? ` (depois de #${state.verify.item})` : ''}`);
+  }
+  return lines;
+}
+
 function readyToDeliver(db: DatabaseSync, project: Project, items: Item[]): string[] {
-  const integration = project.config.integracao;
-  if (integration) {
-    const count = integratedItems(db, project).length;
-    return count > 0 ? [`- ${integration} (${plural(count, 'tarefa', 'tarefas')}) · mabel entregar`] : ['Nada.'];
+  if (project.config.integracao) {
+    const units = openUnits(db, project, items);
+    return units.length > 0 ? units.map((unit) => `- ${unitLine(unit, items)}`) : ['Nada.'];
   }
   const own = items.filter((item) => item.status === 'awaiting_merge' && item.branch);
   return own.length > 0 ? own.map((item) => `- #${item.number} ${item.title} · ${item.branch}`) : ['Nada.'];
+}
+
+/** `exportar-csv (2/3)` ou `avulso #9 Corrige total`. */
+function unitLine(unit: Unit, items: Item[]): string {
+  const avulso = /^avulso-(\d+)$/.exec(unit.name);
+  if (avulso) return `avulso #${avulso[1]} ${unit.items[0]?.title ?? ''}`.trimEnd();
+  const all = items.filter((item) => unitOf(item) === unit.name && item.status !== 'cancelled');
+  return `${unit.name} (${unit.items.length}/${all.length})`;
 }
 
 function inProgress(items: Item[]): string[] {

@@ -27,10 +27,11 @@ import {
 } from './stages.ts';
 import { git, tryGit } from './git.ts';
 import { integrateItem, mergeInProgress, mergeOrigin, setIntegrated } from './integration.ts';
+import { bringDependencies, integrateUnit } from './units.ts';
 import { projectContext } from './hermetic.ts';
 import { foundTests, proofDetail, runProof } from './proof.ts';
 import { scopeViolation } from './scope.ts';
-import { type PreparedWorktree, commitAll, commitMessage, originBranch, prepareWorktree, removeWorktree, shell } from './worktree.ts';
+import { type PreparedWorktree, commitAll, commitMessage, itemOrigin, prepareWorktree, removeWorktree, shell, unitBranch } from './worktree.ts';
 
 export interface PipelineEnv {
   db: DatabaseSync;
@@ -534,7 +535,7 @@ async function executeStep(env: PipelineEnv, item: Item): Promise<Step> {
   const worktree = item.worktree as string;
   const startHead = git(worktree, 'rev-parse', 'HEAD');
   // Conflito com a integração: o Mabel refaz o merge e deixa os conflitos para o executor.
-  if (next.mergeOrigin && !mergeInProgress(worktree)) mergeOrigin(worktree, originBranch(env.project.config), false);
+  if (next.mergeOrigin && !mergeInProgress(worktree)) mergeOrigin(worktree, itemOrigin(env.project, item), false);
   const cycleAttempt = item.attempts + 1;
   const continuing = Boolean(next.interrupted || next.sameAttempt) && item.attemptNo > 0;
   const attemptNo = continuing ? item.attemptNo : item.attemptNo + 1;
@@ -602,7 +603,7 @@ async function executeStep(env: PipelineEnv, item: Item): Promise<Step> {
   if (unchanged) {
     // Retentativa sem nada a mudar: o código das tentativas anteriores volta à verificação,
     // que reprova (e conta a tentativa) se o problema continuar.
-    if (!hasOwnCommits(worktree, originBranch(env.project.config))) {
+    if (!hasOwnCommits(worktree, itemOrigin(env.project, item))) {
       if (blocker) {
         // Nada a verificar: o impedimento vai direto ao humano.
         updateItem(env.db, item.id, { attempts: cycleAttempt });
@@ -687,6 +688,14 @@ const SETUP_FILES = 'setup-arquivos.json';
  * escopo não atribui ao agente. Acumula porque o retrabalho recria o worktree pela branch.
  */
 function prepare(env: PipelineEnv, item: Item): PreparedWorktree {
+  // Dependência em outra unidade, ainda fora da base: entra na branch da unidade antes do início.
+  if (!item.worktree) {
+    const conflict = bringDependencies(env.home, env.db, env.project, item);
+    if (conflict) {
+      const reason = `conflito ao trazer a unidade ${conflict.unit} para a ${unitBranch(item)} em: ${conflict.files.join(', ')}; faça o merge à mão`;
+      return { path: '', branch: '', created: false, setupError: reason };
+    }
+  }
   const prepared = prepareWorktree(env.db, env.home, env.project, item);
   if (prepared.setupFiles && prepared.setupFiles.length > 0) {
     const known = readArtifact<string[]>(env.home, item.id, SETUP_FILES) ?? [];
@@ -700,7 +709,7 @@ function prepare(env: PipelineEnv, item: Item): PreparedWorktree {
  * hook. Pega a escrita pelo terminal, que o hook não interpreta. Violação volta à execução.
  */
 function scopeGate(env: PipelineEnv, item: Item, plan: PlanOutput, worktree: string): Step | 'ok' {
-  const base = git(worktree, 'merge-base', 'HEAD', originBranch(env.project.config));
+  const base = git(worktree, 'merge-base', 'HEAD', itemOrigin(env.project, item));
   const fromSetup = new Set(readArtifact<string[]>(env.home, item.id, SETUP_FILES) ?? []);
   const changed = git(worktree, 'diff', '--name-only', '--no-renames', '-z', base, 'HEAD')
     .split('\0')
@@ -741,9 +750,9 @@ function verifyStep(env: PipelineEnv, item: Item): Step {
   if (scope !== 'ok') return scope;
   // A origem andou desde o início do item: o que entra na integração é o que foi verificado.
   if (env.project.config.integracao) {
-    const conflicts = mergeOrigin(worktree, originBranch(env.project.config));
+    const conflicts = mergeOrigin(worktree, itemOrigin(env.project, item));
     if (conflicts) {
-      const reason = `conflito com a ${originBranch(env.project.config)} em: ${conflicts.join(', ')}`;
+      const reason = `conflito com a ${itemOrigin(env.project, item)} em: ${conflicts.join(', ')}`;
       recordGate(env.db, item.id, attemptNo, 'integration', false, reason);
       return stopForHuman(env, item, 'integration_conflict', { files: conflicts, reason }, reason);
     }
@@ -801,7 +810,7 @@ function proofStep(env: PipelineEnv, item: Item, plan: PlanOutput, execution: Ex
   const attemptNo = item.attemptNo;
   const worktree = item.worktree as string;
   const logDir = join(itemDir(env.home, item.id), `prova-${attemptNo}`);
-  const base = git(worktree, 'merge-base', 'HEAD', originBranch(env.project.config));
+  const base = git(worktree, 'merge-base', 'HEAD', itemOrigin(env.project, item));
   const result = runProof({ worktree, base, config: env.project.config, plan, execution, logDir });
   writeArtifact(env.home, item.id, `prova-${attemptNo}.json`, result);
   if (!result.restored || result.error) {
@@ -873,9 +882,13 @@ async function reviewStep(env: PipelineEnv, item: Item): Promise<Step> {
   return { kind: 'stopped', status: 'awaiting_merge' };
 }
 
-/** Item aprovado entra na integração (G10); worktree e branch do item são apagados. */
+/**
+ * Tarefa aprovada entra na branch da unidade (G10) por merge; o worktree e a branch da
+ * tarefa são apagados, a da unidade fica até a entrega. Depois, o merge da unidade na
+ * integração, só para teste: conflito ou vermelho viram aviso.
+ */
 function integrateStep(env: PipelineEnv, item: Item, notes: string | null, runId: string): Step {
-  const integrated = integrateItem(env.project, item);
+  const integrated = integrateItem(env.project, item, unitBranch(item));
   if ('error' in integrated) {
     recordGate(env.db, item.id, item.attemptNo, 'integration', false, integrated.error);
     move(env, item, 'failed', integrated.error, runId);
@@ -887,6 +900,7 @@ function integrateStep(env: PipelineEnv, item: Item, notes: string | null, runId
   const branch = item.branch;
   removeWorktree(env.db, env.project, item);
   if (branch) tryGit(env.project.root, 'branch', '-D', branch);
+  for (const note of integrateUnit(env.home, env.db, env.project, item)) env.log?.(`#${item.number} ${item.title}: ${note}`);
   return { kind: 'stopped', status: 'awaiting_merge' };
 }
 

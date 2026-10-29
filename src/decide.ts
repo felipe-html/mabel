@@ -20,6 +20,7 @@ import { itemDir, readArtifact } from './stages.ts';
 import { signals, signalsLine, situation } from './refine.ts';
 import { type RecentRun, renderRecentRuns } from './status.ts';
 import { style } from './style.ts';
+import { inSpec, unitBranch } from './worktree.ts';
 import { type ArgSpec, type OptionSpecs, itemArg, jsonOption } from './options.ts';
 
 function parseNumber(value: string | undefined): number | undefined {
@@ -297,20 +298,21 @@ export function rejectCommand(args: string[]): Promise<number> {
       process.stderr.write(`Informe o motivo.\nUso: ${rejectUsage}\n`);
       return 1;
     }
-    // A rejeição escreve na integração: não pode correr junto com um `mabel run`.
+    // A rejeição escreve na branch da unidade: não pode correr junto com um `mabel run`.
     const home = dataDir();
     const release = acquireLock(home, project.id);
     try {
       const result = reject(db, home, project, item, reason, { cancel: parsed.values.cancelar });
       writeRunReport(db, home, project);
+      const where = inSpec(item) ? `revertido na ${unitBranch(item)}` : `retirado da ${unitBranch(item)}`;
       process.stdout.write(
         result.to === 'cancelled'
-          ? `#${item.number} revertido na integração e cancelado.\n`
-          : `#${item.number} revertido na integração: volta ao planejamento com o motivo no próximo \`mabel run\`.\n`,
+          ? `#${item.number} ${where} e cancelado.\n`
+          : `#${item.number} ${where}: volta ao planejamento com o motivo no próximo \`mabel run\`.\n`,
       );
       if (result.dependents.length > 0) {
         const list = result.dependents.map((n) => `#${n}`).join(', ');
-        process.stdout.write(`Atenção: ${list} depende(m) de #${item.number} e continua(m) na integração; rejeite-o(s) se for o caso.\n`);
+        process.stdout.write(`Atenção: ${list} depende(m) de #${item.number} e continua(m) concluído(s); rejeite-o(s) se for o caso.\n`);
       }
       const delivery = openDelivery(db, project.id);
       if (delivery?.items.includes(item.number)) {

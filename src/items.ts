@@ -72,6 +72,8 @@ export interface Item extends Required<Omit<ItemFields, 'number'>> {
   integratedCommit: string | null;
   /** Trecho da spec citado pela tarefa, congelado como o resto do conteúdo quando ela inicia. */
   specContext: SpecExcerpt | null;
+  /** Unidade de entrega fixada pelo Mabel (`legado`, na migração); nula, vem da spec ou do avulso. */
+  unit: string | null;
 }
 
 export type PendingKind =
@@ -145,6 +147,7 @@ interface ItemRow {
   spec_context: string | null;
   kind: 'bug' | null;
   rule_changes: string;
+  unit: string | null;
 }
 
 /**
@@ -199,6 +202,7 @@ function fromRow(row: ItemRow): Item {
     rules: JSON.parse(row.spec_rules) as string[],
     kind: row.kind,
     ruleChanges: JSON.parse(row.rule_changes) as string[],
+    unit: row.unit,
     specContext: row.spec_context ? (JSON.parse(row.spec_context) as SpecExcerpt) : null,
   };
 }
@@ -213,6 +217,7 @@ export interface ItemUpdate {
   pending?: Pending | null;
   nextInput?: NextInput | null;
   integratedCommit?: string | null;
+  unit?: string | null;
 }
 
 const UPDATE_COLUMNS: Record<keyof ItemUpdate, string> = {
@@ -225,6 +230,7 @@ const UPDATE_COLUMNS: Record<keyof ItemUpdate, string> = {
   pending: 'pending',
   nextInput: 'next_input',
   integratedCommit: 'integrated_commit',
+  unit: 'unit',
 };
 
 /** Atualiza campos de controle do item (não o estado, que só muda por `transition`). */
