@@ -52,10 +52,10 @@ test('S.1 critério 1: o arquivo é reescrito ao fim de cada tarefa, com o run e
     return false;
   };
   await q.start([PLAN_OK, EXEC, REVIEW, PLAN_OK, EXEC, REVIEW], { batch: false, codeChanged });
-  const beforeB = seen[3] ?? '';
+  // Algum retrato tirado durante B já mostra A concluída e o run em andamento.
+  const beforeB = seen.find((report) => /\| 1 \| avulso-1 \| concluída/.test(report)) ?? '';
   assert.match(beforeB, /→ em andamento\n\nFim: em andamento/);
-  assert.match(beforeB, /\| 1 \| avulso-1 \| concluída/);
-  assert.doesNotMatch(beforeB, /\| 2 \| avulso-2/);
+  assert.doesNotMatch(beforeB, /\| 2 \| avulso-2 \| concluída/);
 });
 
 test('S.1 critério 2: o segundo run sobrescreve o arquivo; run.md fica fora do git', async () => {
