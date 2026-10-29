@@ -1,0 +1,855 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!--
+  Documentação visual do funcionamento do Mabel. Arquivo único, sem build: abra no navegador.
+  Mudou comando, etapa, agente, prompt, esquema de saída, gate, estado ou pendência? Atualize
+  este arquivo na mesma mudança (regra no CLAUDE.md).
+-->
+<title>Esteira do Mabel</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Layout: uma coluna de leitura; a esteira é um fluxograma em grade de três trilhas
+   (laço de tentativas | fluxo principal | desvios), que vira uma coluna no celular. */
+:root {
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --fg: #151a22;
+  --muted: #586273;
+  --line: #c7cdd8;
+  --agent: #2a57c9;
+  --agent-tint: #e9effd;
+  --human: #b9531a;
+  --human-tint: #fbefe6;
+  --stop: #a8322b;
+  --stop-tint: #fbeceb;
+  --retry: #6b4fa8;
+  --retry-tint: #f1edf9;
+  --ok: #2c7a52;
+  --ok-tint: #e7f4ec;
+  --term-bg: #10141b;
+  --term-fg: #d6dde8;
+  --term-dim: #7e8a9c;
+
+  --display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --rail: 112px;
+  --gap: 28px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1217; --surface: #171b22; --fg: #e5e9f0; --muted: #98a2b3; --line: #343b48;
+    --agent: #85a6ff; --agent-tint: #1a2440; --human: #f0905a; --human-tint: #36231a;
+    --stop: #ff8f86; --stop-tint: #3a1d1c; --retry: #b9a2f0; --retry-tint: #261f38;
+    --ok: #74cf9c; --ok-tint: #17301f; --term-bg: #0a0d12; --term-fg: #d6dde8; --term-dim: #7e8a9c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1217; --surface: #171b22; --fg: #e5e9f0; --muted: #98a2b3; --line: #343b48;
+  --agent: #85a6ff; --agent-tint: #1a2440; --human: #f0905a; --human-tint: #36231a;
+  --stop: #ff8f86; --stop-tint: #3a1d1c; --retry: #b9a2f0; --retry-tint: #261f38;
+  --ok: #74cf9c; --ok-tint: #17301f; --term-bg: #0a0d12; --term-fg: #d6dde8; --term-dim: #7e8a9c;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg); color: var(--fg);
+  font: 15px/1.55 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 72px;
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 56px; }
+h1, h2, h3, h4 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: clamp(2rem, 4.6vw, 3.1rem); font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 1.65rem; font-weight: 600; }
+h3 { font-size: 1.15rem; font-weight: 600; }
+h4 { font-size: 1.05rem; font-weight: 600; }
+p { margin: 0; }
+code, .mono { font-family: var(--mono); font-size: 0.86em; }
+.eyebrow { font: 600 0.72rem/1 var(--mono); letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); }
+.lede { color: var(--muted); max-width: 68ch; font-size: 1.05rem; }
+section { display: flex; flex-direction: column; gap: 20px; }
+.section-head { display: flex; flex-direction: column; gap: 8px; max-width: 72ch; }
+.section-head p { color: var(--muted); }
+
+/* Cabeçalho e legenda */
+header.top { display: flex; flex-direction: column; gap: 14px; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 6px; font-size: 0.85rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.sw { width: 18px; height: 12px; display: inline-block; border: 1.5px solid; }
+.sw.agent { background: var(--agent-tint); border-color: var(--agent); border-radius: 4px; }
+.sw.mabel { background: var(--surface); border-color: var(--line); border-radius: 2px; }
+.sw.gate { background: var(--surface); border: 2px solid var(--fg); }
+.sw.human { background: var(--human-tint); border-color: var(--human); border-radius: 4px; }
+.sw.retry { background: var(--retry-tint); border: 1.5px dashed var(--retry); }
+.sw.stop { background: var(--stop-tint); border-color: var(--stop); }
+
+/* Figura 1 */
+figure { margin: 0; display: flex; flex-direction: column; gap: 10px; }
+figcaption { color: var(--muted); font-size: 0.88rem; max-width: 80ch; }
+.scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.map { display: block; width: 100%; min-width: 760px; height: auto; color: var(--fg); }
+.map .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+.map .box.run { stroke: var(--agent); stroke-width: 2; }
+.map .box.human { fill: var(--human-tint); stroke: var(--human); }
+.map .box.quiet { fill: none; stroke: var(--line); stroke-dasharray: 4 4; }
+.map .title { font: 600 15px var(--display); fill: var(--fg); }
+.map .cmd { font: 12.5px var(--mono); fill: var(--fg); }
+.map .note { font: 11.5px var(--body); fill: var(--muted); }
+.map .ag { font: 500 11.5px var(--body); fill: var(--agent); }
+.map .hu { font: 500 11.5px var(--body); fill: var(--human); }
+.map .dot { fill: var(--agent); }
+.map .arrow { stroke: var(--fg); stroke-width: 1.5; fill: none; }
+.map .arrow.back { stroke: var(--human); }
+.map .head { fill: var(--fg); }
+.map .head.back { fill: var(--human); }
+.map .lbl { font: 11.5px var(--mono); fill: var(--muted); }
+.map .lbl.back { fill: var(--human); }
+
+/* Travas comuns */
+.locks { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.lock { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; font-size: 0.88rem; }
+.lock b { font-family: var(--display); font-size: 0.98rem; font-weight: 600; }
+.lock span { color: var(--muted); }
+
+/* Figura 2: a esteira */
+.flow {
+  display: grid;
+  grid-template-columns: var(--rail) minmax(0, 1.2fr) minmax(0, 1fr);
+  grid-template-rows: repeat(24, auto);
+  column-gap: var(--gap);
+  row-gap: 22px;
+  position: relative;
+}
+/* A espinha fica fora da grade: ocupando células, empurraria os nós para depois dela. */
+.spine {
+  position: absolute; top: 40px; bottom: 40px; width: 2px; background: var(--line);
+  left: calc(var(--rail) + var(--gap) + (100% - var(--rail) - 2 * var(--gap)) * 0.27273 - 1px);
+}
+.rail { grid-column: 1; grid-row: 11 / 22; position: relative; }
+.rail::before { content: ""; position: absolute; left: 40px; top: 26px; bottom: 26px; border-left: 2px dashed var(--retry); }
+/* Rótulo em pé, à esquerda da linha: os braços dos gates saem só para a direita dela. */
+.rail .rail-label {
+  position: absolute; left: 12px; top: 50%;
+  writing-mode: vertical-rl; transform: translateY(-50%) rotate(180deg);
+  font-size: 0.8rem; line-height: 1; white-space: nowrap; color: var(--retry);
+}
+.rail .rail-label b { font-family: var(--display); font-size: 0.92rem; }
+
+.phase { grid-column: 2; justify-self: center; position: relative; z-index: 1;
+  font: 600 0.78rem/1 var(--mono); letter-spacing: 0.04em;
+  background: var(--bg); padding: 6px 4px; display: flex; align-items: center; gap: 8px; }
+.phase .st { background: var(--fg); color: var(--bg); padding: 5px 9px; border-radius: 99px; }
+.phase-note { grid-column: 3; align-self: center; font-size: 0.82rem; color: var(--muted); }
+
+.node {
+  grid-column: 2; position: relative; z-index: 1;
+  background: var(--surface); border: 1.5px solid var(--line); border-radius: 4px;
+  padding: 12px 15px 13px; display: flex; flex-direction: column; gap: 6px; min-width: 0;
+  font-size: 0.9rem;
+}
+.node + .node::before, .phase + .node::before, .phase-note + .node::before, .exits + .node::before {
+  content: ""; position: absolute; top: -13px; left: calc(50% - 6px);
+  border: 6px solid transparent; border-top: 7px solid var(--line); border-bottom: 0;
+}
+.node .kicker { font: 600 0.68rem/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.node p { color: var(--fg); }
+.node .meta { font: 0.78rem/1.45 var(--mono); color: var(--muted); }
+.node ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
+.node.agent { background: var(--agent-tint); border-color: var(--agent); border-width: 2px; border-radius: 10px; }
+.node.agent .kicker, .node.agent h4 { color: var(--agent); }
+.node.agent h4 { font-size: 1.25rem; }
+.node.gate { border: 2px solid var(--fg); border-radius: 0; }
+.node.human { background: var(--human-tint); border-color: var(--human); border-width: 2px; border-radius: 10px; }
+.node.human .kicker, .node.human h4 { color: var(--human); }
+.node.done { border-color: var(--ok); background: var(--ok-tint); }
+.node.done .kicker, .node.done h4 { color: var(--ok); }
+.out { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-top: 2px; }
+.out .file { font: 500 0.78rem var(--mono); color: var(--ok); margin-right: 3px; }
+.out code { font-size: 0.74rem; background: var(--surface); border: 1px solid var(--line); border-radius: 3px; padding: 1px 5px; }
+.node.agent .out code { border-color: color-mix(in srgb, var(--agent) 35%, var(--line)); }
+
+.arm { position: absolute; left: calc(-1 * (var(--rail) + var(--gap) - 41px)); width: calc(var(--rail) + var(--gap) - 41px); top: 26px; border-top: 2px dashed var(--retry); }
+.arm.low { top: auto; bottom: 26px; }
+.arm.in::after { content: ""; position: absolute; right: 0; top: -7px; border: 6px solid transparent; border-left: 8px solid var(--retry); border-right: 0; }
+
+.exits { grid-column: 3; display: flex; flex-direction: column; gap: 8px; align-self: start; min-width: 0; }
+.exit { position: relative; border: 1.5px solid var(--line); border-radius: 4px; background: var(--surface); padding: 8px 11px; font-size: 0.83rem; line-height: 1.4; display: flex; flex-direction: column; gap: 2px; }
+.exit::before { content: ""; position: absolute; left: calc(-1 * var(--gap) - 2px); width: calc(var(--gap) - 6px); top: 15px; border-top: 1.5px dashed currentColor; }
+.exit::after { content: ""; position: absolute; left: -9px; top: 10px; border: 5.5px solid transparent; border-left: 7px solid currentColor; border-right: 0; }
+.exit .k { font: 600 0.7rem/1.2 var(--mono); letter-spacing: 0.03em; }
+.exit.human { color: var(--human); border-color: var(--human); background: var(--human-tint); }
+.exit.retry { color: var(--retry); border-color: var(--retry); border-style: dashed; background: var(--retry-tint); }
+.exit.stop { color: var(--stop); border-color: var(--stop); background: var(--stop-tint); }
+.exit.pause, .exit.loop { color: var(--muted); }
+.exit span:not(.k) { color: var(--fg); }
+
+.cycle { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.cycle div { border: 1.5px dashed var(--retry); background: var(--retry-tint); border-radius: 4px; padding: 11px 14px; font-size: 0.88rem; display: flex; flex-direction: column; gap: 3px; }
+.cycle b { font-family: var(--display); color: var(--retry); font-size: 1rem; }
+
+/* Agentes */
+.agents { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.agent-card { background: var(--surface); border: 1.5px solid var(--agent); border-radius: 10px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.agent-card header { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.agent-card h3 { color: var(--agent); font-size: 1.3rem; }
+.agent-card .where { font: 0.78rem var(--mono); color: var(--muted); }
+.agent-card dl { margin: 0; display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 6px 12px; font-size: 0.86rem; }
+.agent-card dt { color: var(--muted); font-size: 0.78rem; padding-top: 1px; }
+.agent-card dd { margin: 0; min-width: 0; }
+.agent-card dd code { font-size: 0.78rem; }
+
+/* Comandos */
+.groups { display: flex; flex-direction: column; gap: 34px; }
+.group { display: flex; flex-direction: column; gap: 14px; }
+.group > h3 { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.group > h3 small { font: 400 0.85rem var(--body); color: var(--muted); }
+.cmds { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
+.cmd { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 15px 16px; display: flex; flex-direction: column; gap: 9px; min-width: 0; font-size: 0.9rem; }
+.cmd header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cmd .name { font: 600 1.02rem var(--mono); }
+.badge { font: 500 0.72rem/1 var(--body); padding: 4px 8px; border-radius: 99px; border: 1px solid; }
+.badge.agent { color: var(--agent); border-color: var(--agent); background: var(--agent-tint); }
+.badge.none { color: var(--muted); border-color: var(--line); }
+.badge.human { color: var(--human); border-color: var(--human); background: var(--human-tint); }
+.usage { font: 0.78rem/1.45 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.cmd .writes { font-size: 0.84rem; }
+.cmd .writes b { font-weight: 600; }
+pre.term {
+  margin: 0; background: var(--term-bg); color: var(--term-fg); border-radius: 5px;
+  padding: 10px 12px; font: 0.74rem/1.55 var(--mono); overflow-x: auto; white-space: pre;
+}
+pre.term .d { color: var(--term-dim); }
+pre.term .a { color: #8fb0ff; }
+pre.term .g { color: #7fd6a2; }
+pre.term .h { color: #f3a46f; }
+.term-note { font-size: 0.75rem; color: var(--muted); margin-top: -4px; }
+
+/* Tabela de pendências */
+.tbl-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.86rem; min-width: 640px; background: var(--surface); }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 0.72rem var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+td:first-child { font-family: var(--mono); font-size: 0.8rem; color: var(--human); white-space: nowrap; }
+
+footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--line); padding-top: 16px; }
+
+@media (max-width: 760px) {
+  .flow { display: flex; flex-direction: column; gap: 10px; }
+  .spine, .rail, .arm { display: none; }
+  .node::before { display: none; }
+  .phase { justify-self: start; margin-top: 12px; padding-left: 0; }
+  .phase-note { margin-top: -6px; }
+  .exits { margin-left: 18px; }
+  .exit::before { display: none; }
+  .exit::after { content: "↳"; position: static; border: 0; order: -1; font-size: 0.9rem; line-height: 1; }
+  .agent-card dl { grid-template-columns: 1fr; gap: 2px; }
+  .agent-card dd { margin-bottom: 6px; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <span class="eyebrow">Mabel · fluxograma da esteira</span>
+  <h1>Esteira do Mabel</h1>
+  <p class="lede">Do projeto vazio ao PR: o que cada comando faz e devolve, quais agentes rodam em cada etapa, o que cada um entrega e quais gates o código do Mabel aplica entre eles.</p>
+  <div class="legend" aria-label="Legenda">
+    <span><i class="sw agent"></i>agente (run <code>claude -p</code>)</span>
+    <span><i class="sw mabel"></i>passo do Mabel, sem agente</span>
+    <span><i class="sw gate"></i>gate mecânico</span>
+    <span><i class="sw human"></i>decisão humana / <code>needs_human</code></span>
+    <span><i class="sw retry"></i>reprova: nova tentativa</span>
+    <span><i class="sw stop"></i><code>blocked</code> / <code>failed</code></span>
+  </div>
+</header>
+
+<!-- 1. Mapa geral -->
+<section>
+  <div class="section-head">
+    <span class="eyebrow">1 · Visão geral</span>
+    <h2>A jornada em cinco blocos</h2>
+    <p>Você prepara o backlog, o <code>run</code> consome a fila com três agentes, para quando precisa de você e deixa os itens prontos na branch de integração. Só você leva a integração à branch principal.</p>
+  </div>
+  <figure>
+    <div class="scroll">
+      <svg class="map" viewBox="0 0 1100 430" role="img" aria-label="Mapa: preparar alimenta o run; o run para em needs_human para decidir e volta com a resposta; itens aprovados vão para a integração, de onde o humano entrega por PR ou rejeita de volta ao run.">
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="head"/></marker>
+          <marker id="ahb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="head back"/></marker>
+        </defs>
+
+        <!-- Preparar -->
+        <rect class="box" x="20" y="30" width="290" height="200" rx="6"/>
+        <text class="title" x="38" y="58">Preparar</text>
+        <text class="cmd" x="38" y="86">nascer</text><circle class="dot" cx="104" cy="82" r="4"/><text class="ag" x="114" y="86">agente nascer</text>
+        <text class="cmd" x="38" y="108">init</text><text class="note" x="104" y="108">cria o .mabel/</text>
+        <text class="cmd" x="38" y="130">add</text><text class="note" x="104" y="130">item no backlog.md</text>
+        <text class="cmd" x="38" y="152">refinar</text><circle class="dot" cx="104" cy="148" r="4"/><text class="ag" x="114" y="152">agente refinador</text>
+        <text class="cmd" x="38" y="174">referencia</text><text class="note" x="124" y="174">telas e APIs</text>
+        <text class="cmd" x="38" y="196">credencial</text><text class="note" x="124" y="196">validade do token</text>
+
+        <!-- Rodar -->
+        <rect class="box run" x="405" y="30" width="290" height="200" rx="6"/>
+        <text class="title" x="423" y="58">Rodar a fila</text>
+        <text class="cmd" x="423" y="86">run</text><text class="note" x="465" y="86">· anexar · parar · supervisor</text>
+        <circle class="dot" cx="427" cy="114" r="4"/><text class="ag" x="437" y="118">planejador</text>
+        <text class="note" x="510" y="118">→ gate de início</text>
+        <circle class="dot" cx="427" cy="138" r="4"/><text class="ag" x="437" y="142">executor</text>
+        <text class="note" x="510" y="142">→ verificação + prova</text>
+        <circle class="dot" cx="427" cy="162" r="4"/><text class="ag" x="437" y="166">revisor</text>
+        <text class="note" x="510" y="166">→ veredito calculado</text>
+        <text class="note" x="423" y="198">política de saldo antes de cada etapa</text>
+
+        <!-- Integrar -->
+        <rect class="box" x="790" y="30" width="290" height="200" rx="6"/>
+        <text class="title" x="808" y="58">Integrar e entregar</text>
+        <text class="note" x="808" y="84">branch mabel/integracao</text>
+        <text class="cmd" x="808" y="112">integracao</text><text class="note" x="896" y="112">relatório</text>
+        <text class="cmd" x="808" y="134">entregar</text><text class="note" x="896" y="134">snapshot + PR</text>
+        <text class="cmd" x="808" y="156">rejeitar</text><text class="note" x="896" y="156">revert do item</text>
+        <text class="hu" x="808" y="196">você faz o merge na base → done</text>
+
+        <!-- Decidir -->
+        <rect class="box human" x="405" y="300" width="290" height="110" rx="6"/>
+        <text class="title" x="423" y="328">Decidir</text>
+        <text class="cmd" x="423" y="354">inbox · item · aprovar</text>
+        <text class="cmd" x="423" y="376">responder · cancelar</text>
+
+        <!-- Auditar -->
+        <rect class="box quiet" x="20" y="300" width="290" height="110" rx="6"/>
+        <text class="title" x="38" y="328">Auditar, a qualquer momento</text>
+        <text class="cmd" x="38" y="354">status · saldo · runs</text>
+        <text class="cmd" x="38" y="376">projetos · projeto · eventos</text>
+
+        <!-- Avulsos -->
+        <rect class="box quiet" x="790" y="300" width="290" height="110" rx="6"/>
+        <text class="title" x="808" y="328">Avulsos</text>
+        <text class="cmd" x="808" y="354">exec</text><text class="note" x="850" y="354">conversa auditada</text>
+        <text class="cmd" x="808" y="376">comandos · completion</text>
+
+        <!-- Setas -->
+        <line class="arrow" x1="310" y1="110" x2="403" y2="110" marker-end="url(#ah)"/>
+        <text class="lbl" x="357" y="98" text-anchor="middle">backlog.md</text>
+        <text class="lbl" x="357" y="128" text-anchor="middle">config.json</text>
+
+        <line class="arrow" x1="695" y1="96" x2="788" y2="96" marker-end="url(#ah)"/>
+        <text class="lbl" x="742" y="86" text-anchor="middle">awaiting_merge</text>
+        <line class="arrow back" x1="790" y1="160" x2="697" y2="160" marker-end="url(#ahb)"/>
+        <text class="lbl back" x="742" y="178" text-anchor="middle">rejeitar → planning</text>
+
+        <line class="arrow" x1="515" y1="230" x2="515" y2="298" marker-end="url(#ah)"/>
+        <text class="lbl" x="507" y="268" text-anchor="end">needs_human</text>
+        <line class="arrow back" x1="585" y1="300" x2="585" y2="232" marker-end="url(#ahb)"/>
+        <text class="lbl back" x="593" y="268">resposta → retoma</text>
+      </svg>
+    </div>
+    <figcaption>Os pontos azuis são agentes. Fora o <code>nascer</code> e o <code>refinar</code>, todos rodam dentro do <code>mabel run</code>. As setas laranja são as voltas que dependem de você.</figcaption>
+  </figure>
+</section>
+
+<!-- 2. A esteira do item -->
+<section>
+  <div class="section-head">
+    <span class="eyebrow">2 · <code>mabel run</code></span>
+    <h2>A esteira de um item</h2>
+    <p>Um item por vez, uma etapa por vez. Cada etapa com agente é uma run <code>claude -p</code> com saída estruturada (<code>--json-schema</code>). Entre elas, o código do Mabel decide se o item avança. Nada é declarado pelo agente: o “done” é calculado.</p>
+  </div>
+
+  <div class="locks">
+    <div class="lock"><b>Toda run é auditada (G1)</b><span>Modelo, custo, tokens, ferramentas e transcript no SQLite e em <code>~/.mabel/runs/</code>. Sem registro, a run não inicia.</span></div>
+    <div class="lock"><b>Contexto hermético (G8)</b><span><code>--restricted</code>, <code>--strict-mcp-config</code>, sem slash commands, <code>--tools</code> por etapa. Só prompt do Mabel + CLAUDE.md + regras críticas.</span></div>
+    <div class="lock"><b>Escopo (G4)</b><span>Hook <code>PreToolUse</code> nega escrita fora dos globs do plano; sandbox confina o terminal ao worktree; o agente não usa git de escrita.</span></div>
+    <div class="lock"><b>Teto por run (G6)</b><span><code>--max-turns</code> e <code>--max-budget-usd</code> por etapa, e a política de saldo antes de cada uma.</span></div>
+  </div>
+
+  <figure>
+    <div class="flow" role="img" aria-label="Fluxograma da esteira: abertura, saldo, planejador, gate de início, executor, verificação com escopo, merge, comandos, critérios e prova, revisor, veredito e integração. Reprovações voltam ao executor por até três tentativas; dúvidas e itens críticos vão para needs_human.">
+      <div class="spine" aria-hidden="true"></div>
+      <div class="rail" aria-hidden="true">
+        <div class="rail-label"><b>↺ nova tentativa</b> · reprovou num gate: volta ao executor com o motivo, até 3 por ciclo</div>
+      </div>
+
+      <!-- 1 -->
+      <div class="phase"><span class="st">abertura</span></div>
+      <div class="phase-note">uma vez por <code>mabel run</code></div>
+      <!-- 2 -->
+      <div class="node">
+        <span class="kicker">Mabel</span>
+        <h4>Abre a fila</h4>
+        <ul>
+          <li>Commita na base o que está pendente no <code>.mabel/</code></li>
+          <li>Confere sandbox e pega a trava do projeto</li>
+          <li>Cria ou atualiza <code>mabel/integracao</code> a partir da base</li>
+          <li>Remove worktrees órfãos; marca <code>done</code> o que já chegou à base</li>
+        </ul>
+      </div>
+      <div class="exits">
+        <div class="exit pause"><span class="k">pausa</span><span>integração aberta num worktree ou com conflito com a base</span></div>
+      </div>
+      <!-- 3 -->
+      <div class="node gate">
+        <span class="kicker">Gate · antes de toda etapa com agente</span>
+        <h4>Política de saldo</h4>
+        <p>Lê as janelas de 5 h e 7 dias (chamada mínima em <code>haiku</code> se a leitura tem mais de 30 min) e estima o consumo da etapa. Também pausa se o código do Mabel mudou desde que o processo abriu.</p>
+      </div>
+      <div class="exits">
+        <div class="exit pause"><span class="k">espera</span><span>reset da janela de 5 h, ou o ritmo de 7 dias alcançar o uso</span></div>
+        <div class="exit human"><span class="k">pergunta</span><span>“Continuar mesmo assim?” (só em TTY)</span></div>
+        <div class="exit pause"><span class="k">pausa</span><span>7 dias abaixo do piso ou sem leitura</span></div>
+      </div>
+
+      <!-- 4 -->
+      <div class="phase"><span class="st">ready → planning</span></div>
+      <div class="phase-note">no lote, todos os <code>ready</code> são planejados antes de executar</div>
+      <!-- 5 -->
+      <div class="node">
+        <span class="kicker">Mabel</span>
+        <h4>Prepara o worktree</h4>
+        <p>Worktree e branch próprias do item (G5), a partir da integração; roda o <code>setup</code> do projeto.</p>
+      </div>
+      <div class="exits">
+        <div class="exit stop"><span class="k">blocked</span><span><code>setup</code> falhou</span></div>
+      </div>
+      <!-- 6 -->
+      <div class="node agent">
+        <span class="kicker">Agente</span>
+        <h4>Planejador</h4>
+        <p class="meta">opus · Read Glob Grep · 40 turnos · US$ 3</p>
+        <p>Lê o item, o código e as referências congeladas. Produz o menor plano que satisfaz a intenção: critérios verificáveis, escopo em globs, suposições.</p>
+        <div class="out"><span class="file">plano.json</span><code>resumo</code><code>criterios[teste|humano, novo|mantido]</code><code>escopo</code><code>passos</code><code>suposicoes</code><code>conceitosCriticos</code><code>perguntas</code></div>
+      </div>
+      <!-- 7 -->
+      <div class="node">
+        <span class="kicker">Mabel · autonomia</span>
+        <h4>Responde pela sugestão</h4>
+        <p>Pergunta que não toca regra crítica e traz sugestão vira suposição registrada, salvo <code>autonomia: "perguntar"</code>. Aparece no fim do <code>run</code> em “Decididas pela sugestão”.</p>
+      </div>
+      <!-- 8 -->
+      <div class="node gate">
+        <span class="kicker">Gate de início · G2</span>
+        <h4>O plano pode ser executado?</h4>
+        <p>Sem perguntas; com critérios, cada um com <code>teste</code> ou <code>humano</code>; com escopo, fora de <code>.mabel/</code> e <code>.git/</code>; e aprovação humana se toca regra crítica.</p>
+      </div>
+      <div class="exits">
+        <div class="exit human"><span class="k">needs_human · question_plan</span><span>restaram perguntas</span></div>
+        <div class="exit loop"><span class="k">refaz na mesma sessão</span><span>plano incompleto, 1ª vez</span></div>
+        <div class="exit human"><span class="k">needs_human · plan_incomplete</span><span>incompleto de novo</span></div>
+        <div class="exit human"><span class="k">needs_human · critical_approval</span><span>toca caminho ou conceito crítico → <code>mabel aprovar</code></span></div>
+      </div>
+
+      <!-- 9 -->
+      <div class="phase"><span class="st">planned</span></div>
+      <div class="phase-note">fim do lote de planejamento: o <code>run</code> oferece a inbox se houver pendências</div>
+      <!-- 10 -->
+      <div class="phase"><span class="st">executing</span></div>
+      <div class="phase-note"></div>
+      <!-- 11 -->
+      <div class="node agent">
+        <i class="arm in" aria-hidden="true"></i>
+        <span class="kicker">Agente</span>
+        <h4>Executor</h4>
+        <p class="meta">sonnet (opus na 3ª tentativa) · Read Glob Grep Edit Write Bash · 120 turnos · US$ 8</p>
+        <p>Implementa só o plano, um teste por critério <code>teste</code>, roda os comandos de verificação. Sem git de escrita: o Mabel commita.</p>
+        <div class="out"><span class="file">execucao-N.json</span><code>resumo</code><code>criterios → testes{arquivo, nome}</code><code>suposicoes</code><code>perguntas</code><code>escopoAdicional</code><code>impedimento</code></div>
+      </div>
+      <!-- 12 -->
+      <div class="node">
+        <i class="arm" aria-hidden="true"></i>
+        <span class="kicker">Mabel</span>
+        <h4>Confere a saída e commita</h4>
+        <ul>
+          <li>Pergunta ou suposição crítica (G7): para antes do commit</li>
+          <li><code>escopoAdicional</code>: amplia o plano e retoma a mesma sessão, sem contar tentativa</li>
+          <li>Commit no branch do item; sem alteração nova: reprova (ou verifica de novo o já commitado)</li>
+        </ul>
+      </div>
+      <div class="exits">
+        <div class="exit human"><span class="k">needs_human · question_execute</span><span>perguntas ou suposição sobre regra crítica</span></div>
+        <div class="exit human"><span class="k">needs_human · critical_approval</span><span>escopo pedido toca caminho crítico</span></div>
+        <div class="exit human"><span class="k">needs_human · environment_block</span><span>impedimento declarado e nada a verificar</span></div>
+        <div class="exit retry"><span class="k">↺ reprova</span><span>execução sem alteração ou saída inválida</span></div>
+      </div>
+
+      <!-- 13 -->
+      <div class="phase"><span class="st">verifying</span></div>
+      <div class="phase-note">sem agente: tudo roda pelo Mabel, fora do sandbox</div>
+      <!-- 14 -->
+      <div class="node gate">
+        <i class="arm" aria-hidden="true"></i>
+        <span class="kicker">Gate de escopo · G4</span>
+        <h4>Arquivos alterados estão no escopo?</h4>
+        <p>O diff do item contra a origem passa pelas regras do hook. Pega a escrita pelo terminal, que o hook não vê.</p>
+      </div>
+      <div class="exits">
+        <div class="exit retry"><span class="k">↺ reprova</span><span>arquivo fora do escopo</span></div>
+      </div>
+      <!-- 15 -->
+      <div class="node">
+        <span class="kicker">Mabel</span>
+        <h4>Traz a integração para o item</h4>
+        <p>Merge de <code>mabel/integracao</code> no worktree: o que entra na integração é o que foi verificado.</p>
+      </div>
+      <div class="exits">
+        <div class="exit human"><span class="k">needs_human · integration_conflict</span><span>arquivos em conflito</span></div>
+      </div>
+      <!-- 16 -->
+      <div class="node gate">
+        <i class="arm" aria-hidden="true"></i>
+        <span class="kicker">Gate de verificação · G3</span>
+        <h4>Comandos <code>verify</code> do projeto</h4>
+        <p>Cada comando roda no worktree; o log vai para <code>verificacao-N/</code>.</p>
+      </div>
+      <div class="exits">
+        <div class="exit retry"><span class="k">↺ reprova</span><span>comando saiu com código ≠ 0</span></div>
+        <div class="exit human"><span class="k">needs_human · environment_block</span><span>falhou e o executor tinha declarado impedimento</span></div>
+      </div>
+      <!-- 17 -->
+      <div class="node gate">
+        <i class="arm" aria-hidden="true"></i>
+        <span class="kicker">Gate · G3</span>
+        <h4>Cada critério tem teste?</h4>
+        <p>O arquivo declarado existe no worktree e contém o nome do teste.</p>
+      </div>
+      <div class="exits">
+        <div class="exit retry"><span class="k">↺ reprova</span><span>critério sem teste encontrado</span></div>
+      </div>
+      <!-- 18 -->
+      <div class="node gate">
+        <i class="arm" aria-hidden="true"></i>
+        <span class="kicker">Prova · G3</span>
+        <h4>O teste protege o critério?</h4>
+        <p>Roda cada teste no item e no código da base. <code>novo</code>: falha na base e passa no item. <code>mantido</code>: passa nos dois.</p>
+        <div class="out"><span class="file">prova-N.json</span><code>provado</code><code>nao_provado</code><code>sem_prova</code></div>
+      </div>
+      <div class="exits">
+        <div class="exit retry"><span class="k">↺ reprova</span><span>teste que passaria sem a mudança</span></div>
+        <div class="exit stop"><span class="k">failed</span><span>worktree não restaurado após a prova</span></div>
+      </div>
+
+      <!-- 19 -->
+      <div class="phase"><span class="st">reviewing</span></div>
+      <div class="phase-note"></div>
+      <!-- 20 -->
+      <div class="node agent">
+        <span class="kicker">Agente</span>
+        <h4>Revisor</h4>
+        <p class="meta">opus · Read Glob Grep + git diff/log/show · 40 turnos · US$ 3</p>
+        <p>Parte da hipótese de que o código não atende. Avalia cada critério do plano pelo id, com evidência, e aponta problemas. Não declara aprovação.</p>
+        <div class="out"><span class="file">parecer</span><code>criterios{id, atendido, evidencia}</code><code>problemas{bloqueante|menor}</code></div>
+      </div>
+      <!-- 21 -->
+      <div class="node gate">
+        <i class="arm low" aria-hidden="true"></i>
+        <span class="kicker">Veredito · G3</span>
+        <h4>Aprovado, calculado pelo Mabel</h4>
+        <p>Todo critério avaliado, os de teste atendidos e nenhum problema bloqueante. Critério <code>humano</code> fica para você validar.</p>
+      </div>
+      <div class="exits">
+        <div class="exit retry"><span class="k">↺ reprova</span><span>critério não avaliado ou não atendido, ou problema bloqueante</span></div>
+      </div>
+
+      <!-- 22 -->
+      <div class="phase"><span class="st">awaiting_merge</span></div>
+      <div class="phase-note"></div>
+      <!-- 23 -->
+      <div class="node">
+        <span class="kicker">Mabel · G10</span>
+        <h4>Integra o item</h4>
+        <p>Commit de merge em <code>mabel/integracao</code>, apaga worktree e branch do item, regrava <code>.mabel/integracao.md</code>. A fila passa ao próximo item.</p>
+      </div>
+      <div class="exits">
+        <div class="exit stop"><span class="k">failed</span><span>merge na integração falhou</span></div>
+      </div>
+      <!-- 24 -->
+      <div class="node human">
+        <span class="kicker">Você</span>
+        <h4>Entrega ou rejeita</h4>
+        <p><code>mabel entregar</code> abre o PR da integração para a base; o merge é seu. No próximo <code>run</code>, o item vira <code>done</code>. <code>mabel rejeitar</code> reverte o item na integração e o devolve a <code>planning</code> (ou <code>cancelled</code>).</p>
+      </div>
+    </div>
+    <figcaption>A linha tracejada à esquerda é o ciclo de tentativas: toda reprovação (↺) volta ao executor. As caixas laranja à direita param o item em <code>needs_human</code> até você responder pela inbox.</figcaption>
+  </figure>
+
+  <div class="cycle" aria-label="Ciclo de tentativas">
+    <div><b>1ª tentativa reprova</b><span>A 2ª retoma a mesma sessão do executor com o motivo da reprovação.</span></div>
+    <div><b>2ª reprova</b><span>A 3ª abre sessão nova, com o resumo das tentativas, no modelo da camada acima (sonnet → opus).</span></div>
+    <div><b>3ª reprova</b><span><code>needs_human · attempts_exhausted</code>, com o que reprovou em cada tentativa em português.</span></div>
+    <div><b>Falha da run</b><span>Erro do <code>claude</code> leva a <code>failed</code>. Saldo esgotado no meio: espera o reset e retoma pela mesma sessão.</span></div>
+  </div>
+</section>
+
+<!-- 3. Agentes -->
+<section>
+  <div class="section-head">
+    <span class="eyebrow">3 · Agentes</span>
+    <h2>Os cinco agentes</h2>
+    <p>Cada agente é um prompt em <code>prompts/</code> com um esquema de saída em <code>src/schemas/stages.ts</code>. Só o executor escreve arquivos. Modelos e limites são os padrões do <code>config.json</code>.</p>
+  </div>
+  <div class="agents">
+    <article class="agent-card">
+      <header><h3>Nascer</h3><span class="where">mabel nascer · prompts/nascer.md</span></header>
+      <dl>
+        <dt>Quando</dt><dd>Projeto novo ou repositório sem <code>.mabel/</code>, antes do <code>init</code>.</dd>
+        <dt>Run</dt><dd><code>sonnet</code> · Read Glob Grep · 40 turnos · US$ 2 · até 3 rodadas na mesma sessão</dd>
+        <dt>Recebe</dt><dd>Sua descrição em texto livre e o código existente.</dd>
+        <dt>Devolve</dt><dd><code>entendimento</code>, <code>perguntas</code> (≤ 5 por rodada, com sugestão), <code>suposicoes</code> e <code>proposta</code>: stack, <code>CLAUDE.md</code>, regras críticas, backlog de 3 a 10 itens.</dd>
+        <dt>Depois</dt><dd>Você revisa; o Mabel grava pelo caminho do <code>init</code> e commita <code>.mabel/</code> e <code>CLAUDE.md</code>.</dd>
+      </dl>
+    </article>
+    <article class="agent-card">
+      <header><h3>Refinador</h3><span class="where">mabel refinar · prompts/refinar.md</span></header>
+      <dl>
+        <dt>Quando</dt><dd>Item em <code>backlog</code> ou <code>ready</code> que nunca foi planejado.</dd>
+        <dt>Run</dt><dd><code>sonnet</code> · Read Glob Grep · 30 turnos · US$ 1 · na raiz do projeto</dd>
+        <dt>Recebe</dt><dd>O item e o código. Procura o que só você sabe.</dd>
+        <dt>Devolve</dt><dd><code>entendimento</code>, <code>criterios</code> que faltam, <code>foraDoEscopo</code>, <code>perguntas</code> de negócio, <code>conceitosCriticos</code>, <code>quebra</code> sugerida.</dd>
+        <dt>Depois</dt><dd>O que você aceita entra no bloco do item no <code>backlog.md</code>; respostas viram <code>Decisões:</code>.</dd>
+      </dl>
+    </article>
+    <article class="agent-card">
+      <header><h3>Planejador</h3><span class="where">etapa plan · prompts/planejar.md</span></header>
+      <dl>
+        <dt>Quando</dt><dd>Item em <code>planning</code>, dentro do <code>run</code>.</dd>
+        <dt>Run</dt><dd><code>opus</code> · Read Glob Grep · 40 turnos · US$ 3 · no worktree do item</dd>
+        <dt>Recebe</dt><dd>Item, regras críticas, referências congeladas; num replanejamento, o plano anterior e o resumo das tentativas.</dd>
+        <dt>Devolve</dt><dd><code>plano.json</code>: critérios com <code>verificacao</code> e <code>comportamento</code>, <code>escopo</code> em globs, <code>passos</code>, <code>suposicoes</code>, <code>conceitosCriticos</code>, <code>perguntas</code>.</dd>
+        <dt>Depois</dt><dd>Gate de início (G2) → <code>planned</code> ou <code>needs_human</code>.</dd>
+      </dl>
+    </article>
+    <article class="agent-card">
+      <header><h3>Executor</h3><span class="where">etapa execute · prompts/executar.md</span></header>
+      <dl>
+        <dt>Quando</dt><dd>Item em <code>executing</code>; volta aqui a cada reprovação.</dd>
+        <dt>Run</dt><dd><code>sonnet</code> (opus na 3ª) · Read Glob Grep Edit Write Bash · 120 turnos · US$ 8 · hook de escopo, sandbox, sem <code>git commit/push/merge</code>, <code>curl</code>, <code>sudo</code></dd>
+        <dt>Recebe</dt><dd>O plano; na retentativa, o motivo da reprovação ou o resumo.</dd>
+        <dt>Devolve</dt><dd><code>execucao-N.json</code>: testes por critério, <code>suposicoes</code>, <code>perguntas</code>, <code>escopoAdicional</code>, <code>impedimento</code>. E as edições no worktree.</dd>
+        <dt>Depois</dt><dd>O Mabel commita e roda a verificação e a prova.</dd>
+      </dl>
+    </article>
+    <article class="agent-card">
+      <header><h3>Revisor</h3><span class="where">etapa review · prompts/revisar.md</span></header>
+      <dl>
+        <dt>Quando</dt><dd>Item em <code>reviewing</code>, depois da prova.</dd>
+        <dt>Run</dt><dd><code>opus</code> · Read Glob Grep, Bash só para <code>git diff</code>, <code>log</code>, <code>show</code> · 40 turnos · US$ 3</dd>
+        <dt>Recebe</dt><dd>Plano, execução e o diff da branch contra a base.</dd>
+        <dt>Devolve</dt><dd>Parecer: cada critério com <code>atendido</code> e <code>evidencia</code>; <code>problemas</code> bloqueantes e menores.</dd>
+        <dt>Depois</dt><dd>O Mabel calcula o veredito e integra, ou devolve ao executor.</dd>
+      </dl>
+    </article>
+  </div>
+</section>
+
+<!-- 4. Comandos -->
+<section>
+  <div class="section-head">
+    <span class="eyebrow">4 · Comandos</span>
+    <h2>O que cada comando faz e devolve</h2>
+    <p>Na ordem da jornada. Quase todos aceitam <code>--json</code>, para o <code>mabel-ui</code>, e <code>mabel comandos</code> explica as opções de cada um. As saídas de terminal são exemplos ilustrativos montados a partir dos formatos do código, não capturas reais.</p>
+  </div>
+
+  <div class="groups">
+
+    <div class="group">
+      <h3>Preparar <small>dar forma ao projeto e ao backlog</small></h3>
+      <div class="cmds">
+        <article class="cmd">
+          <header><span class="name">nascer</span><span class="badge agent">agente nascer</span></header>
+          <p class="usage">mabel nascer ["descrição"] [--stack id] [--json] · --responder · --aceitar · --descartar · --lista</p>
+          <p>Conversa curta que termina numa proposta revisável. Fora de TTY roda em passos, para o <code>mabel-ui</code>.</p>
+          <p class="writes"><b>Grava:</b> <code>.mabel/config.json</code>, <code>regras-criticas.md</code>, <code>backlog.md</code>, <code>CLAUDE.md</code> (se não existia) e o commit deles. <code>git init -b main</code> num diretório vazio.</p>
+<pre class="term"><span class="d">Rodada 1 de 3</span>
+<span class="a">▸ nascer · sonnet</span>
+1. Quem aprova as férias? <span class="d">[sugestão: o líder do time]</span>
+<span class="d">Rodada 2 de 3 … proposta</span>
+stack node · 6 itens · 1 regra crítica
+Gravar? [S/n]</pre>
+        </article>
+        <article class="cmd">
+          <header><span class="name">init</span><span class="badge none">sem agente</span></header>
+          <p class="usage">mabel init [--stack node|python|go|rust]</p>
+          <p>Detecta stack e comandos de <code>setup</code> e <code>verify</code>, ou pergunta. Já sendo projeto, só registra no banco.</p>
+          <p class="writes"><b>Grava:</b> <code>.mabel/config.json</code> (base, modelos, limites, <code>autonomia</code>, integração, sandbox, rede), <code>regras-criticas.md</code>, <code>backlog.md</code>, <code>.gitignore</code>. Sem testes, o item 1 é “Estabelecer base de testes”.</p>
+<pre class="term">Stack: node · setup: npm ci · verify: npm test
+Usar estes comandos? [S/n/editar]
+Commitar o .mabel/ na branch main? [S/n]</pre>
+        </article>
+        <article class="cmd">
+          <header><span class="name">add</span><span class="badge none">sem agente</span></header>
+          <p class="usage">mabel add "título" [--intencao] [--criterio]… [--fora-do-escopo]… [--referencia]… [--depende n]… [--restricoes]</p>
+          <p>Acrescenta um bloco ao fim do backlog e sincroniza com o banco. No TTY, as referências do item são escolhidas numa lista do catálogo.</p>
+          <p class="writes"><b>Grava:</b> o item em <code>.mabel/backlog.md</code>; estado <code>ready</code>, ou <code>backlog</code> se depende de item não concluído.</p>
+<pre class="term">Item #4 adicionado: Desconto por volume · ready
+Refinar o item agora com um agente? [s/N]</pre>
+        </article>
+        <article class="cmd">
+          <header><span class="name">refinar</span><span class="badge agent">agente refinador</span></header>
+          <p class="usage">mabel refinar [n] [--refazer] [--aceitar | --descartar] · refinar n --referencias</p>
+          <p>Proposta de critérios, limites e perguntas de negócio. Você aceita, edita ou descarta cada parte. <code>--referencias</code> só escolhe as referências do item, sem agente e sem custo.</p>
+          <p class="writes"><b>Grava:</b> só o que você aceita, no trecho do item no <code>backlog.md</code>: critérios, fora do escopo, <code>Decisões: pergunta → resposta</code>, regras críticas.</p>
+<pre class="term"><span class="a">▸ refinar · sonnet</span>
+Entendimento: desconto progressivo por quantidade…
+? Desconto acumula com cupom? <span class="d">[sugestão: não]</span>
+Gravar no backlog? [S/n/d]</pre>
+        </article>
+        <article class="cmd">
+          <header><span class="name">referencia</span><span class="badge none">sem agente</span></header>
+          <p class="usage">mabel referencia [--json] · api nome url · tela nome url-figma · tela nome --png arquivo</p>
+          <p>Guarda cópias de APIs e telas para os itens citarem em <code>Referências:</code>. Os agentes leem a cópia congelada, nunca o link.</p>
+          <p class="writes"><b>Grava:</b> <code>.mabel/referencias/api/nome.openapi.json</code> + <code>.md</code>; <code>telas/nome/tela.png</code> + <code>tela.md</code>.</p>
+        </article>
+        <article class="cmd">
+          <header><span class="name">credencial</span><span class="badge none">sem agente</span></header>
+          <p class="usage">mabel credencial · credencial figma --expira AAAA-MM-DD</p>
+          <p>Acompanha o vencimento do <code>FIGMA_TOKEN</code>; avisa a partir de 14 dias do fim.</p>
+          <p class="writes"><b>Grava:</b> a data em <code>~/.mabel/credenciais.json</code>, nunca o token.</p>
+        </article>
+      </div>
+    </div>
+
+    <div class="group">
+      <h3>Rodar <small>a esteira da seção 2</small></h3>
+      <div class="cmds">
+        <article class="cmd">
+          <header><span class="name">run</span><span class="badge agent">planejador · executor · revisor</span></header>
+          <p class="usage">mabel run [--item n] [--uma] [--sem-lote] [--fundo [--json]]</p>
+          <p>Em lote: planeja todos os <code>ready</code>, oferece a inbox, depois executa os <code>planned</code> um a um até a fila acabar. <code>--sem-lote</code> leva cada item até o fim antes do próximo.</p>
+          <p class="writes"><b>Grava:</b> estados e gates no SQLite; artefatos em <code>~/.mabel/items/&lt;id&gt;/</code>; runs em <code>~/.mabel/runs/</code>; commits na branch do item; merge em <code>mabel/integracao</code>; <code>quadro.md</code> e <code>integracao.md</code>.</p>
+<pre class="term"><span class="a">  ▸ planejar · opus</span>
+<span class="d">    → Read src/pedidos.ts ✓</span>
+#4 Desconto por volume: planning → planned
+<span class="a">  ▸ executar · sonnet</span>
+<span class="d">    → Edit src/pedidos.ts ✓</span>
+<span class="d">    → Bash npm test ✓</span>
+<span class="a">  ▸ revisar · opus</span>
+<span class="g">#4 Desconto por volume: reviewing → awaiting_merge</span>
+■ fila vazia · awaiting_merge 2 · needs_human 1 · US$ 4,10 · 18 min
+
+Decididas pela sugestão (revise no merge):
+  #4 Desconto acumula com cupom? → não
+<span class="h">Abrir a inbox agora? [S/n]</span></pre>
+        </article>
+        <article class="cmd">
+          <header><span class="name">supervisor · anexar · parar</span><span class="badge none">sem agente</span></header>
+          <p class="usage">mabel run --fundo · mabel anexar · mabel parar · mabel supervisor [instalar|remover|estado]</p>
+          <p>A fila roda em segundo plano, sem depender do terminal. O supervisor (no launchd) retoma as filas depois de reiniciar.</p>
+          <p class="writes"><b>Devolve:</b> <code>anexar</code> segue o log da fila ao vivo (Ctrl+C solta sem parar); <code>parar</code> encerra depois da etapa em andamento.</p>
+        </article>
+      </div>
+    </div>
+
+    <div class="group">
+      <h3>Decidir <small>o que só você resolve</small></h3>
+      <div class="cmds">
+        <article class="cmd">
+          <header><span class="name">inbox</span><span class="badge human">você decide</span></header>
+          <p class="usage">mabel inbox</p>
+          <p>Uma pendência por vez, em ordem de número. Enter aceita a sugestão do agente; texto responde; <code>p</code> pula.</p>
+          <p class="writes"><b>Grava:</b> a decisão no item e o leva ao estado certo (tabela abaixo).</p>
+<pre class="term"><span class="h">#2 Exportar relatório · perguntas da execução</span>
+? Incluir itens cancelados? <span class="d">[sugestão: não]</span>
+Respostas registradas em 2 itens · 1 pulado.
+Retomar a esteira agora? [S/n]</pre>
+        </article>
+        <article class="cmd">
+          <header><span class="name">item</span><span class="badge none">leitura</span></header>
+          <p class="usage">mabel item n</p>
+          <p>Tudo sobre um item: estado, pendência e comandos que a resolvem, plano, escopo, tentativas, custo, últimas runs, negações do hook e transições.</p>
+        </article>
+        <article class="cmd">
+          <header><span class="name">aprovar · responder · cancelar</span><span class="badge human">você decide</span></header>
+          <p class="usage">mabel aprovar n · responder n "texto" | --respostas arquivo.json [--replanejar] · cancelar n</p>
+          <p>Os mesmos efeitos da inbox, avulsos. <code>aprovar</code> leva um item crítico a <code>planned</code>; <code>responder</code> retoma a sessão certa ou replaneja; <code>cancelar</code> tira o item da fila.</p>
+        </article>
+      </div>
+
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Pendência</th><th>De onde vem</th><th>Sua resposta leva a</th></tr></thead>
+          <tbody>
+            <tr><td>question_plan</td><td>Gate de início: perguntas sem sugestão ou críticas</td><td><code>planning</code>, mesma sessão do planejador</td></tr>
+            <tr><td>plan_incomplete</td><td>Plano incompleto duas vezes</td><td><code>planning</code> com a sua orientação</td></tr>
+            <tr><td>critical_approval</td><td>Toca regra crítica (no plano ou no escopo pedido)</td><td><code>planned</code> com <code>aprovar</code>; texto ajusta os critérios</td></tr>
+            <tr><td>question_execute</td><td>Executor perguntou ou supôs sobre regra crítica</td><td><code>executing</code>, mesma tentativa; <code>--replanejar</code> → <code>planning</code></td></tr>
+            <tr><td>attempts_exhausted</td><td>Três tentativas reprovadas</td><td><code>executing</code>, ciclo novo com modelo escalado</td></tr>
+            <tr><td>environment_block</td><td>Impedimento confirmado fora do sandbox</td><td><code>executing</code>, retoma a sessão da execução</td></tr>
+            <tr><td>integration_conflict</td><td>Merge da integração no item com conflito</td><td><code>executing</code>, sessão nova que resolve o conflito</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="group">
+      <h3>Integrar e entregar <small>da integração para a base</small></h3>
+      <div class="cmds">
+        <article class="cmd">
+          <header><span class="name">integracao</span><span class="badge none">leitura</span></header>
+          <p class="usage">mabel integracao</p>
+          <p>O que está em <code>mabel/integracao</code> esperando a base, e o que olhar primeiro.</p>
+          <p class="writes"><b>Grava:</b> <code>.mabel/integracao.md</code>: por item, plano, arquivos alterados, prova, devoluções por gate, custo.</p>
+        </article>
+        <article class="cmd">
+          <header><span class="name">entregar</span><span class="badge human">você pede</span></header>
+          <p class="usage">mabel entregar [--substituir] [--rascunho]</p>
+          <p>Snapshot da integração e PR para a base, com o relatório no corpo. O merge é seu; no próximo <code>run</code> os itens viram <code>done</code>.</p>
+          <p class="writes"><b>Grava:</b> branch <code>mabel/entrega/&lt;data&gt;</code>, push no remoto, PR pelo <code>gh</code>. Sem <code>gh</code>: o endereço e o arquivo do corpo.</p>
+<pre class="term">Entrega mabel/entrega/2026-10-28 · 3 itens desde a main
+<span class="g">PR aberto: https://github.com/…/pull/31</span></pre>
+        </article>
+        <article class="cmd">
+          <header><span class="name">rejeitar</span><span class="badge human">você decide</span></header>
+          <p class="usage">mabel rejeitar n "motivo" [--cancelar]</p>
+          <p>Reverte o merge do item na integração, num worktree temporário. Avisa os itens integrados que dependem dele.</p>
+<pre class="term">#4 revertido na integração: volta ao planejamento
+com o motivo no próximo `mabel run`.</pre>
+        </article>
+      </div>
+    </div>
+
+    <div class="group">
+      <h3>Auditar e avulsos <small>sem efeito na fila</small></h3>
+      <div class="cmds">
+        <article class="cmd">
+          <header><span class="name">status · saldo</span><span class="badge none">leitura</span></header>
+          <p class="usage">mabel status [--atualizar] · mabel saldo</p>
+          <p>Barras das janelas de 5 h e 7 dias com reset e ritmo; resumo do quadro do projeto (“Aguardando você”, “Em andamento”); runs recentes; pausa por saldo, se houver.</p>
+        </article>
+        <article class="cmd">
+          <header><span class="name">runs</span><span class="badge none">leitura</span></header>
+          <p class="usage">mabel runs [--limite n] · mabel runs id</p>
+          <p>Toda run auditada: tipo (<code>plan #3</code>, <code>exec</code>, <code>probe</code>), modelo, turnos, duração, custo. O detalhe traz a linha do tempo das ferramentas e o caminho do transcript.</p>
+        </article>
+        <article class="cmd">
+          <header><span class="name">projetos · projeto · eventos</span><span class="badge none">leitura</span></header>
+          <p class="usage">mabel projetos [--removidos] · projeto nome · projeto remover nome · eventos</p>
+          <p>Auditoria por projeto: custo por etapa e modelo, gates reprovados, escalonamentos, decisões autônomas, pausas. <code>eventos</code> emite uma linha JSON por evento, para o <code>mabel-ui</code>.</p>
+        </article>
+        <article class="cmd">
+          <header><span class="name">exec · comandos · completion</span><span class="badge none">avulso</span></header>
+          <p class="usage">mabel exec "prompt" [--model] [--max-turns] [--max-budget-usd] · comandos [--json] · completion zsh</p>
+          <p><code>exec</code> abre uma conversa no Claude Code, com a mesma auditoria e fora de qualquer item: cada mensagem é uma run que retoma a sessão, até <code>sair</code> ou Ctrl+D. <code>comandos</code> lista cada comando com as opções explicadas (em JSON, para outros programas). <code>completion</code> imprime o autocompletar do zsh.</p>
+        </article>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<footer>Fonte: <code>src/pipeline.ts</code>, <code>src/stages.ts</code>, <code>src/schemas/stages.ts</code>, <code>prompts/*.md</code>, <code>docs/CONTRATO.md</code> e <code>docs/MENU.md</code>, branch <code>main</code> em 29/10/2026.</footer>
+
+</div>
+</body>
+</html>

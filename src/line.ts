@@ -1,15 +1,31 @@
 import type { Key, Style } from './menu.ts';
+import type { ArgSpec, OptionSpecs, ValueOption, ValueSource } from './options.ts';
+import { optionDescription, optionLabel } from './options.ts';
 
-/** Comando oferecido na lista de autocompletar. */
+/** Comando, opção ou valor oferecido na lista de autocompletar. */
 export interface Suggestion {
   name: string;
   description: string;
   /** Passo do plano em que o comando será implementado; ausente quando está disponível. */
   plannedStep?: number;
+  /** Texto mostrado na lista; ausente nos comandos, que aparecem como `/nome`. */
+  label?: string;
+  /** Texto que entra na linha no lugar da palavra atual; ausente nos comandos. */
+  insert?: string;
+}
+
+/** Opções e argumentos de um comando, para a lista que abre depois de `/comando `. */
+export interface CommandSpec {
+  options?: OptionSpecs;
+  args?: ArgSpec[];
 }
 
 export interface LineContext {
   suggestions: Suggestion[];
+  /** Por nome de comando. */
+  commandSpecs?: Record<string, CommandSpec>;
+  /** Valores de uma fonte (itens, projetos, referências); chamado só quando a lista precisa. */
+  values?: (source: ValueSource) => ValueOption[];
   /** Linhas anteriores, da mais antiga para a mais recente. */
   history: string[];
 }
@@ -24,6 +40,8 @@ export interface LineState {
   selected: number;
   /** Lista fechada com Esc até a próxima tecla que altere a linha. */
   dismissed: boolean;
+  /** Seleção movida com as setas desde a última edição: na lista de opções, enter escolhe. */
+  navigated?: boolean;
   message?: string;
 }
 
@@ -37,13 +55,100 @@ export function initialLine(context: LineContext): LineState {
 
 /** Comandos que casam com o texto, ou `undefined` quando a lista está fechada. */
 export function suggestionsFor(state: LineState, context: LineContext): Suggestion[] | undefined {
-  if (state.dismissed || !state.text.startsWith('/') || state.text.includes(' ')) return undefined;
+  if (state.dismissed || !state.text.startsWith('/')) return undefined;
+  if (state.text.includes(' ')) return argSuggestions(state, context);
   const prefix = state.text.slice(1);
   return context.suggestions.filter((suggestion) => suggestion.name.startsWith(prefix));
 }
 
+/** A lista aberta é de opções e valores (depois de `/comando `), não de comandos. */
+const isArgList = (state: LineState) => state.text.includes(' ');
+
+function matches(option: ValueOption, current: string): boolean {
+  if (!current) return true;
+  const needle = current.toLowerCase();
+  return option.value.toLowerCase().startsWith(needle) || option.description.toLowerCase().includes(needle);
+}
+
+function valueSuggestions(options: ValueOption[], current: string): Suggestion[] {
+  return options
+    .filter((option) => matches(option, current))
+    .map((option) => ({ name: option.value, label: option.value, insert: option.value, description: option.description }));
+}
+
+/**
+ * Opções e valores para a palavra no fim da linha: o valor de uma opção que o espera, a
+ * escolha ou o valor do próximo argumento, e as opções ainda não usadas. `undefined` fecha a
+ * lista (aspas abertas, cursor no meio, comando sem opções nem valores para oferecer).
+ */
+export function argSuggestions(state: LineState, context: LineContext): Suggestion[] | undefined {
+  const { text } = state;
+  if (state.cursor !== text.length) return undefined;
+  let words: string[];
+  try {
+    words = splitArgs(text.slice(1));
+  } catch {
+    return undefined;
+  }
+  const spec = context.commandSpecs?.[words[0] ?? ''];
+  if (!spec) return undefined;
+  const fresh = /\s$/.test(text);
+  const current = fresh ? '' : (words.at(-1) ?? '');
+  const before = words.slice(1, fresh ? undefined : -1);
+  const options = spec.options ?? {};
+  const values = (source: ValueSource | undefined) => (source && context.values ? context.values(source) : []);
+
+  const used = new Set<string>();
+  let positional = 0;
+  let pending: string | undefined;
+  for (let i = 0; i < before.length; i++) {
+    const word = before[i] as string;
+    if (word.startsWith('--')) {
+      const [name = '', inline] = word.slice(2).split('=');
+      used.add(name);
+      if (options[name]?.type === 'string' && inline === undefined) {
+        if (i + 1 === before.length) pending = name;
+        i++;
+      }
+    } else {
+      positional++;
+    }
+  }
+
+  if (pending) {
+    const list = valueSuggestions(values(options[pending]?.values), current);
+    return list.length > 0 ? list : undefined;
+  }
+  const optionList: Suggestion[] = Object.entries(options)
+    .filter(([name, option]) => option.multiple || !used.has(name))
+    .filter(([name]) => `--${name}`.startsWith(current))
+    .map(([name, option]) => ({ name, label: optionLabel(name, option), insert: `--${name}`, description: optionDescription(option) }));
+  if (current.startsWith('-')) return optionList.length > 0 ? optionList : undefined;
+
+  const arg = spec.args?.[positional];
+  const argList = [
+    ...valueSuggestions((arg?.choices ?? []).map((choice) => ({ value: choice.name, description: choice.description })), current),
+    ...valueSuggestions(values(arg?.values), current),
+  ];
+  const list = current ? argList : [...argList, ...optionList];
+  return list.length > 0 ? list : undefined;
+}
+
+/** Palavra com aspas quando tem espaço ou caractere que o shell trataria. */
+function quoteWord(word: string): string {
+  return /[\s"'\\$`]/.test(word) ? `"${word.replace(/(["\\$`])/g, '\\$1')}"` : word;
+}
+
+/** Troca a palavra no fim da linha pela sugestão, seguida de espaço. */
+function insertSuggestion(state: LineState, suggestion: Suggestion): { state: LineState } {
+  const { text } = state;
+  const start = /\s$/.test(text) ? text.length : text.lastIndexOf(' ') + 1;
+  const completed = `${text.slice(0, start)}${quoteWord(suggestion.insert ?? suggestion.name)} `;
+  return edit(state, completed, completed.length);
+}
+
 function edit(state: LineState, text: string, cursor: number): { state: LineState } {
-  return { state: { ...state, text, cursor, selected: 0, dismissed: false, message: undefined } };
+  return { state: { ...state, text, cursor, selected: 0, dismissed: false, navigated: false, message: undefined } };
 }
 
 function previousWordStart(text: string, cursor: number): number {
@@ -75,11 +180,13 @@ export function lineStep(state: LineState, key: Key, context: LineContext): Line
   }
   if (key.name === 'return' || key.name === 'enter') {
     const chosen = list?.[state.selected];
+    if (chosen && isArgList(state)) return state.navigated ? insertSuggestion(state, chosen) : { submit: text };
     return { submit: chosen ? `/${chosen.name}` : text };
   }
   if (key.name === 'tab') {
     const chosen = list?.[state.selected];
     if (!chosen) return { state: quiet };
+    if (isArgList(state)) return insertSuggestion(state, chosen);
     const completed = `/${chosen.name} `;
     return edit(state, completed, completed.length);
   }
@@ -88,8 +195,9 @@ export function lineStep(state: LineState, key: Key, context: LineContext): Line
   if (key.name === 'up' || key.name === 'down') {
     const delta = key.name === 'up' ? -1 : 1;
     if (list && list.length > 0) {
-      const selected = (state.selected + delta + list.length) % list.length;
-      return { state: { ...quiet, selected } };
+      // Na lista de opções, a primeira seta só mostra a seleção, na primeira linha.
+      const selected = isArgList(state) && !state.navigated ? (delta > 0 ? 0 : list.length - 1) : (state.selected + delta + list.length) % list.length;
+      return { state: { ...quiet, selected, navigated: true } };
     }
     const index = state.historyIndex + delta;
     if (index < 0 || index > context.history.length) return { state: quiet };
@@ -138,14 +246,22 @@ export function renderBelow(state: LineState, context: LineContext, style: Style
   const lines: string[] = [];
   if (list) {
     if (list.length === 0) lines.push(style.dim('  nenhum comando'));
-    const nameWidth = Math.max(...list.map((suggestion) => suggestion.name.length + 1));
+    const args = isArgList(state);
+    const label = (suggestion: Suggestion) => suggestion.label ?? `/${suggestion.name}`;
+    const nameWidth = Math.max(...list.map((suggestion) => label(suggestion).length));
     const start = windowStart(state.selected, list.length);
     list.slice(start, start + LIST_SIZE).forEach((suggestion, offset) => {
       const planned = suggestion.plannedStep ? `  (passo ${suggestion.plannedStep})` : '';
-      const text = fit(`/${suggestion.name}`.padEnd(nameWidth) + `  ${suggestion.description}${planned}`, width - 3);
-      if (start + offset === state.selected) lines.push(style.accent(`❯ ${text}`));
+      const plain = fit(label(suggestion).padEnd(nameWidth) + `  ${suggestion.description}${planned}`, width - 3);
+      const text = args ? plain.slice(0, nameWidth) + style.dim(plain.slice(nameWidth)) : plain;
+      // Na lista de opções, a seleção só aparece depois das setas: enter sem elas executa a linha.
+      if (start + offset === state.selected && (!args || state.navigated)) lines.push(style.accent(`❯ ${text}`));
       else lines.push(suggestion.plannedStep ? style.dim(`  ${text}`) : `  ${text}`);
     });
+    if (args) {
+      const more = list.length > LIST_SIZE ? ` · ${list.length} ao todo` : '';
+      lines.push(style.dim(`  tab completa · ↑/↓ escolhe · enter ${state.navigated ? 'escolhe' : 'executa'}${more}`));
+    }
   }
   if (state.message) lines.push(style.dim(fit(state.message, width - 1)));
   return lines;

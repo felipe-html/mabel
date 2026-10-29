@@ -2,14 +2,34 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { ask, confirm, interactive } from './ask.ts';
 import { type ItemFields, appendBlocks, parseBacklog, renderItemBlock } from './backlog.ts';
+import { type CatalogEntry, chooseReferences, referenceCatalog } from './capture.ts';
 import { dataDir, openDb } from './db.ts';
-import { backlogPath, getItem, nextNumber, syncBacklog } from './items.ts';
+import { backlogPath, getItem, listItems, nextNumber, syncBacklog } from './items.ts';
+import type { ArgSpec, OptionSpecs } from './options.ts';
 import { ProjectError, resolveProject } from './project.ts';
+import { referenceProblem } from './references.ts';
 import { refineCommand } from './refine.ts';
 import { style } from './style.ts';
 
 export const addUsage =
-  'mabel add "<título>" [--intencao <texto>] [--criterio <texto>]... [--fora-do-escopo <texto>]... [--depende <n>]... [--restricoes <texto>]';
+  'mabel add "<título>" [--intencao <texto>] [--criterio <texto>]... [--fora-do-escopo <texto>]... [--referencia <entrada>]... [--depende <n>]... [--restricoes <texto>]';
+
+export const addOptions = {
+  intencao: { type: 'string', value: '<texto>', description: 'O que você quer e por quê; sem ela, no terminal, o Mabel pergunta campo a campo' },
+  criterio: { type: 'string', multiple: true, value: '<texto>', description: 'Critério de aceite' },
+  'fora-do-escopo': { type: 'string', multiple: true, value: '<texto>', description: 'O que o item não faz' },
+  referencia: {
+    type: 'string',
+    multiple: true,
+    value: '<entrada>',
+    values: 'referencia',
+    description: 'Tela, operação de API ou arquivo de .mabel/referencias/ (veja `mabel referencia`)',
+  },
+  depende: { type: 'string', multiple: true, value: '<n>', values: 'item', description: 'Item que precisa ser entregue antes deste' },
+  restricoes: { type: 'string', value: '<texto>', description: 'Limites de implementação (bibliotecas, arquivos, padrões)' },
+} satisfies OptionSpecs;
+
+export const addArgs: ArgSpec[] = [{ name: '"<título>"', description: 'Título do item' }];
 
 function parseNumbers(values: string[]): number[] | string {
   const numbers: number[] = [];
@@ -29,13 +49,7 @@ export function parseAddArgs(args: string[]): Partial<ItemFields> | string {
     parsed = parseArgs({
       args,
       allowPositionals: true,
-      options: {
-        intencao: { type: 'string' },
-        criterio: { type: 'string', multiple: true },
-        'fora-do-escopo': { type: 'string', multiple: true },
-        depende: { type: 'string', multiple: true },
-        restricoes: { type: 'string' },
-      },
+      options: addOptions,
     });
   } catch (error) {
     return (error as Error).message;
@@ -48,6 +62,7 @@ export function parseAddArgs(args: string[]): Partial<ItemFields> | string {
     dependsOn,
     criteria: list(values.criterio),
     outOfScope: list(values['fora-do-escopo']),
+    references: list(values.referencia),
   };
   const title = positionals.join(' ').trim();
   if (title) fields.title = title;
@@ -67,8 +82,8 @@ async function askList(label: string): Promise<string[]> {
   }
 }
 
-/** Perguntas em sequência no TTY: título, intenção, critérios, fora do escopo, dependências e restrições. */
-async function askFields(partial: Partial<ItemFields>): Promise<ItemFields | string> {
+/** Perguntas em sequência no TTY: título, intenção, critérios, fora do escopo, referências, dependências e restrições. */
+async function askFields(partial: Partial<ItemFields>, catalog: CatalogEntry[]): Promise<ItemFields | string> {
   const title = partial.title ?? (await ask('Título: '));
   if (!title) return 'O título é obrigatório.';
   const intent = partial.intent ?? (await ask('Intenção (o que você quer e por quê): '));
@@ -77,6 +92,11 @@ async function askFields(partial: Partial<ItemFields>): Promise<ItemFields | str
   if (criteria.length === 0) criteria = await askList('Critérios de aceite');
   let outOfScope = partial.outOfScope ?? [];
   if (outOfScope.length === 0) outOfScope = await askList('Fora do escopo (o que o item não faz)');
+  let references = partial.references ?? [];
+  if (references.length === 0 && catalog.length > 0) {
+    process.stdout.write(style.dim('Referências (telas, operações de API e arquivos já capturados):\n'));
+    references = (await chooseReferences(catalog, references)) ?? [];
+  }
   let dependsOn = partial.dependsOn ?? [];
   if (dependsOn.length === 0) {
     const answer = parseNumbers([await ask('Depende de (ex.: 2, 3; enter para nenhum): ')]);
@@ -84,7 +104,7 @@ async function askFields(partial: Partial<ItemFields>): Promise<ItemFields | str
     dependsOn = answer;
   }
   const restrictions = partial.restrictions ?? ((await ask('Restrições (enter para nenhuma): ')) || null);
-  return { title, intent, criteria, dependsOn, restrictions, outOfScope, decisions: [], criticalConcepts: [] };
+  return { title, intent, criteria, dependsOn, restrictions, outOfScope, decisions: [], criticalConcepts: [], references };
 }
 
 export async function add(args: string[]): Promise<number> {
@@ -94,34 +114,36 @@ export async function add(args: string[]): Promise<number> {
     return 1;
   }
 
-  let fields: ItemFields | string;
-  if (interactive() && !partial.intent) {
-    fields = await askFields(partial);
-  } else if (!partial.title || !partial.intent) {
-    fields = `Informe o título e a intenção (--intencao).`;
-  } else {
-    fields = {
-      title: partial.title,
-      intent: partial.intent,
-      criteria: partial.criteria ?? [],
-      dependsOn: partial.dependsOn ?? [],
-      restrictions: partial.restrictions ?? null,
-      outOfScope: partial.outOfScope ?? [],
-      decisions: [],
-      criticalConcepts: [],
-    };
-  }
-  if (typeof fields === 'string') {
-    process.stderr.write(`${fields}\nUso: ${addUsage}\n`);
-    return 1;
-  }
-
   const db = openDb(dataDir());
   let number: number;
   try {
     const project = resolveProject(db);
     // Sincroniza antes para que ids pendentes no arquivo não colidam com o novo.
     const before = syncBacklog(db, project);
+
+    let fields: ItemFields | string;
+    if (interactive() && !partial.intent) {
+      fields = await askFields(partial, referenceCatalog(project.root, listItems(db, project.id)));
+    } else if (!partial.title || !partial.intent) {
+      fields = `Informe o título e a intenção (--intencao).`;
+    } else {
+      fields = {
+        title: partial.title,
+        intent: partial.intent,
+        criteria: partial.criteria ?? [],
+        dependsOn: partial.dependsOn ?? [],
+        restrictions: partial.restrictions ?? null,
+        outOfScope: partial.outOfScope ?? [],
+        decisions: [],
+        criticalConcepts: [],
+        references: partial.references ?? [],
+      };
+    }
+    if (typeof fields === 'string') {
+      process.stderr.write(`${fields}\nUso: ${addUsage}\n`);
+      return 1;
+    }
+
     const path = backlogPath(project);
     const text = readFileSync(path, 'utf8');
     const numbers = parseBacklog(text).flatMap((item) => (item.number === undefined ? [] : [item.number]));
@@ -133,6 +155,8 @@ export async function add(args: string[]): Promise<number> {
     process.stdout.write(`Item #${number} adicionado: ${fields.title} · ${item?.status ?? '?'}\n`);
     for (const warning of [...before.warnings, ...after.warnings]) process.stdout.write(style.dim(`${warning}\n`));
     if (item?.status === 'blocked') process.stdout.write(`Bloqueado: ${item.statusReason}\n`);
+    const problem = referenceProblem(project.root, fields.references ?? []);
+    if (problem) process.stdout.write(`Fica no backlog até corrigir: ${problem}. Veja as referências com \`mabel referencia\`.\n`);
     if (!interactive()) return 0;
   } catch (error) {
     if (error instanceof ProjectError) {

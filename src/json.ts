@@ -198,6 +198,42 @@ export function stageInProgress(db: DatabaseSync, projectId: string): StageInPro
   return { item: row.number, titulo: row.title, etapa: STATUS_STAGES[row.status] as string, papel: null, modelo: null, run: null, inicio: null };
 }
 
+/** Etapas em que o item está numa tentativa de execução. */
+const ATTEMPT_STAGES = new Set(['executar', 'verificar', 'revisar']);
+
+export interface AttemptInProgress {
+  /** Tentativa atual no ciclo, a partir de 1; nula fora de executar, verificar e revisar. */
+  tentativa: number | null;
+  /** Revisões reprovadas desde o último plano aprovado. */
+  reprovacoes: number;
+  ultima_revisao: { resultado: 'aprovada' | 'reprovada'; em: string } | null;
+}
+
+/**
+ * Tentativa e revisões do item em andamento (`projetos --json`). Na execução, `attempts`
+ * ainda conta as tentativas encerradas; na verificação e na revisão, já inclui a atual. As
+ * revisões contam desde o último gate de início aprovado, que abre o plano em vigor.
+ */
+export function attemptInProgress(db: DatabaseSync, projectId: string, stage: StageInProgress): AttemptInProgress {
+  const item = db
+    .prepare('SELECT id, attempts FROM items WHERE project_id = ? AND number = ?')
+    .get(projectId, stage.item) as { id: string; attempts: number } | undefined;
+  if (!item) return { tentativa: null, reprovacoes: 0, ultima_revisao: null };
+  const tentativa = ATTEMPT_STAGES.has(stage.etapa) ? (stage.etapa === 'executar' ? item.attempts + 1 : Math.max(item.attempts, 1)) : null;
+  const since = db
+    .prepare("SELECT coalesce(max(id), 0) AS id FROM gate_results WHERE item_id = ? AND gate = 'start' AND passed = 1")
+    .get(item.id) as { id: number };
+  const reviews = db
+    .prepare("SELECT passed, at FROM gate_results WHERE item_id = ? AND gate = 'review' AND id > ? ORDER BY id")
+    .all(item.id, since.id) as { passed: number; at: string }[];
+  const last = reviews[reviews.length - 1];
+  return {
+    tentativa,
+    reprovacoes: reviews.filter((review) => !review.passed).length,
+    ultima_revisao: last ? { resultado: last.passed ? 'aprovada' : 'reprovada', em: isoLocal(new Date(last.at)) } : null,
+  };
+}
+
 export function inboxCount(db: DatabaseSync, projectId: string): number {
   const row = db
     .prepare("SELECT count(*) AS count FROM items WHERE project_id = ? AND status = 'needs_human' AND pending_kind IS NOT NULL")

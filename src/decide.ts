@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
@@ -6,7 +6,10 @@ import { ask, confirm } from './ask.ts';
 import { dataDir, openDb } from './db.ts';
 import { openDelivery } from './delivery.ts';
 import { DecisionError, approve, cancel, reject, respond } from './decisions.ts';
+import { fail } from './errors.ts';
 import { formatCost } from './format.ts';
+import { answersFromJson } from './inbox.ts';
+import { writeJson } from './json.ts';
 import { type Item, type PendingKind, TransitionError, getItem, itemCost } from './items.ts';
 import { LockError, acquireLock } from './lock.ts';
 import { autonomousDecisions, humanAttemptsSummary } from './pipeline.ts';
@@ -17,6 +20,7 @@ import { itemDir, readArtifact } from './stages.ts';
 import { signals, signalsLine, situation } from './refine.ts';
 import { type RecentRun, renderRecentRuns } from './status.ts';
 import { style } from './style.ts';
+import { type ArgSpec, type OptionSpecs, itemArg, jsonOption } from './options.ts';
 
 function parseNumber(value: string | undefined): number | undefined {
   const number = Number((value ?? '').replace(/^#/, ''));
@@ -30,23 +34,17 @@ async function withItem(
   action: (db: DatabaseSync, project: Project, item: Item) => number | Promise<number>,
 ): Promise<number> {
   const number = parseNumber(value);
-  if (number === undefined) {
-    process.stderr.write(`Informe o número do item.\nUso: ${usage}\n`);
-    return 1;
-  }
+  if (number === undefined) return fail('argumento_faltando', 'Informe o número do item.', usage);
   const db = openDb(dataDir());
   try {
     const project = resolveProject(db);
     const item = getItem(db, project.id, number);
-    if (!item) {
-      process.stderr.write(`Item #${number} não existe.\n`);
-      return 1;
-    }
+    if (!item) return fail('nao_encontrado', `Item #${number} não existe.`);
     return await action(db, project, item);
   } catch (error) {
-    if (error instanceof ProjectError || error instanceof DecisionError || error instanceof TransitionError || error instanceof LockError) {
-      process.stderr.write(`${error.message}\n`);
-      return 1;
+    if (error instanceof ProjectError) return fail(error.code, error.message);
+    if (error instanceof DecisionError || error instanceof TransitionError || error instanceof LockError) {
+      return fail('estado_invalido', error.message);
     }
     throw error;
   } finally {
@@ -177,8 +175,21 @@ export function renderDenials(db: DatabaseSync, itemId: string): string[] {
 }
 
 export const itemUsage = 'mabel item <n>';
-export const approveUsage = 'mabel aprovar <n>';
-export const respondUsage = 'mabel responder <n> "<resposta>" [--replanejar]';
+
+export const approveOptions = { json: jsonOption } satisfies OptionSpecs;
+export const respondOptions = {
+  replanejar: { type: 'boolean', description: 'Descarta o ciclo atual e volta ao planejamento com o plano anterior como referência' },
+  respostas: { type: 'string', value: '<arquivo.json>', values: 'arquivo', description: 'Uma resposta por pergunta, em vez de um texto só' },
+  json: jsonOption,
+} satisfies OptionSpecs;
+export const rejectOptions = {
+  cancelar: { type: 'boolean', description: 'Cancela o item em vez de devolvê-lo ao planejamento' },
+} satisfies OptionSpecs;
+
+export const respondArgs: ArgSpec[] = [itemArg, { name: '"<resposta>"', description: 'A resposta, quando há uma pergunta só' }];
+export const rejectArgs: ArgSpec[] = [itemArg, { name: '"<motivo>"', description: 'Por que o item volta; o planejamento o recebe' }];
+export const approveUsage = 'mabel aprovar <n> [--json]';
+export const respondUsage = 'mabel responder <n> "<resposta>" [--replanejar] [--json]\n       mabel responder <n> --respostas <arquivo.json> [--replanejar] [--json]';
 export const cancelUsage = 'mabel cancelar <n>';
 export const rejectUsage = 'mabel rejeitar <n> "<motivo>" [--cancelar]';
 export const integrationUsage = 'mabel integracao';
@@ -190,31 +201,75 @@ export function itemCommand(args: string[]): Promise<number> {
   });
 }
 
+/** Estado do item depois de uma decisão, na saída `--json` de `aprovar` e `responder`. */
+function decisionJson(db: DatabaseSync, project: Project, item: Item): void {
+  const after = getItem(db, project.id, item.number) as Item;
+  writeJson({ item: { numero: after.number, titulo: after.title, estado: after.status } });
+}
+
 export function approveCommand(args: string[]): Promise<number> {
-  return withItem(args[0], approveUsage, (db, project, item) => {
+  let parsed;
+  try {
+    parsed = parseArgs({ args, allowPositionals: true, options: approveOptions });
+  } catch (error) {
+    return Promise.resolve(fail('argumento_invalido', (error as Error).message, approveUsage));
+  }
+  return withItem(parsed.positionals[0], approveUsage, (db, project, item) => {
     approve(db, project, item);
-    process.stdout.write(`#${item.number} aprovado: segue para a execução no próximo \`mabel run\`.\n`);
+    if (parsed.values.json) decisionJson(db, project, item);
+    else process.stdout.write(`#${item.number} aprovado: segue para a execução no próximo \`mabel run\`.\n`);
     return 0;
   });
+}
+
+/** Conteúdo de `--respostas`: JSON lido do arquivo, ou o erro em texto. */
+function readAnswersFile(path: string): { value: unknown } | { error: string } {
+  let text: string;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch (error) {
+    return { error: `Não foi possível ler as respostas em ${path}: ${(error as NodeJS.ErrnoException).code ?? (error as Error).message}.` };
+  }
+  try {
+    return { value: JSON.parse(text) as unknown };
+  } catch (error) {
+    return { error: `${path} não é JSON válido: ${(error as Error).message}.` };
+  }
 }
 
 export function respondCommand(args: string[]): Promise<number> {
   let parsed;
   try {
-    parsed = parseArgs({ args, allowPositionals: true, options: { replanejar: { type: 'boolean' } } });
+    parsed = parseArgs({
+      args,
+      allowPositionals: true,
+      options: respondOptions,
+    });
   } catch (error) {
-    process.stderr.write(`${(error as Error).message}\nUso: ${respondUsage}\n`);
-    return Promise.resolve(1);
+    return Promise.resolve(fail('argumento_invalido', (error as Error).message, respondUsage));
   }
+  const { values } = parsed;
   const [number, ...rest] = parsed.positionals;
-  const answer = rest.join(' ').trim();
+  const typed = rest.join(' ').trim();
+  if (typed && values.respostas !== undefined) {
+    return Promise.resolve(fail('argumento_invalido', 'Use a resposta em texto ou --respostas, não os dois.', respondUsage));
+  }
   return withItem(number, respondUsage, (db, project, item) => {
-    if (!answer) {
-      process.stderr.write(`Informe a resposta.\nUso: ${respondUsage}\n`);
-      return 1;
+    let answer = typed;
+    if (values.respostas !== undefined) {
+      const file = readAnswersFile(values.respostas);
+      if ('error' in file) return fail('argumento_invalido', file.error);
+      if (item.status !== 'needs_human' || !item.pendingKind) {
+        return fail('estado_invalido', `#${item.number} não está aguardando resposta (estado: ${item.status}).`);
+      }
+      const built = answersFromJson(file.value, item.pending ?? {});
+      if ('error' in built) return fail('argumento_invalido', `Respostas inválidas: ${built.error}.`);
+      answer = built.text;
     }
-    const to = respond(db, project, item, answer, { replan: parsed.values.replanejar });
-    process.stdout.write(`#${item.number} → ${to}: retomado no próximo \`mabel run\`.\n`);
+    if (!answer) return fail('argumento_faltando', 'Informe a resposta.', respondUsage);
+    const to = respond(db, project, item, answer, { replan: values.replanejar });
+    if (values.json) decisionJson(db, project, item);
+    else process.stdout.write(`#${item.number} → ${to}: retomado no próximo \`mabel run\`.\n`);
     return 0;
   });
 }
@@ -230,7 +285,7 @@ export function cancelCommand(args: string[]): Promise<number> {
 export function rejectCommand(args: string[]): Promise<number> {
   let parsed;
   try {
-    parsed = parseArgs({ args, allowPositionals: true, options: { cancelar: { type: 'boolean' } } });
+    parsed = parseArgs({ args, allowPositionals: true, options: rejectOptions });
   } catch (error) {
     process.stderr.write(`${(error as Error).message}\nUso: ${rejectUsage}\n`);
     return Promise.resolve(1);

@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { banner } from './banner.ts';
 import { type Command, commands, findCommand } from './commands.ts';
 import { Interrupted } from './ask.ts';
+import { renderHelp } from './completion.ts';
+import { fail, setJsonErrors } from './errors.ts';
 import { repl } from './repl.ts';
 import { style } from './style.ts';
 
@@ -26,7 +28,7 @@ function menu(): string {
     style.bold('Comandos'),
     ...lines,
     '',
-    style.dim('Use `mabel <comando> --help` para ver o uso.'),
+    style.dim('Use `mabel <comando> --help` para ver o uso e as opções, ou `mabel comandos` para ver todas.'),
   ].join('\n');
 }
 
@@ -57,23 +59,25 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
 
+  const json = args.includes('--json');
+  setJsonErrors(json);
   const command = findCommand(name);
   if (!command) {
+    if (json) return fail('argumento_invalido', `Comando desconhecido: ${name}`);
     process.stderr.write(`Comando desconhecido: ${name}\n\n${menu()}\n`);
     return 1;
   }
   if (args.includes('--help') || args.includes('-h')) {
-    process.stdout.write(`${command.description}\n\nUso: ${command.usage}\n`);
+    process.stdout.write(`${renderHelp(command)}\n`);
     return 0;
   }
-  if (!command.run) {
-    process.stderr.write(`\`mabel ${command.name}\` ${plannedNote(command)}.\n`);
-    return 1;
-  }
+  if (!command.run) return fail('argumento_invalido', `\`mabel ${command.name}\` ${plannedNote(command)}.`);
   try {
     return await command.run(args);
   } catch (error) {
     if (error instanceof Interrupted) return 130;
+    // Com --json, nem o erro inesperado sai em texto.
+    if (json) return fail('interno', (error as Error).message ?? String(error));
     throw error;
   }
 }

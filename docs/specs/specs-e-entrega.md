@@ -432,8 +432,8 @@ descrever garantia que o código ainda não impõe.
 
 ## Incrementos
 
-Cada um termina com `npm run check` verde, critérios atendidos, `docs/PLANO.md` atualizado e
-um commit.
+Cada um termina com `npm run check` verde, critérios atendidos, `docs/PLANO.md` e
+`docs/ESTEIRA.html` atualizados e um commit.
 
 | # | Incremento | Contrato |
 |---|---|---|

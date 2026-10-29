@@ -1,0 +1,24 @@
+{
+  "versao": 1,
+  "nascimento": "7e5d1c3b-9a2f-4b8e-a6d0-1f3c5e7a9b20",
+  "estado": "perguntas",
+  "rodada": 1,
+  "entendimento": "Um app para o time controlar férias.",
+  "perguntas": [
+    {
+      "texto": "Quem aprova as férias?",
+      "sugestao": "O gestor direto",
+      "regra_critica": false
+    },
+    {
+      "texto": "Pode tirar férias com saldo negativo?",
+      "sugestao": "Não",
+      "regra_critica": true
+    }
+  ],
+  "suposicoes": [
+    "Login pelo Google Workspace da empresa"
+  ],
+  "proposta": null,
+  "custo_usd": 0.12
+}

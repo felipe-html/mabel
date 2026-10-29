@@ -6,9 +6,12 @@ import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { dataDir, openDb, processAlive } from './db.ts';
+import { fail } from './errors.ts';
+import { writeJson } from './json.ts';
 import { lockHolder } from './lock.ts';
 import { ProjectError, resolveProject } from './project.ts';
 import { style } from './style.ts';
+import { type ArgSpec, type OptionSpecs, jsonOption } from './options.ts';
 
 /**
  * Supervisor (`docs/specs/integracao-externa.md`): um processo por máquina que inicia as
@@ -437,7 +440,21 @@ async function state(home: string): Promise<number> {
 // anexar e parar -------------------------------------------------------------------------
 
 export const attachUsage = 'mabel anexar';
-export const stopUsage = 'mabel parar';
+export const stopUsage = 'mabel parar [--json]';
+
+export const stopOptions = { json: jsonOption } satisfies OptionSpecs;
+
+export const supervisorArgs: ArgSpec[] = [
+  {
+    name: 'instalar | remover | estado',
+    description: 'Sem nada, roda o supervisor neste terminal',
+    choices: [
+      { name: 'instalar', description: 'Instala o supervisor no launchd, para subir com o login' },
+      { name: 'remover', description: 'Tira o supervisor do launchd' },
+      { name: 'estado', description: 'Mostra se o supervisor está instalado e rodando' },
+    ],
+  },
+];
 
 /** Lê o que o arquivo ganhou desde `offset`. */
 function readFrom(path: string, offset: number): { text: string; offset: number } {
@@ -517,10 +534,8 @@ export async function attachCommand(args: string[]): Promise<number> {
 
 /** Pede ao `mabel run` do projeto (em segundo plano ou num terminal) que pare depois da etapa. */
 export function stopCommand(args: string[]): number {
-  if (args.length > 0) {
-    process.stderr.write(`Uso: ${stopUsage}\n`);
-    return 1;
-  }
+  const json = args.length === 1 && args[0] === '--json';
+  if (args.length > 0 && !json) return fail('argumento_invalido', `Argumento inesperado: ${args.join(' ')}.`, stopUsage);
   const home = dataDir();
   const db = openDb(home);
   try {
@@ -529,18 +544,17 @@ export function stopCommand(args: string[]): number {
     // A trava também é usada pela remoção do projeto: só a fila iniciada recebe o pedido.
     if (pid === undefined || queueFinished(db, project.id)) {
       markQueueStopped(home, project.id);
-      process.stdout.write('A fila deste projeto não está rodando.\n');
+      if (json) writeJson({ parada_pedida: false, pid: null });
+      else process.stdout.write('A fila deste projeto não está rodando.\n');
       return 0;
     }
     markQueueStopped(home, project.id, pid);
     process.kill(pid, 'SIGUSR2');
-    process.stdout.write(`Pedido enviado (pid ${pid}): a fila para depois da etapa em andamento.\n`);
+    if (json) writeJson({ parada_pedida: true, pid });
+    else process.stdout.write(`Pedido enviado (pid ${pid}): a fila para depois da etapa em andamento.\n`);
     return 0;
   } catch (error) {
-    if (error instanceof ProjectError) {
-      process.stderr.write(`${error.message}\n`);
-      return 1;
-    }
+    if (error instanceof ProjectError) return fail(error.code, error.message);
     throw error;
   } finally {
     db.close();

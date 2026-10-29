@@ -1,0 +1,29 @@
+{
+  "versao": 1,
+  "janelas": {
+    "5h": {
+      "uso": 0.22,
+      "reset": "2026-10-24T14:00:00-03:00",
+      "idade_leitura_s": 120,
+      "vencida": false
+    },
+    "7d": {
+      "uso": 0.4,
+      "reset": "2026-10-27T12:00:00-03:00",
+      "idade_leitura_s": 120,
+      "vencida": false,
+      "ritmo": {
+        "esperado": 0.571,
+        "estado": "com_folga"
+      }
+    }
+  },
+  "pausa": {
+    "tipo": "espera",
+    "causa": "ritmo_7d",
+    "motivo": "ritmo de 7 dias acima do esperado",
+    "desde": "2026-10-24T12:00:00-03:00",
+    "ate": "2026-10-24T13:00:00-03:00",
+    "projeto": "loja-online"
+  }
+}
