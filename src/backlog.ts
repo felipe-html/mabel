@@ -15,6 +15,12 @@ export interface ItemFields {
   criticalConcepts: string[];
   /** Telas, operações de API e arquivos de `.mabel/referencias/` (`docs/specs/referencias.md`). */
   references?: string[];
+  /** Slug da spec em `.mabel/specs/` (tarefa de spec); sem ela, a tarefa é avulso (S.3). */
+  spec?: string | null;
+  /** Regras da spec que a tarefa cita (`R1`, `R2`…). */
+  rules?: string[];
+  /** `bug`: avulso que corrige um defeito (`Tipo: bug`). */
+  kind?: 'bug' | null;
 }
 
 export const BACKLOG_TEMPLATE = `# Backlog
@@ -35,6 +41,10 @@ Campos de um item:
 - Referências: lista "- ..." com o que o item usa de .mabel/referencias/:
   "tela: <nome>", "api: <nome> <MÉTODO> <caminho>" (ou "api: <nome> <operationId>")
   ou um caminho de arquivo. Item com referência que não existe fica no backlog.
+- Spec: <slug> — a spec de .mabel/specs/<slug>.md que a tarefa implementa. Só fica pronta
+  com a spec aceita (mabel especificar <slug>); a intenção vem da história da spec.
+- Regras: R1, R2 — regras da spec que a tarefa cobre; os exemplos delas são critérios.
+- Tipo: bug — avulso (sem Spec:) que corrige um defeito.
 - Depende de: <n>, <n> — itens que precisam estar concluídos antes.
 - Restrições: <texto> — limites para a implementação, numa linha.
 
@@ -78,6 +88,9 @@ export function renderItemBlock(item: ItemFields): string {
   list('Regras críticas', item.criticalConcepts);
   list('Referências', item.references ?? []);
   const tail: string[] = [];
+  if (item.spec) tail.push(`Spec: ${item.spec}`);
+  if (item.rules && item.rules.length > 0) tail.push(`Regras: ${item.rules.join(', ')}`);
+  if (item.kind) tail.push(`Tipo: ${item.kind}`);
   if (item.dependsOn.length > 0) tail.push(`Depende de: ${item.dependsOn.join(', ')}`);
   if (item.restrictions) tail.push(`Restrições: ${item.restrictions}`);
   if (tail.length > 0) lines.push('', ...tail);
@@ -99,6 +112,9 @@ export function appendBlocks(text: string, blocks: string[]): string {
 
 export interface ParsedItem extends ItemFields {
   references: string[];
+  spec: string | null;
+  rules: string[];
+  kind: 'bug' | null;
   /** Ordem no arquivo, a partir de 0. */
   position: number;
   /** Erros de formato; item com erro fica `blocked`. */
@@ -125,6 +141,9 @@ const DECISIONS_LINE = /^decis[õo]es:\s*(.*?)\s*$/i;
 const CRITICAL_LINE = /^regras? cr[íi]ticas?:\s*(.*?)\s*$/i;
 const REFERENCES_LINE = /^refer[êe]ncias:\s*(.*?)\s*$/i;
 const DEPENDS_LINE = /^depende de:\s*(.*?)\s*$/i;
+const SPEC_LINE = /^spec:\s*(.*?)\s*$/i;
+const RULES_LINE = /^regras:\s*(.*?)\s*$/i;
+const KIND_LINE = /^tipo:\s*(.*?)\s*$/i;
 const RESTRICTIONS_LINE = /^restri[çc][õo]es:\s*(.*?)\s*$/i;
 const LIST_ITEM = /^\s*[-*]\s+(.+?)\s*$/;
 
@@ -164,6 +183,9 @@ export function parseBacklog(text: string): ParsedItem[] {
         decisions: [],
         criticalConcepts: [],
         references: [],
+        spec: null,
+        rules: [],
+        kind: null,
         position: items.length,
         errors: [],
         headingEnd: Math.min(lineEnd + 1, text.length),
@@ -216,6 +238,27 @@ export function parseBacklog(text: string): ParsedItem[] {
       }
       continue;
     }
+    const spec = SPEC_LINE.exec(line);
+    if (spec) {
+      current.spec = spec[1] || null;
+      continue;
+    }
+    const rules = RULES_LINE.exec(line);
+    if (rules) {
+      for (const token of (rules[1] ?? '').split(',').map((part) => part.trim().toUpperCase())) {
+        if (!token) continue;
+        if (/^R\d+$/.test(token)) current.rules.push(token);
+        else current.errors.push(`regra inválida: "${token}"`);
+      }
+      continue;
+    }
+    const kind = KIND_LINE.exec(line);
+    if (kind) {
+      const value = (kind[1] ?? '').toLowerCase();
+      if (value === 'bug') current.kind = 'bug';
+      else if (value) current.errors.push(`tipo inválido: "${kind[1]}" (só "bug")`);
+      continue;
+    }
     const restrictions = RESTRICTIONS_LINE.exec(line);
     if (restrictions) {
       current.restrictions = restrictions[1] || null;
@@ -224,10 +267,11 @@ export function parseBacklog(text: string): ParsedItem[] {
     current.intentLines.push(line.trimEnd());
   }
 
-  return items.map(({ intentLines, inList: _, ...item }) => ({
-    ...item,
-    intent: intentLines.join('\n').trim().replace(/\n{3,}/g, '\n\n'),
-  }));
+  return items.map(({ intentLines, inList: _, ...item }) => {
+    if (item.rules.length > 0 && !item.spec) item.errors.push('Regras: sem Spec:');
+    if (item.kind && item.spec) item.errors.push('Tipo: bug vale só para avulso (sem Spec:)');
+    return { ...item, intent: intentLines.join('\n').trim().replace(/\n{3,}/g, '\n\n') };
+  });
 }
 
 /**

@@ -210,6 +210,17 @@ o `backlog.md`.
   surpreender quem passou só título e intenção esperando ser perguntado do resto.
 - A prioridade é a ordem no arquivo; o `add` sempre põe no fim. Sem `--antes`/`--topo`.
 
+### especificar
+
+**Para quê:** ver, validar e aceitar as specs de `.mabel/specs/` (`docs/specs/specs-e-entrega.md`).
+
+| Parâmetro | Efeito |
+|---|---|
+| `<slug>` | A spec em `.mabel/specs/<slug>.md`; sem ele, lista as specs com estado e tarefas |
+| `--aceitar` | Aceita a spec como está, se passar na validação (regra com exemplo, algum exemplo `(borda)`, nenhum `→ ?`, fora do escopo declarado) |
+
+Tarefa com `Spec:` só vai a `ready` com a spec aceita, válida e com as `Regras:` citadas.
+
 ### refinar
 
 **Para quê:** antes do planejamento, pedir a um agente uma proposta de critérios, fora do

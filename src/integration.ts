@@ -174,13 +174,13 @@ export function integrateItem(project: Project, item: Item): { commit: string } 
   return { commit };
 }
 
-/** Unidade de entrega da tarefa. Antes das specs (S.3), toda tarefa é avulso. */
-export function unitOf(item: Pick<Item, 'number'>): string {
-  return `avulso-${item.number}`;
+/** Unidade de entrega da tarefa: o slug da spec ou `avulso-<n>`. */
+export function unitOf(item: Pick<Item, 'number' | 'spec'>): string {
+  return item.spec ?? `avulso-${item.number}`;
 }
 
 /** Trailers dos commits de merge do Mabel: `Mabel-Item` e `Mabel-Unidade`. */
-export function itemTrailers(item: Pick<Item, 'number'>): Record<string, string> {
+export function itemTrailers(item: Pick<Item, 'number' | 'spec'>): Record<string, string> {
   return { 'Mabel-Item': `#${item.number}`, 'Mabel-Unidade': unitOf(item) };
 }
 

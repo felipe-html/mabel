@@ -232,6 +232,22 @@ const migrations: string[] = [
   `
   ALTER TABLE deliveries ADD COLUMN snapshot_sha TEXT;
   `,
+  `
+  CREATE TABLE specs (
+    id          INTEGER PRIMARY KEY,
+    project_id  TEXT NOT NULL REFERENCES projects(id),
+    slug        TEXT NOT NULL,
+    status      TEXT NOT NULL,
+    accepted_at TEXT,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    UNIQUE (project_id, slug)
+  );
+  ALTER TABLE items ADD COLUMN spec TEXT;
+  ALTER TABLE items ADD COLUMN spec_rules TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE items ADD COLUMN spec_context TEXT;
+  ALTER TABLE items ADD COLUMN kind TEXT;
+  `,
 ];
 
 function migrate(db: DatabaseSync): void {

@@ -5,6 +5,7 @@ import { integratedItems } from './integration.ts';
 import { type Item, itemCost } from './items.ts';
 import { autonomousDecisions } from './pipeline.ts';
 import type { Project } from './project.ts';
+import { readSpec } from './specs.ts';
 import type { CriterionProof, ProofResult } from './proof.ts';
 import { type Entry, entry, lookFirst, returns } from './report.ts';
 
@@ -35,11 +36,17 @@ function transitions(db: DatabaseSync, item: Item): Transition[] {
     .all(item.id) as unknown as Transition[];
 }
 
-/** Respostas do humano às perguntas do item, pelo motivo das transições (`humano: inbox responder: …`). */
-function humanAnswers(db: DatabaseSync, item: Item): string[] {
-  return transitions(db, item).flatMap(({ reason, at }) => {
-    const found = /^humano: (inbox )?responder(?: --replanejar)?: (.+)$/s.exec(reason ?? '');
-    return found ? [`#${item.number}: ${found[2]} (${found[1] ? 'inbox' : 'responder'}, ${day(at)})`] : [];
+/**
+ * Decisões das tarefas: as do avulso (backlog, com as respostas do humano) e as das specs
+ * das tarefas de spec, uma vez por spec.
+ */
+function decisionsOf(project: Project, items: Item[]): string[] {
+  const specs = new Set<string>();
+  return items.flatMap((item) => {
+    if (!item.spec) return item.decisions.map((d) => `#${item.number}: ${d}`);
+    if (specs.has(item.spec)) return [];
+    specs.add(item.spec);
+    return (readSpec(project.root, item.spec)?.decisoes ?? []).map((d) => `${item.spec}: ${d}`);
   });
 }
 
@@ -98,7 +105,7 @@ export function renderDeliveryDoc(db: DatabaseSync, home: string, project: Proje
   const base = project.config.baseBranch;
   const entries = integratedItems(db, project, input.snapshot).map((item) => entry(home, item));
   const items = entries.map((e) => e.item);
-  const decisions = items.flatMap((item) => [...item.decisions.map((d) => `#${item.number}: ${d}`), ...humanAnswers(db, item)]);
+  const decisions = decisionsOf(project, items);
   const assumptions = entries.flatMap(({ item, plan, execution }) =>
     [...(plan?.suposicoes ?? []), ...(execution?.suposicoes ?? [])]
       .filter((s) => !s.texto.endsWith('(autônomo)'))
@@ -106,7 +113,7 @@ export function renderDeliveryDoc(db: DatabaseSync, home: string, project: Proje
   );
   const autonomous = items.flatMap((item) => autonomousDecisions(db, { itemId: item.id }).map((d) => `#${d.number}: ${d.decision} (pela sugestão)`));
   const cost = items.reduce((sum, item) => sum + itemCost(db, item.id), 0);
-  const main = decisions.slice(0, 2).map((d) => d.replace(/^#\d+: /, '').replace(/ \((inbox|responder), [\d-]+\)$/, '')).join('; ') || '—';
+  const main = decisions.slice(0, 2).map((d) => d.replace(/^[^:]+: /, '').replace(/ \([^()]*\d{4}-\d{2}-\d{2}\)$/, '')).join('; ') || '—';
   const baseCommit = tryGit(project.root, 'rev-parse', '--short', base) ?? '?';
 
   const lines = [

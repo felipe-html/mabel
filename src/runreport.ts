@@ -2,7 +2,7 @@ import { writeFileSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
 import { balanceOf, formatReset, latestReadings } from './balance.ts';
 import { formatCost, formatDuration } from './format.ts';
-import { integratedItems } from './integration.ts';
+import { integratedItems, unitOf } from './integration.ts';
 import { type Item, type ItemStatus, listItems } from './items.ts';
 import { type Project, mabelPath } from './project.ts';
 import { ensureIgnored, integrationSection } from './report.ts';
@@ -151,7 +151,7 @@ function tasksTable(tasks: TaskRow[]): string[] {
     '|---|---|---|---|---|',
     ...tasks.map(
       ({ item, stages, cost }) =>
-        `| ${item.number} | avulso | ${RESULTS[item.status] ?? item.status} | ${stages.join(', ') || '—'} | ${formatCost(cost)} |`,
+        `| ${item.number} | ${unitOf(item)} | ${RESULTS[item.status] ?? item.status} | ${stages.join(', ') || '—'} | ${formatCost(cost)} |`,
     ),
   ];
 }

@@ -70,12 +70,12 @@ test('S.2 critérios 3 e 4: documento na branch de entrega, base sem commit do M
   assert.match(result.lines.join('\n'), new RegExp(`Documento: ${path.replace(/\./g, '\\.')}`));
 
   const doc = git(q.root, 'show', `${delivery.branch}:${path}`);
-  assert.match(doc, /^Resumo: integracao · \d{4}-\d{2}-\d{2} · — · Postgres; Frete entra no total\? → Não\n\n# Entrega: integracao\n\nBase: main \([0-9a-f]+\) · 2 tarefas · US\$ /);
+  assert.match(doc, /^Resumo: integracao · \d{4}-\d{2}-\d{2} · — · Qual banco\? → Postgres; Frete entra no total\? → Não\n\n# Entrega: integracao\n\nBase: main \([0-9a-f]+\) · 2 tarefas · US\$ /);
   const at = (title: string) => doc.indexOf(`\n## ${title}\n`);
   const order = ['Olhe primeiro', 'Decisões', 'Suposições do agente', 'Critérios e prova', 'Desvios', 'Tarefas'].map(at);
   assert.ok(order.every((p) => p > 0), doc);
   assert.deepEqual([...order].sort((a, b) => a - b), order);
-  assert.match(doc, /## Decisões\n- #2: Postgres \(inbox, \d{4}-\d{2}-\d{2}\)\n- #1: Frete entra no total\? → Não\n/);
+  assert.match(doc, /## Decisões\n- #2: Qual banco\? → Postgres \(inbox, #2, \d{4}-\d{2}-\d{2}\)\n- #1: Frete entra no total\? → Não\n/);
   assert.match(doc, /## Suposições do agente\n- #1: o total arredonda para baixo\n/);
   assert.match(doc, /\| #1 \| C1 [^|]+ \| test\/item1\.test\.js › item 1 existe \| sem prova[^|]* \|/);
   assert.match(doc, /## Desvios\n- #1 rejeitado em \d{4}-\d{2}-\d{2}: faltou o desconto\n/);

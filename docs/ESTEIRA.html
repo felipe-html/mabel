@@ -395,6 +395,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
           <li>Confere sandbox e pega a trava do projeto</li>
           <li>Cria ou atualiza <code>mabel/integracao</code> a partir da base</li>
           <li>Remove worktrees órfãos; marca <code>done</code> o que já chegou à base</li>
+          <li>Sincroniza o backlog: tarefa com <code>Spec:</code> só vai a <code>ready</code> com a spec aceita e as regras citadas existentes</li>
         </ul>
       </div>
       <div class="exits">
@@ -694,6 +695,12 @@ Commitar o .mabel/ na branch main? [S/n]</pre>
           <p class="writes"><b>Grava:</b> o item em <code>.mabel/backlog.md</code>; estado <code>ready</code>, ou <code>backlog</code> se depende de item não concluído.</p>
 <pre class="term">Item #4 adicionado: Desconto por volume · ready
 Refinar o item agora com um agente? [s/N]</pre>
+        </article>
+        <article class="cmd">
+          <header><span class="name">especificar</span><span class="badge human">você aceita</span></header>
+          <p class="usage">mabel especificar [slug] [--aceitar]</p>
+          <p>Lista e valida as specs de <code>.mabel/specs/</code>; <code>--aceitar</code> aceita a spec escrita à mão que passa na validação. Planejador, executor e revisor recebem a história, as regras citadas com exemplos (critérios de aceite), as decisões e o fora do escopo.</p>
+          <p class="writes"><b>Grava:</b> estado da spec no SQLite (<code>aceita</code>). Respostas da inbox de tarefa de spec vão para as <code>Decisões</code> da spec.</p>
         </article>
         <article class="cmd">
           <header><span class="name">refinar</span><span class="badge agent">agente refinador</span></header>

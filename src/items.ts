@@ -2,10 +2,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
 import { latestReadings } from './balance.ts';
-import { type ItemFields, insertIds, parseBacklog, validateBacklog } from './backlog.ts';
+import { type ItemFields, insertIds, parseBacklog, renderItemBlock, replaceItemBlock, validateBacklog } from './backlog.ts';
 import { type BoardItem, renderBoard, writeBoardFile } from './board.ts';
 import { type Project, mabelPath } from './project.ts';
 import { referenceProblem, referencesDigest } from './references.ts';
+import { type SpecExcerpt, excerptDigest, readSpec, specExcerpt, specProblem } from './specs.ts';
 import type { Question } from './schemas/stages.ts';
 
 export const ITEM_STATES = [
@@ -69,6 +70,8 @@ export interface Item extends Required<Omit<ItemFields, 'number'>> {
   nextInput: NextInput | null;
   /** Commit de merge do item na branch de integração; nulo até a integração. */
   integratedCommit: string | null;
+  /** Trecho da spec citado pela tarefa, congelado como o resto do conteúdo quando ela inicia. */
+  specContext: SpecExcerpt | null;
 }
 
 export type PendingKind =
@@ -137,6 +140,10 @@ interface ItemRow {
   plan_retries: number;
   next_input: string | null;
   integrated_commit: string | null;
+  spec: string | null;
+  spec_rules: string;
+  spec_context: string | null;
+  kind: 'bug' | null;
 }
 
 /**
@@ -187,6 +194,10 @@ function fromRow(row: ItemRow): Item {
     planRetries: row.plan_retries,
     nextInput: row.next_input ? (JSON.parse(row.next_input) as NextInput) : null,
     integratedCommit: row.integrated_commit,
+    spec: row.spec,
+    rules: JSON.parse(row.spec_rules) as string[],
+    kind: row.kind,
+    specContext: row.spec_context ? (JSON.parse(row.spec_context) as SpecExcerpt) : null,
   };
 }
 
@@ -260,7 +271,7 @@ export function isStarted(db: DatabaseSync, itemId: string): boolean {
  * Hash do conteúdo do item. `referencesDigest` é o hash dos arquivos referenciados
  * (`referencesDigest` de `references.ts`), calculado por quem tem a raiz do projeto.
  */
-export function contentHash(fields: ItemFields, referencesDigest?: string): string {
+export function contentHash(fields: ItemFields, referencesDigest?: string, excerpt?: SpecExcerpt | null): string {
   const content: unknown[] = [fields.title, fields.intent, fields.criteria, fields.dependsOn, fields.restrictions];
   // Campos do refinamento só entram quando usados: o hash dos itens anteriores não muda.
   const { outOfScope, decisions, criticalConcepts } = fields;
@@ -268,6 +279,9 @@ export function contentHash(fields: ItemFields, referencesDigest?: string): stri
   // Idem para as referências, que levam junto o conteúdo dos arquivos.
   const references = fields.references ?? [];
   if (references.length > 0) content.push({ references, files: referencesDigest ?? null });
+  // Tarefa de spec: o trecho citado entra no hash; spec alterada muda a tarefa não iniciada.
+  if (fields.spec) content.push({ spec: fields.spec, rules: fields.rules ?? [], excerpt: excerpt ? excerptDigest(excerpt) : null });
+  if (fields.kind) content.push({ kind: fields.kind });
   return createHash('sha256').update(JSON.stringify(content)).digest('hex');
 }
 
@@ -341,8 +355,15 @@ export function satisfiedNumbers(items: Item[], integration: boolean): Set<numbe
  * Motivo pelo qual o item não está pronto para planejar, ou `null` quando está.
  * `referenceProblem`: a primeira referência que não confere (`references.ts`).
  */
-export function notReadyReason(item: Item, satisfied: Set<number>, referenceProblem: string | null = null): string | null {
-  if (!item.title || !item.intent) return 'sem intenção';
+export function notReadyReason(
+  item: Item,
+  satisfied: Set<number>,
+  referenceProblem: string | null = null,
+  specProblem: string | null = null,
+): string | null {
+  // Na tarefa de spec, a intenção vem da história.
+  if (!item.title || (!item.intent && !item.spec)) return 'sem intenção';
+  if (specProblem) return specProblem;
   // Item declarado crítico: os critérios vêm do humano (escritos ou aceitos no refinamento).
   if (item.criticalConcepts.length > 0 && item.criteria.length === 0) {
     return `regra crítica sem critérios: escreva os critérios ou rode \`mabel refinar ${item.number}\``;
@@ -385,6 +406,60 @@ const FORMAT_ERROR_PREFIX = 'formato: ';
 
 export function backlogPath(project: Project): string {
   return mabelPath(project.root, 'backlog.md');
+}
+
+/**
+ * Acrescenta uma decisão ao campo `Decisões:` do item no backlog e no banco, com o hash
+ * recalculado: a decisão do humano não conta como alteração do item iniciado.
+ */
+export function appendItemDecision(db: DatabaseSync, project: Project, item: Item, decision: string): boolean {
+  const path = backlogPath(project);
+  let text: string;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch {
+    return false;
+  }
+  const entry = parseBacklog(text).find((parsed) => parsed.number === item.number);
+  if (!entry) return false;
+  const decisions = [...entry.decisions, decision];
+  writeFileSync(path, replaceItemBlock(text, entry, renderItemBlock({ ...entry, decisions, number: item.number })));
+  // O hash passa a ser o do backlog com a decisão: o `run` não a toma por edição do humano.
+  const references = entry.references.length > 0 ? referencesDigest(project.root, entry.references) : undefined;
+  item.decisions = [...item.decisions, decision];
+  item.contentHash = contentHash({ ...entry, decisions }, references, entryExcerpt(project, entry));
+  db.prepare('UPDATE items SET decisions = ?, content_hash = ?, updated_at = ? WHERE id = ?').run(
+    JSON.stringify(item.decisions),
+    item.contentHash,
+    new Date().toISOString(),
+    item.id,
+  );
+  return true;
+}
+
+/**
+ * A decisão que a própria tarefa provocou mudou a spec: o hash do item passa a ser o do
+ * conteúdo atual, e o `run` não a toma por edição do humano. O conteúdo segue congelado.
+ */
+export function acknowledgeSpecChange(db: DatabaseSync, project: Project, item: Item): void {
+  let text: string;
+  try {
+    text = readFileSync(backlogPath(project), 'utf8');
+  } catch {
+    return;
+  }
+  const entry = parseBacklog(text).find((parsed) => parsed.number === item.number);
+  if (!entry) return;
+  const references = entry.references.length > 0 ? referencesDigest(project.root, entry.references) : undefined;
+  item.contentHash = contentHash(entry, references, entryExcerpt(project, entry));
+  db.prepare('UPDATE items SET content_hash = ?, updated_at = ? WHERE id = ?').run(item.contentHash, new Date().toISOString(), item.id);
+}
+
+/** Trecho da spec que a entrada do backlog cita, lido do disco; `null` sem spec ou sem arquivo. */
+function entryExcerpt(project: Project, entry: { spec?: string | null; rules?: string[] }): SpecExcerpt | null {
+  if (!entry.spec) return null;
+  const spec = readSpec(project.root, entry.spec);
+  return spec ? specExcerpt(entry.spec, spec, entry.rules ?? []) : null;
 }
 
 /** Próximo id livre, considerando o arquivo e o banco (inclusive itens cancelados). */
@@ -464,14 +539,19 @@ export function syncBacklog(db: DatabaseSync, project: Project): SyncResult {
       decisions: entry.decisions,
       criticalConcepts: entry.criticalConcepts,
       references: entry.references,
+      spec: entry.spec,
+      rules: entry.rules,
+      kind: entry.kind,
     };
-    const hash = contentHash(fields, entry.references.length > 0 ? referencesDigest(project.root, entry.references) : undefined);
+    const excerpt = entryExcerpt(project, entry);
+    const hash = contentHash(fields, entry.references.length > 0 ? referencesDigest(project.root, entry.references) : undefined, excerpt);
     let item = getItem(db, project.id, entry.number);
     if (!item) {
       db.prepare(
         `INSERT INTO items (id, project_id, number, position, title, intent, criteria, depends_on, restrictions,
-           out_of_scope, decisions, critical_concepts, item_references, content_hash, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'backlog', ?, ?)`,
+           out_of_scope, decisions, critical_concepts, item_references, spec, spec_rules, spec_context, kind, content_hash,
+           status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'backlog', ?, ?)`,
       ).run(
         randomUUID(),
         project.id,
@@ -486,6 +566,10 @@ export function syncBacklog(db: DatabaseSync, project: Project): SyncResult {
         JSON.stringify(fields.decisions),
         JSON.stringify(fields.criticalConcepts),
         JSON.stringify(entry.references),
+        entry.spec,
+        JSON.stringify(entry.rules),
+        excerpt ? JSON.stringify(excerpt) : null,
+        entry.kind,
         hash,
         now,
         now,
@@ -506,7 +590,8 @@ export function syncBacklog(db: DatabaseSync, project: Project): SyncResult {
       } else {
         db.prepare(
           `UPDATE items SET title = ?, intent = ?, criteria = ?, depends_on = ?, restrictions = ?,
-             out_of_scope = ?, decisions = ?, critical_concepts = ?, item_references = ?, content_hash = ?, updated_at = ?
+             out_of_scope = ?, decisions = ?, critical_concepts = ?, item_references = ?, spec = ?, spec_rules = ?,
+             spec_context = ?, kind = ?, content_hash = ?, updated_at = ?
            WHERE id = ?`,
         ).run(
           fields.title,
@@ -518,11 +603,15 @@ export function syncBacklog(db: DatabaseSync, project: Project): SyncResult {
           JSON.stringify(fields.decisions),
           JSON.stringify(fields.criticalConcepts),
           JSON.stringify(entry.references),
+          entry.spec,
+          JSON.stringify(entry.rules),
+          excerpt ? JSON.stringify(excerpt) : null,
+          entry.kind,
           hash,
           now,
           item.id,
         );
-        Object.assign(item, fields, { contentHash: hash });
+        Object.assign(item, fields, { contentHash: hash, specContext: excerpt });
       }
     }
 
@@ -553,7 +642,8 @@ export function syncBacklog(db: DatabaseSync, project: Project): SyncResult {
   for (const item of items) {
     if (item.status !== 'backlog' && item.status !== 'ready') continue;
     const references = item.references.length > 0 ? referenceProblem(project.root, item.references) : null;
-    const missing = notReadyReason(item, done, references);
+    const spec = item.spec ? specProblem(db, project, item.spec, item.rules) : null;
+    const missing = notReadyReason(item, done, references, spec);
     if (item.status === 'backlog' && !missing) move(item, 'ready', null);
     else if (missing) move(item, 'backlog', missing);
   }

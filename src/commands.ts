@@ -34,6 +34,7 @@ import { init, initOptions, initUsage } from './init.ts';
 import { type ArgSpec, type OptionSpecs, itemArg } from './options.ts';
 import { projectArgs, projectCommand, projectOptions, projectUsage, projectsCommand, projectsOptions, projectsUsage } from './projects.ts';
 import { refineArgs, refineCommand, refineOptions, refineUsage } from './refine.ts';
+import { specifyArgs, specifyCommand, specifyOptions, specifyUsage } from './specify.ts';
 import { run, runOptions, runUsage } from './run.ts';
 import { runsArgs, runsCommand, runsOptions, runsUsage } from './runs.ts';
 import {
@@ -88,6 +89,14 @@ export const commands: Command[] = [
     options: addOptions,
     args: addArgs,
     run: add,
+  },
+  {
+    name: 'especificar',
+    description: 'Specs em .mabel/specs/: lista, valida e aceita (as tarefas com "Spec:" só vão a ready com a spec aceita)',
+    usage: specifyUsage,
+    options: specifyOptions,
+    args: specifyArgs,
+    run: specifyCommand,
   },
   {
     name: 'refinar',

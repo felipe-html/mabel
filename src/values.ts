@@ -6,6 +6,7 @@ import { listItems } from './items.ts';
 import type { ValueOption, ValueSource } from './options.ts';
 import { resolveProject } from './project.ts';
 import { listProjects } from './projects.ts';
+import { getSpecRecord, listSpecFiles } from './specs.ts';
 import { STACKS } from './stacks.ts';
 
 /**
@@ -24,6 +25,9 @@ export function valuesFor(source: ValueSource, cwd: string = process.cwd()): Val
         return listProjects(db).map((project) => ({ value: project.name, description: `${project.items} itens · ${project.root}` }));
       }
       const project = resolveProject(db, cwd);
+      if (source === 'spec') {
+        return listSpecFiles(project.root).map((slug) => ({ value: slug, description: getSpecRecord(db, project.id, slug)?.status ?? 'rascunho' }));
+      }
       const items = listItems(db, project.id);
       if (source === 'item') {
         return items

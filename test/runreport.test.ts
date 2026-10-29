@@ -38,9 +38,9 @@ test('S.1 critério 1: run.md com as seções na ordem; tarefa concluída, em ne
   assert.match(report, /^<!-- Gerado pelo Mabel[^\n]*\n# Run de \d{4}-\d{2}-\d{2} · \d{2}:\d{2} → \d{2}:\d{2} \([^)]+\)\n\nFim: fila vazia · US\$ /);
   assert.match(report, /## Precisa de você\n- Inbox \(mabel inbox\): pergunta: #2\n- #3 C falhou: run de plan falhou: [^\n]+\n/);
   assert.match(report, /## Prontas para entregar\n- #1 A · mabel\/1-a\n/);
-  assert.match(report, /\| 1 \| avulso \| concluída \| planejar, executar, revisar \| US\$ [\d,]+ \|/);
-  assert.match(report, /\| 2 \| avulso \| precisa de você \| planejar \| US\$ [\d,]+ \|/);
-  assert.match(report, /\| 3 \| avulso \| falhou \| planejar \| US\$ [\d,]+ \|/);
+  assert.match(report, /\| 1 \| avulso-1 \| concluída \| planejar, executar, revisar \| US\$ [\d,]+ \|/);
+  assert.match(report, /\| 2 \| avulso-2 \| precisa de você \| planejar \| US\$ [\d,]+ \|/);
+  assert.match(report, /\| 3 \| avulso-\d \| falhou \| planejar \| US\$ [\d,]+ \|/);
 });
 
 test('S.1 critério 1: o arquivo é reescrito ao fim de cada tarefa, com o run em andamento', async () => {
@@ -54,8 +54,8 @@ test('S.1 critério 1: o arquivo é reescrito ao fim de cada tarefa, com o run e
   await q.start([PLAN_OK, EXEC, REVIEW, PLAN_OK, EXEC, REVIEW], { batch: false, codeChanged });
   const beforeB = seen[3] ?? '';
   assert.match(beforeB, /→ em andamento\n\nFim: em andamento/);
-  assert.match(beforeB, /\| 1 \| avulso \| concluída/);
-  assert.doesNotMatch(beforeB, /\| 2 \| avulso/);
+  assert.match(beforeB, /\| 1 \| avulso-1 \| concluída/);
+  assert.doesNotMatch(beforeB, /\| 2 \| avulso-2/);
 });
 
 test('S.1 critério 2: o segundo run sobrescreve o arquivo; run.md fica fora do git', async () => {
@@ -63,13 +63,13 @@ test('S.1 critério 2: o segundo run sobrescreve o arquivo; run.md fica fora do 
   await q.start([PLAN_OK, EXEC, REVIEW], { once: true, batch: false });
   const first = q.report();
   assert.match(first, /Fim: concluído/);
-  assert.match(first, /\| 1 \| avulso \| concluída/);
+  assert.match(first, /\| 1 \| avulso-1 \| concluída/);
 
   await q.start([PLAN_OK, EXEC, REVIEW]);
   const second = q.report();
   assert.match(second, /Fim: fila vazia/);
-  assert.match(second, /\| 2 \| avulso \| concluída/);
-  assert.doesNotMatch(second, /\| 1 \| avulso/, 'só as tarefas deste run');
+  assert.match(second, /\| 2 \| avulso-2 \| concluída/);
+  assert.doesNotMatch(second, /\| 1 \| avulso-1/, 'só as tarefas deste run');
   assert.ok(tryGit(q.root, 'check-ignore', '-q', '.mabel/run.md') !== undefined);
   assert.equal(readFileSync(join(q.root, '.mabel', '.gitignore'), 'utf8'), 'quadro.md\nrun.md\n');
 });
