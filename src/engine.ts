@@ -21,6 +21,7 @@ import {
   parseExample,
   renderChange,
   renderExample,
+  ruleChangeProblems,
   validateSpec,
 } from './specs.ts';
 import { ContextBudgetError, SCHEMAS, STAGE_ALLOWED, STAGE_TOOLS, scopeHooks, systemPrompt } from './stages.ts';
@@ -87,11 +88,15 @@ export function metricsLine(metrics: Metrics): string {
 
 // Regras vigentes ------------------------------------------------------------------------
 
+/** O `regras.md` inteiro; vazio se ainda não existe. */
+export function rulesFile(root: string): string {
+  const path = mabelPath(root, RULES_FILE);
+  return existsSync(path) ? readFileSync(path, 'utf8').trim() : '';
+}
+
 /** O `regras.md` que o agente recebe, cortado no orçamento, com o aviso para o humano. */
 export function currentRules(root: string, budget = RULES_BUDGET): { text: string; warning?: string } {
-  const path = mabelPath(root, RULES_FILE);
-  if (!existsSync(path)) return { text: '' };
-  const text = readFileSync(path, 'utf8').trim();
+  const text = rulesFile(root);
   if (text.length <= budget) return { text };
   return {
     text: `${text.slice(0, budget)}\n\n(… cortado no orçamento: busque o resto em .mabel/${RULES_FILE} com Grep)`,
@@ -215,6 +220,8 @@ export interface CheckContext {
   round: number;
   /** Conceitos de `regras-criticas.md`. */
   concepts: string[];
+  /** O `regras.md` inteiro, contra o qual as alterações são conferidas. */
+  rules: string;
 }
 
 /** Problemas da saída de uma rodada; vazio quando ela serve. Sem perguntas, a proposta tem de estar pronta. */
@@ -248,6 +255,7 @@ export function outputProblems(output: unknown, ctx: CheckContext): string[] {
   for (const concept of proposal.conceitosCriticos) {
     if (!concepts.has(normalize(concept))) problems.push(`conceito crítico "${concept}" não está em .mabel/regras-criticas.md`);
   }
+  problems.push(...ruleChangeProblems(ctx.rules, proposal.alteracoesRegrasVigentes));
   if (problems.length > 0 || proposal.perguntas.length > 0) return problems;
   return readyProblems(proposal, ctx.target);
 }
@@ -351,7 +359,7 @@ async function runOnce(env: EngineEnv, request: RunRequest): Promise<RunOutcome>
  */
 export async function runRound(env: EngineEnv, target: Target, prompt: string, round: number, resumeSessionId?: string | null): Promise<RoundResult> {
   const itemId = target.kind === 'item' ? target.item.id : undefined;
-  const ctx: CheckContext = { target, round, concepts: readCriticalRules(env.project.root).concepts };
+  const ctx: CheckContext = { target, round, concepts: readCriticalRules(env.project.root).concepts, rules: rulesFile(env.project.root) };
   let request: RunRequest;
   try {
     request = specifyRequest(env.project, itemId, prompt, resumeSessionId ?? undefined);

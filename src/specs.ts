@@ -338,6 +338,42 @@ export interface AppliedChanges {
 
 const sameRule = (a: string, b: string) => a.trim().replace(/\s+/g, ' ').toLowerCase() === b.trim().replace(/\s+/g, ' ').toLowerCase();
 
+const sectionStart = (lines: string[], subject: string) => lines.findIndex((line) => /^##\s/.test(line) && sameRule(line.replace(/^##\s+/, ''), subject));
+
+function sectionEnd(lines: string[], start: number): number {
+  let end = start + 1;
+  while (end < lines.length && !/^##?\s/.test(lines[end] as string)) end++;
+  while (end > start + 1 && !(lines[end - 1] as string).trim()) end--;
+  return end;
+}
+
+/** Linha da regra `text` no assunto `subject`; -1 se não está lá. */
+function findRule(lines: string[], subject: string, text: string): number {
+  const start = sectionStart(lines, subject);
+  if (start < 0) return -1;
+  for (let i = start + 1; i < sectionEnd(lines, start); i++) {
+    const item = /^\s*[-*]\s+(.+)$/.exec(lines[i] as string)?.[1];
+    if (item && sameRule(item, text)) return i;
+  }
+  return -1;
+}
+
+/**
+ * Problemas das alterações contra o `regras.md` atual: `alterar` precisa de `antigo → novo`,
+ * com o antigo no assunto. Sem isso a entrega só incluiria a regra nova, e as duas ficariam.
+ */
+export function ruleChangeProblems(current: string, changes: RuleChange[]): string[] {
+  const lines = current.split('\n');
+  const problems: string[] = [];
+  for (const change of changes.filter((c) => c.acao === 'alterar')) {
+    const [before, after] = change.texto.split(ARROW);
+    if (after === undefined) problems.push(`alteração em "${change.assunto}" sem a seta: use "regra antiga → regra nova"`);
+    else if (findRule(lines, change.assunto, before as string) < 0)
+      problems.push(`alteração em "${change.assunto}": "${before}" não está nesse assunto em .mabel/${CURRENT_RULES_FILE}; copie a regra antiga literalmente ou use incluir`);
+  }
+  return problems;
+}
+
 /**
  * Aplica as alterações ao texto do `regras.md`: `incluir` acrescenta a regra no assunto (que
  * é criado se faltar); `alterar` troca `antigo → novo` (sem a seta, ou sem o antigo, inclui);
@@ -346,27 +382,12 @@ const sameRule = (a: string, b: string) => a.trim().replace(/\s+/g, ' ').toLower
 export function applyRuleChanges(current: string, changes: RuleChange[]): AppliedChanges {
   const lines = (current.trim() ? current.replace(/\n+$/, '') : RULES_HEADER.trimEnd()).split('\n');
   const notes: string[] = [];
-  const sectionOf = (subject: string) => lines.findIndex((line) => /^##\s/.test(line) && sameRule(line.replace(/^##\s+/, ''), subject));
-  const sectionEnd = (start: number) => {
-    let end = start + 1;
-    while (end < lines.length && !/^##?\s/.test(lines[end] as string)) end++;
-    while (end > start + 1 && !(lines[end - 1] as string).trim()) end--;
-    return end;
-  };
   const include = (subject: string, text: string) => {
-    const start = sectionOf(subject);
+    const start = sectionStart(lines, subject);
     if (start < 0) lines.push('', `## ${subject}`, `- ${text}`);
-    else lines.splice(sectionEnd(start), 0, `- ${text}`);
+    else lines.splice(sectionEnd(lines, start), 0, `- ${text}`);
   };
-  const find = (subject: string, text: string) => {
-    const start = sectionOf(subject);
-    if (start < 0) return -1;
-    for (let i = start + 1; i < sectionEnd(start); i++) {
-      const item = /^\s*[-*]\s+(.+)$/.exec(lines[i] as string)?.[1];
-      if (item && sameRule(item, text)) return i;
-    }
-    return -1;
-  };
+  const find = (subject: string, text: string) => findRule(lines, subject, text);
   for (const change of changes) {
     if (change.acao === 'incluir') {
       include(change.assunto, change.texto);
@@ -378,7 +399,7 @@ export function applyRuleChanges(current: string, changes: RuleChange[]): Applie
         notes.push(`${change.assunto}: removido "${change.texto}"`);
       } else notes.push(`${change.assunto}: "${change.texto}" não estava nas regras vigentes; nada removido`);
     } else {
-      const [before, after] = change.texto.split(/\s*(?:→|->)\s*/);
+      const [before, after] = change.texto.split(ARROW);
       const at = after !== undefined ? find(change.assunto, before as string) : -1;
       if (at >= 0) {
         lines[at] = `- ${(after as string).trim()}`;

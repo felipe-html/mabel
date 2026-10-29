@@ -60,6 +60,10 @@ nenhum exemplo sem resultado e o fora do escopo declarado.
   projeto" que a proposta toca. Não invente conceitos.
 - `alteracoesRegrasVigentes`: o que muda em `.mabel/regras.md` quando isto for entregue,
   por assunto (`incluir`, `alterar` ou `remover`, com o texto da regra). Vazio se nada muda.
+  O `assunto` é o título da seção (`## Frete`) no `regras.md`. Em `alterar`, o texto é
+  `regra antiga → regra nova`, com a antiga copiada literalmente do assunto, por exemplo
+  `Frete grátis acima de R$ 200 → Frete grátis acima de R$ 150`. Regra que ainda não existe
+  é `incluir`. O Mabel recusa `alterar` sem a seta ou com regra antiga fora do assunto.
 - `tarefas`: as tarefas do quadro, pequenas e em ordem de execução, cada uma com as
   `regras` que cobre (toda regra em pelo menos uma tarefa). `dependeDe` traz as posições
   (1, 2, …) das tarefas anteriores da própria lista de que ela depende.

@@ -150,11 +150,18 @@ test('S.4 critério 10: exemplo sem resultado e sem pergunta é corrigido na mes
   assert.deepEqual(pending?.conversation.output.perguntas, []);
 
   // Validação pura: o limite de 5 deixa as outras perguntas para a próxima rodada.
-  const ctx = { target: { kind: 'spec', slug: 'x', title: 'X', draft: '' } as const, round: 1, concepts: [] };
+  const ctx = { target: { kind: 'spec', slug: 'x', title: 'X', draft: '' } as const, round: 1, concepts: [], rules: '' };
   assert.deepEqual(outputProblems(broken, ctx), ['R3: exemplo sem resultado e sem pergunta ("Pedido às 23h30 em Manaus"): preencha o resultado ou pergunte']);
   const six = Array.from({ length: 6 }, (_, i) => ({ texto: `P${i}`, sugestao: '', regraCritica: false, regra: 'R2' }));
   assert.match(outputProblems({ ...ROUND1, perguntas: six }, ctx)[0] ?? '', /6 perguntas; o máximo é 5/);
   assert.match(outputProblems(ROUND1, { ...ctx, round: 5 }).join(';'), /na última rodada não há perguntas/);
+
+  // Alterar nas regras vigentes: com a seta e a regra antiga no assunto, ou a saída volta.
+  const rules = '# Regras vigentes\n\n## Frete\n- Frete grátis acima de R$ 200\n';
+  const withChanges = (texto: string): SpecifyOutput => ({ ...ROUND2, alteracoesRegrasVigentes: [{ assunto: 'Frete', acao: 'alterar', texto }] });
+  assert.deepEqual(outputProblems(withChanges('frete grátis acima de R$ 200 → Frete grátis acima de R$ 150'), { ...ctx, rules }), []);
+  assert.match(outputProblems(withChanges('Frete grátis acima de R$ 150'), { ...ctx, rules }).join(), /sem a seta/);
+  assert.match(outputProblems(withChanges('Frete grátis acima de R$ 300 → Frete grátis acima de R$ 150'), { ...ctx, rules }).join(), /não está nesse assunto/);
 });
 
 test('especificar fora do TTY: perguntas pendentes; --aceitar responde com as sugestões e grava; --descartar', async () => {
