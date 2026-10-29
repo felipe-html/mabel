@@ -4,7 +4,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
 import { ask, confirm } from './ask.ts';
 import { dataDir, openDb } from './db.ts';
-import { openDelivery } from './delivery.ts';
+import { openDeliveries, unitArg } from './delivery.ts';
 import { DecisionError, approve, cancel, reject, respond } from './decisions.ts';
 import { fail } from './errors.ts';
 import { formatCost } from './format.ts';
@@ -13,13 +13,14 @@ import { writeJson } from './json.ts';
 import { type Item, type PendingKind, TransitionError, getItem, itemCost } from './items.ts';
 import { LockError, acquireLock } from './lock.ts';
 import { autonomousDecisions, humanAttemptsSummary } from './pipeline.ts';
-import { writeIntegrationReport } from './report.ts';
+import { unitSections, writeRunReport } from './runreport.ts';
 import { type Project, ProjectError, resolveProject } from './project.ts';
 import type { PlanOutput } from './schemas/stages.ts';
 import { itemDir, readArtifact } from './stages.ts';
 import { signals, signalsLine, situation } from './refine.ts';
 import { type RecentRun, renderRecentRuns } from './status.ts';
 import { style } from './style.ts';
+import { inSpec, unitBranch } from './worktree.ts';
 import { type ArgSpec, type OptionSpecs, itemArg, jsonOption } from './options.ts';
 
 function parseNumber(value: string | undefined): number | undefined {
@@ -297,25 +298,26 @@ export function rejectCommand(args: string[]): Promise<number> {
       process.stderr.write(`Informe o motivo.\nUso: ${rejectUsage}\n`);
       return 1;
     }
-    // A rejeição escreve na integração: não pode correr junto com um `mabel run`.
+    // A rejeição escreve na branch da unidade: não pode correr junto com um `mabel run`.
     const home = dataDir();
     const release = acquireLock(home, project.id);
     try {
       const result = reject(db, home, project, item, reason, { cancel: parsed.values.cancelar });
-      writeIntegrationReport(db, home, project);
+      writeRunReport(db, home, project);
+      const where = inSpec(item) ? `revertido na ${unitBranch(item)}` : `retirado da ${unitBranch(item)}`;
       process.stdout.write(
         result.to === 'cancelled'
-          ? `#${item.number} revertido na integração e cancelado.\n`
-          : `#${item.number} revertido na integração: volta ao planejamento com o motivo no próximo \`mabel run\`.\n`,
+          ? `#${item.number} ${where} e cancelado.\n`
+          : `#${item.number} ${where}: volta ao planejamento com o motivo no próximo \`mabel run\`.\n`,
       );
       if (result.dependents.length > 0) {
         const list = result.dependents.map((n) => `#${n}`).join(', ');
-        process.stdout.write(`Atenção: ${list} depende(m) de #${item.number} e continua(m) na integração; rejeite-o(s) se for o caso.\n`);
+        process.stdout.write(`Atenção: ${list} depende(m) de #${item.number} e continua(m) concluído(s); rejeite-o(s) se for o caso.\n`);
       }
-      const delivery = openDelivery(db, project.id);
-      if (delivery?.items.includes(item.number)) {
+      const delivery = openDeliveries(db, project.id).find((open) => open.items.includes(item.number));
+      if (delivery) {
         process.stdout.write(
-          `O #${item.number} está na entrega aberta (${delivery.prUrl ?? delivery.branch}). Rode mabel entregar --substituir para tirá-lo do PR.\n`,
+          `O #${item.number} está na entrega aberta (${delivery.prUrl ?? delivery.branch}). Rode mabel entregar ${unitArg(delivery.unit.split('+')[0] as string)} --substituir para tirá-lo do PR.\n`,
         );
       }
       return 0;
@@ -329,7 +331,9 @@ export async function integrationCommand(): Promise<number> {
   const home = dataDir();
   const db = openDb(home);
   try {
-    process.stdout.write(writeIntegrationReport(db, home, resolveProject(db)));
+    const project = resolveProject(db);
+    writeRunReport(db, home, project);
+    process.stdout.write(`${unitSections(db, home, project).join('\n')}\n`);
     return 0;
   } catch (error) {
     if (error instanceof ProjectError) {

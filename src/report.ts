@@ -1,19 +1,18 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { formatCost } from './format.ts';
 import { tryGit } from './git.ts';
-import { openDelivery } from './delivery.ts';
+import { openDeliveries } from './delivery.ts';
 import { integratedItems } from './integration.ts';
+import { readIntegrationState } from './units.ts';
 import { type Item, itemCost } from './items.ts';
-import { MABEL_DIR, type Project, mabelPath } from './project.ts';
+import { MABEL_DIR, type Project } from './project.ts';
 import { type ProofResult, proofLabel } from './proof.ts';
 import type { ExecuteOutput, PlanOutput } from './schemas/stages.ts';
 import { readArtifact } from './stages.ts';
 
-// Relatório da integração (P.5): decidível sem abrir o código.
-
-export const REPORT_FILE = 'integracao.md';
+// Relatório da integração (P.5): decidível sem abrir o código. Vive no `run.md` (S.1).
 
 const two = (n: number) => String(n).padStart(2, '0');
 
@@ -25,14 +24,14 @@ function when(iso: string): string {
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
 /** `4 alterados, +120 −8`, pelo `--shortstat` do merge contra o primeiro pai. */
-function filesChanged(root: string, commit: string): string {
+export function filesChanged(root: string, commit: string): string {
   const stat = tryGit(root, 'diff', '--shortstat', `${commit}^1`, commit) ?? '';
   const number = (pattern: RegExp) => Number(pattern.exec(stat)?.[1] ?? 0);
   return `${number(/(\d+) files? changed/)} alterados, +${number(/(\d+) insertions?/)} −${number(/(\d+) deletions?/)}`;
 }
 
 /** Tentativas devolvidas, por quem devolveu. */
-function returns(db: DatabaseSync, itemId: string): string {
+export function returns(db: DatabaseSync, itemId: string): string {
   const rows = db
     .prepare('SELECT gate, count(DISTINCT attempt) AS n FROM gate_results WHERE item_id = ? AND attempt > 0 AND passed = 0 GROUP BY gate')
     .all(itemId) as { gate: string; n: number }[];
@@ -48,14 +47,14 @@ function returns(db: DatabaseSync, itemId: string): string {
   return parts.length > 0 ? parts.join(', ') : '—';
 }
 
-interface Entry {
+export interface Entry {
   item: Item;
   plan?: PlanOutput;
   execution?: ExecuteOutput;
   proof?: ProofResult;
 }
 
-function entry(home: string, item: Item): Entry {
+export function entry(home: string, item: Item): Entry {
   return {
     item,
     plan: readArtifact<PlanOutput>(home, item.id, 'plano.json'),
@@ -73,7 +72,7 @@ function proofStatus(proof: ProofResult | undefined): string {
   return proof.mode === 'item' ? 'provado (por item)' : 'provado';
 }
 
-function lookFirst({ item, plan, execution, proof }: Entry): string[] {
+export function lookFirst({ item, plan, execution, proof }: Entry): string[] {
   const head = `#${item.number} ${item.title}`;
   const lines: string[] = [];
   for (const criterion of proof?.criteria ?? []) {
@@ -115,54 +114,52 @@ function itemSection(db: DatabaseSync, project: Project, { item, plan, execution
   return lines;
 }
 
-export interface ReportOptions {
-  /** Entrega (`mabel entregar`): o relatório vira o corpo do PR, só com os itens até o commit dela. */
-  delivery?: { branch: string; commit: string };
-  /** Limite de caracteres: as seções dos itens são cortadas do fim para o começo. */
-  maxChars?: number;
+function howToDeliver(db: DatabaseSync, project: Project): string[] {
+  const lines = ['Para entregar: mabel entregar <unidade> (a integração é só para teste)'];
+  for (const open of openDeliveries(db, project.id)) lines.push(`Entrega aberta: ${open.unit} · ${open.branch} · ${open.prUrl ?? 'sem PR'}`);
+  return lines;
 }
 
-/** Linhas do "Olhe primeiro" dos itens integrados (até `upTo`, se dado). */
-export function lookFirstLines(db: DatabaseSync, home: string, project: Project, upTo?: string): string[] {
-  return integratedItems(db, project, upTo).flatMap((item) => lookFirst(entry(home, item)));
-}
-
-/** Conteúdo do `.mabel/integracao.md` ou, com `delivery`, do corpo do PR da entrega. */
-export function renderIntegrationReport(db: DatabaseSync, home: string, project: Project, options: ReportOptions = {}): string {
-  const integration = project.config.integracao;
+/** `main (a1b2c3d) + 2 unidades (a, b) · 1 de fora (c) · verificação: verde`. */
+function integrationLine(db: DatabaseSync, project: Project, baseCommit: string): string {
+  const state = readIntegrationState(db, project.id);
   const base = project.config.baseBranch;
-  if (!integration) return '# Integração desligada\n\nCom `integracao: null` no config, cada item fica na própria branch.\n';
-  const { delivery, maxChars } = options;
-  const entries = integratedItems(db, project, delivery?.commit).map((item) => entry(home, item));
-  const lines = delivery
-    ? [`# Entrega · ${delivery.branch} · ${plural(entries.length, 'item', 'itens')} desde a ${base}`]
-    : ['<!-- Gerado pelo Mabel. Edições aqui são descartadas. -->', `# Integração · ${integration} · ${plural(entries.length, 'item', 'itens')} desde a ${base}`];
-  if (entries.length === 0) return `${[...lines, '', `Nada a levar para a ${base}.`].join('\n')}\n`;
-  if (delivery) {
-    lines.push('', 'Faça o merge com merge commit ("Create a merge commit" no GitHub, "Merge commit" no Bitbucket): squash e rebase impedem o Mabel de dar os itens como concluídos.');
-  } else {
-    lines.push('', `Para levar à ${base}: git merge --no-ff ${integration}`, 'ou: mabel entregar');
-    const open = openDelivery(db, project.id);
-    if (open) lines.push(`Entrega aberta: ${open.branch} · ${open.prUrl ?? 'sem PR'}`);
-  }
-  lines.push(`Para devolver um item: mabel rejeitar <n> "<motivo>"`);
-  const first = entries.flatMap(lookFirst);
-  lines.push('', '## Olhe primeiro', ...(first.length > 0 ? first.map((line) => `- ${line}`) : ['Nada: todos os critérios provados.']));
-  const sections = entries.map((e) => ['', ...itemSection(db, project, e)].join('\n'));
-  const head = lines.join('\n');
-  let kept = sections.length;
-  const cut = (n: number) => (n < sections.length ? `\n\n… ${plural(sections.length - n, 'item', 'itens')} sem detalhe aqui; rode mabel integracao.` : '');
-  const size = (n: number) => head.length + sections.slice(0, n).reduce((sum, section) => sum + section.length + 1, 0) + cut(n).length;
-  while (maxChars !== undefined && kept > 0 && size(kept) > maxChars) kept--;
-  return `${head}${sections.slice(0, kept).map((section) => `\n${section}`).join('')}${cut(kept)}\n`;
+  if (!state) return `${base} (${baseCommit}) + nenhuma unidade`;
+  const parts = [`${base} (${state.base}) + ${plural(state.included.length, 'unidade', 'unidades')}${state.included.length > 0 ? ` (${state.included.join(', ')})` : ''}`];
+  const out = [...new Set([...state.conflicts.map((c) => c.unit), ...state.paused.map((p) => p.unit)])].filter((unit) => !state.included.includes(unit));
+  if (out.length > 0) parts.push(`${out.length} de fora (${out.join(', ')})`);
+  parts.push(`verificação: ${state.verify === null ? '—' : state.verify.ok ? 'verde' : 'vermelha'}`);
+  return parts.join(' · ');
 }
 
 /**
- * Projeto iniciado antes do relatório: o `.mabel/.gitignore` não o lista. Ignora pelo
+ * Seção "Integração" do `run.md`: a branch sobre a base, como entregar, o "olhe primeiro" e
+ * o detalhe de cada item, com os títulos um nível abaixo.
+ */
+export function integrationSection(db: DatabaseSync, home: string, project: Project): string[] {
+  const integration = project.config.integracao;
+  const base = project.config.baseBranch;
+  if (!integration) return ['Desligada (`integracao: null` no config): cada item fica na própria branch.'];
+  const entries = integratedItems(db, project).map((item) => entry(home, item));
+  const baseCommit = tryGit(project.root, 'rev-parse', '--short', base) ?? '?';
+  const lines = [integrationLine(db, project, baseCommit)];
+  if (entries.length === 0) return lines;
+  lines.push('', ...howToDeliver(db, project), `Para devolver um item: mabel rejeitar <n> "<motivo>"`);
+  const first = entries.flatMap(lookFirst);
+  lines.push('', '### Olhe primeiro', ...(first.length > 0 ? first.map((line) => `- ${line}`) : ['Nada: todos os critérios provados.']));
+  for (const e of entries) {
+    const [title, ...rest] = itemSection(db, project, e);
+    lines.push('', `#${title}`, ...rest);
+  }
+  return lines;
+}
+
+/**
+ * Projeto iniciado antes do arquivo: o `.mabel/.gitignore` não o lista. Ignora pelo
  * `info/exclude` do repositório, que não é versionado.
  */
-function ensureIgnored(root: string): void {
-  const file = `${MABEL_DIR}/${REPORT_FILE}`;
+export function ensureIgnored(root: string, name: string): void {
+  const file = `${MABEL_DIR}/${name}`;
   if (tryGit(root, 'check-ignore', '-q', file) !== undefined) return;
   const common = tryGit(root, 'rev-parse', '--git-common-dir');
   if (!common) return;
@@ -170,14 +167,4 @@ function ensureIgnored(root: string): void {
   mkdirSync(dirname(exclude), { recursive: true });
   const current = existsSync(exclude) ? readFileSync(exclude, 'utf8') : '';
   appendFileSync(exclude, `${current && !current.endsWith('\n') ? '\n' : ''}/${file}\n`);
-}
-
-/** Regenera o `.mabel/integracao.md`. Sem integração, não grava nada. */
-export function writeIntegrationReport(db: DatabaseSync, home: string, project: Project): string {
-  const content = renderIntegrationReport(db, home, project);
-  if (project.config.integracao) {
-    ensureIgnored(project.root);
-    writeFileSync(mabelPath(project.root, REPORT_FILE), content);
-  }
-  return content;
 }

@@ -1,7 +1,7 @@
 import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { git, tryGit } from './git.ts';
+import { git, tryGit, withTrailers } from './git.ts';
 import { type Item, listItems, transition, updateItem } from './items.ts';
 import type { Project } from './project.ts';
 import { branchExists, worktreesDir } from './worktree.ts';
@@ -36,7 +36,7 @@ export function checkedOutAt(project: Project, branch: string): string | undefin
   return undefined;
 }
 
-function removeTemp(project: Project, path: string): void {
+export function removeTemp(project: Project, path: string): void {
   if (existsSync(path) && tryGit(project.root, 'worktree', 'remove', '--force', path) === undefined) {
     rmSync(path, { recursive: true, force: true });
   }
@@ -75,53 +75,6 @@ export function onTempWorktree(
   }
 }
 
-export interface OpenResult {
-  /** Motivo para a fila não começar. */
-  pause?: string;
-  notes: string[];
-}
-
-/**
- * Abertura do `run` com integração: cria a branch, recusa seguir se ela estiver aberta fora
- * do Mabel e traz para ela o que entrou na base (avanço direto ou merge).
- */
-export function openIntegration(home: string, project: Project): OpenResult {
-  const integration = project.config.integracao;
-  const base = project.config.baseBranch;
-  const notes: string[] = [];
-  if (!integration) return { notes };
-  if (!branchExists(project.root, integration)) {
-    git(project.root, 'branch', integration, base);
-    notes.push(`branch ${integration} criada a partir da ${base}`);
-    return { notes };
-  }
-  const open = checkedOutAt(project, integration);
-  if (open) return { pause: `a branch ${integration} está aberta em ${open}; feche-a para o Mabel continuar`, notes };
-  if (isAncestor(project.root, base, integration)) return { notes };
-
-  if (isAncestor(project.root, integration, base)) {
-    const old = git(project.root, 'rev-parse', `refs/heads/${integration}`);
-    git(project.root, 'update-ref', `refs/heads/${integration}`, git(project.root, 'rev-parse', base), old);
-    notes.push(`${integration} avançada até a ${base}`);
-    return { notes };
-  }
-  const merged = onTempWorktree(
-    home,
-    project,
-    integration,
-    (path) => tryGit(path, 'merge', '-q', '--no-edit', '-m', `mabel: traz a ${base} para a integração`, base) !== undefined,
-    ['merge', '--abort'],
-  );
-  if (merged.kind === 'conflict') {
-    return {
-      pause: `a ${base} e a ${integration} divergiram com conflito em: ${merged.files.join(', ')}. Faça o merge da ${base} na ${integration} à mão e rode de novo`,
-      notes,
-    };
-  }
-  notes.push(`${base} trazida para a ${integration} (merge)`);
-  return { notes };
-}
-
 /** Itens integrados cujo merge já está na base: passam a `done`. */
 export function finishIntegrated(db: DatabaseSync, project: Project, items: Item[]): Item[] {
   const finished = items.filter(
@@ -131,7 +84,7 @@ export function finishIntegrated(db: DatabaseSync, project: Project, items: Item
       isAncestor(project.root, item.integratedCommit, project.config.baseBranch),
   );
   for (const item of finished) {
-    transition(db, project, item.id, 'done', `merge da ${project.config.integracao ?? 'integração'} na ${project.config.baseBranch}`);
+    transition(db, project, item.id, 'done', `merge da unidade ${unitOf(item)} na ${project.config.baseBranch}`);
   }
   return finished;
 }
@@ -154,11 +107,10 @@ export function mergeInProgress(worktree: string): boolean {
 }
 
 /**
- * Integra o item: commit de merge com a árvore do item sobre a integração (o item já a
- * contém) e `update-ref` contra o valor antigo. Devolve o commit ou o motivo da falha.
+ * Merge da tarefa na branch da unidade (a da spec): commit de merge com a árvore da tarefa
+ * (que já contém a branch) e `update-ref` contra o valor antigo. Devolve o commit ou o motivo.
  */
-export function integrateItem(project: Project, item: Item): { commit: string } | { error: string } {
-  const integration = project.config.integracao as string;
+export function integrateItem(project: Project, item: Item, integration: string): { commit: string } | { error: string } {
   const worktree = item.worktree as string;
   const old = git(project.root, 'rev-parse', `refs/heads/${integration}`);
   const head = git(worktree, 'rev-parse', 'HEAD');
@@ -166,11 +118,22 @@ export function integrateItem(project: Project, item: Item): { commit: string } 
     return { error: `a ${integration} mudou durante o item; o item não contém o que já foi integrado` };
   }
   const tree = git(worktree, 'rev-parse', 'HEAD^{tree}');
-  const commit = git(project.root, 'commit-tree', tree, '-p', old, '-p', head, '-m', `mabel: integra #${item.number} ${item.title}`);
+  const message = withTrailers(`mabel: merge #${item.number} ${item.title} na ${integration}`, itemTrailers(item));
+  const commit = git(project.root, 'commit-tree', tree, '-p', old, '-p', head, '-m', message);
   if (tryGit(project.root, 'update-ref', `refs/heads/${integration}`, commit, old) === undefined) {
     return { error: `a ${integration} mudou durante a integração; nada foi integrado` };
   }
   return { commit };
+}
+
+/** Unidade de entrega da tarefa: a fixada (`legado`), o slug da spec ou `avulso-<n>`. */
+export function unitOf(item: Pick<Item, 'number' | 'spec'> & { unit?: string | null }): string {
+  return item.unit ?? item.spec ?? `avulso-${item.number}`;
+}
+
+/** Trailers dos commits de merge do Mabel: `Mabel-Item` e `Mabel-Unidade`. */
+export function itemTrailers(item: Pick<Item, 'number' | 'spec'> & { unit?: string | null }): Record<string, string> {
+  return { 'Mabel-Item': `#${item.number}`, 'Mabel-Unidade': unitOf(item) };
 }
 
 /** Grava o commit de integração no item (ou o limpa, na rejeição). */
@@ -180,13 +143,13 @@ export function setIntegrated(db: DatabaseSync, item: Item, commit: string | nul
 }
 
 /**
- * Itens na integração e ainda fora da base, na ordem em que foram integrados. Com `upTo`
- * (o commit de uma entrega), só os integrados até ele.
+ * Itens na integração e ainda fora da base, na ordem em que entraram nela. Com `upTo` (o
+ * commit de uma entrega), só os alcançáveis a partir dele.
  */
 export function integratedItems(db: DatabaseSync, project: Project, upTo?: string): Item[] {
   const integration = project.config.integracao;
   if (!integration || !branchExists(project.root, integration)) return [];
-  const order = (tryGit(project.root, 'rev-list', '--first-parent', '--reverse', `${project.config.baseBranch}..${upTo ?? integration}`) ?? '')
+  const order = (tryGit(project.root, 'rev-list', '--topo-order', '--reverse', `${project.config.baseBranch}..${upTo ?? integration}`) ?? '')
     .split('\n')
     .filter(Boolean);
   const position = new Map(order.map((commit, i) => [commit, i]));

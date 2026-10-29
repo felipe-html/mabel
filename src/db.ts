@@ -229,6 +229,61 @@ const migrations: string[] = [
   );
   CREATE INDEX births_root ON births(root, created_at);
   `,
+  `
+  ALTER TABLE deliveries ADD COLUMN snapshot_sha TEXT;
+  `,
+  `
+  CREATE TABLE specs (
+    id          INTEGER PRIMARY KEY,
+    project_id  TEXT NOT NULL REFERENCES projects(id),
+    slug        TEXT NOT NULL,
+    status      TEXT NOT NULL,
+    accepted_at TEXT,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    UNIQUE (project_id, slug)
+  );
+  ALTER TABLE items ADD COLUMN spec TEXT;
+  ALTER TABLE items ADD COLUMN spec_rules TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE items ADD COLUMN spec_context TEXT;
+  ALTER TABLE items ADD COLUMN kind TEXT;
+  `,
+  `
+  CREATE TABLE spec_proposals (
+    id           INTEGER PRIMARY KEY,
+    project_id   TEXT NOT NULL REFERENCES projects(id),
+    slug         TEXT NOT NULL,
+    session_id   TEXT,
+    rounds       INTEGER NOT NULL DEFAULT 0,
+    questions    INTEGER NOT NULL DEFAULT 0,
+    content_hash TEXT NOT NULL,
+    output       TEXT NOT NULL,
+    answers      TEXT,
+    status       TEXT NOT NULL,
+    decision     TEXT,
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL,
+    decided_at   TEXT
+  );
+  CREATE INDEX spec_proposals_slug ON spec_proposals(project_id, slug, id);
+  ALTER TABLE refinements ADD COLUMN session_id TEXT;
+  ALTER TABLE refinements ADD COLUMN rounds INTEGER NOT NULL DEFAULT 1;
+  ALTER TABLE refinements ADD COLUMN questions INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE refinements ADD COLUMN answers TEXT;
+  ALTER TABLE specs ADD COLUMN metrics TEXT;
+  ALTER TABLE items ADD COLUMN rule_changes TEXT NOT NULL DEFAULT '[]';
+  `,
+  `
+  ALTER TABLE items ADD COLUMN unit TEXT;
+  CREATE TABLE integration_state (
+    project_id  TEXT PRIMARY KEY REFERENCES projects(id),
+    state       TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+  );
+  `,
+  `
+  ALTER TABLE deliveries ADD COLUMN unit TEXT NOT NULL DEFAULT 'integracao';
+  `,
 ];
 
 function migrate(db: DatabaseSync): void {

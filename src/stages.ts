@@ -7,6 +7,7 @@ import { projectContext } from './hermetic.ts';
 import { type Project, type Stage, readCriticalRules } from './project.ts';
 import { type FrozenReference, freezeReferences, frozenDir, referencesSection } from './references.ts';
 import { sandboxSettings } from './sandbox.ts';
+import { renderExample } from './specs.ts';
 import { type RunHandle, type RunObserver, type RunOutcome, type RunRequest, type RunStage, startRun } from './runner.ts';
 import {
   type ExecuteOutput,
@@ -15,15 +16,16 @@ import {
   birthSchema,
   executeSchema,
   planSchema,
-  refineSchema,
   reviewSchema,
+  specifySchema,
 } from './schemas/stages.ts';
 import { type Schema, validate } from './schemas/validate.ts';
-import { originBranch } from './worktree.ts';
+import { itemOrigin } from './worktree.ts';
 
 /** Ferramentas que existem na etapa (`--tools`); o `init` precisa listar exatamente estas. */
 export const STAGE_TOOLS: Record<RunStage, string[]> = {
   refine: ['Read', 'Glob', 'Grep'],
+  specify: ['Read', 'Glob', 'Grep'],
   birth: ['Read', 'Glob', 'Grep'],
   plan: ['Read', 'Glob', 'Grep'],
   execute: ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'Bash'],
@@ -33,6 +35,7 @@ export const STAGE_TOOLS: Record<RunStage, string[]> = {
 /** Ferramentas liberadas sem pedir (`--allowedTools`); no `dontAsk`, o resto é negado. */
 export const STAGE_ALLOWED: Record<RunStage, string[]> = {
   refine: STAGE_TOOLS.refine,
+  specify: STAGE_TOOLS.specify,
   birth: STAGE_TOOLS.birth,
   plan: STAGE_TOOLS.plan,
   execute: STAGE_TOOLS.execute,
@@ -56,7 +59,8 @@ export const EXECUTE_DISALLOWED = [
 ];
 
 export const SCHEMAS: Record<RunStage, Schema> = {
-  refine: refineSchema,
+  refine: specifySchema,
+  specify: specifySchema,
   birth: birthSchema,
   plan: planSchema,
   execute: executeSchema,
@@ -64,7 +68,8 @@ export const SCHEMAS: Record<RunStage, Schema> = {
 };
 
 const PROMPT_FILES: Record<RunStage, string> = {
-  refine: 'refinar.md',
+  refine: 'especificar.md',
+  specify: 'especificar.md',
   birth: 'nascer.md',
   plan: 'planejar.md',
   execute: 'executar.md',
@@ -235,6 +240,31 @@ function bullet(items: string[], empty: string): string {
   return items.length > 0 ? items.map((item) => `- ${item}`).join('\n') : empty;
 }
 
+/**
+ * Contexto da spec da tarefa (cópia congelada no item): história, regras citadas com os
+ * exemplos, decisões, fora do escopo e regras críticas. Os exemplos são critérios de aceite.
+ */
+function specSection(item: Item, role: 'plan' | 'execute' | 'review'): string[] {
+  const spec = item.specContext;
+  if (!spec) return [];
+  const rules = spec.regras.flatMap((rule) => [`### ${rule.id} ${rule.texto}`, ...rule.exemplos.map((e) => `- ${renderExample(e)}`), '']);
+  const howTo = {
+    plan: 'Cada exemplo das regras acima é um critério de aceite: crie um critério por exemplo, com o id da regra no texto (`R1: …`), além dos critérios do backlog. Se a tarefa tocar uma das regras críticas da spec, copie-a em `conceitosCriticos`.',
+    execute: 'Cada exemplo das regras acima é um critério de aceite e precisa de um teste.',
+    review: 'Cada exemplo das regras acima é um critério de aceite: confira que o código o atende.',
+  }[role];
+  return section(`Spec: ${spec.titulo} (${spec.slug})`, [
+    '### História',
+    spec.historia,
+    '',
+    ...(rules.length > 0 ? ['### Regras desta tarefa', '', ...rules] : []),
+    ...(spec.decisoes.length > 0 ? ['### Decisões da spec', bullet(spec.decisoes, ''), ''] : []),
+    ...(spec.foraDoEscopo.length > 0 ? ['### Fora do escopo da spec', bullet(spec.foraDoEscopo, ''), ''] : []),
+    ...(spec.regrasCriticas.length > 0 ? ['### Regras críticas da spec', bullet(spec.regrasCriticas, ''), ''] : []),
+    howTo,
+  ]);
+}
+
 function verifyCommands(project: Project): string {
   return bullet(
     project.config.verify.map((command) => `\`${command.command}\` (${command.name})`),
@@ -272,12 +302,19 @@ export function planPrompt(ctx: StageContext, input: PlanPromptInput = {}): stri
     `# Item #${item.number}: ${item.title}`,
     '',
     ...section('Intenção', item.intent),
+    ...specSection(item, 'plan'),
     ...section(
       'Critérios de aceite do backlog',
-      bullet(item.criteria, 'Nenhum. Proponha critérios verificáveis.'),
+      bullet(item.criteria, item.specContext ? '' : 'Nenhum. Proponha critérios verificáveis.'),
     ),
     ...section('Fora do escopo', bullet(item.outOfScope, '')),
     ...section('Decisões já tomadas pelo humano', bullet(item.decisions, '')),
+    ...section(
+      'Bug',
+      item.kind === 'bug'
+        ? 'O item corrige um defeito. O critério de reprodução (`Reprodução: …`) precisa de um critério `teste` com `comportamento: novo`, com "Reprodução" no texto: o teste falha no código base e passa no item.'
+        : '',
+    ),
     ...section(
       'Regras críticas declaradas no backlog',
       item.criticalConcepts.length > 0
@@ -339,6 +376,7 @@ export function executePrompt(ctx: StageContext, input: ExecutePromptInput): str
     `# Item #${ctx.item.number}: ${ctx.item.title} · tentativa ${input.attempt}`,
     '',
     ...section('Plano', renderPlanMarkdown(ctx.item, input.plan).replace(/^# .*\n/, '')),
+    ...specSection(ctx.item, 'execute'),
     ...section('Fora do escopo', bullet(ctx.item.outOfScope, '')),
     ...section('Decisões já tomadas pelo humano', bullet(ctx.item.decisions, '')),
     ...section('Referências', referencesPrompt(ctx)),
@@ -361,7 +399,7 @@ export interface ReviewPromptInput {
 
 export function reviewPrompt(ctx: StageContext, input: ReviewPromptInput): string {
   if (input.resuming) return `${INTERRUPTED} Termine a revisão com a saída estruturada.`;
-  const base = originBranch(ctx.project.config);
+  const base = itemOrigin(ctx.project, ctx.item);
   const tests = input.execution.criterios.map(
     (criterion) => `${criterion.id}: ${criterion.testes.map((t) => `\`${t.arquivo}\` › ${t.nome}`).join(', ') || '(nenhum)'}`,
   );
@@ -369,6 +407,7 @@ export function reviewPrompt(ctx: StageContext, input: ReviewPromptInput): strin
     `# Revisão do item #${ctx.item.number}: ${ctx.item.title}`,
     '',
     ...section('Plano', renderPlanMarkdown(ctx.item, input.plan).replace(/^# .*\n/, '')),
+    ...specSection(ctx.item, 'review'),
     ...section('Fora do escopo do item', bullet(ctx.item.outOfScope, '')),
     ...section('Referências', referencesPrompt(ctx)),
     ...section('Resumo da execução', input.execution.resumo),

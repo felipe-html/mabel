@@ -12,7 +12,7 @@ comportamento parece não ter sido intencional, o texto diz "a confirmar".
 
 - [Como o menu aparece](#como-o-menu-aparece)
 - [Mapa rápido](#mapa-rápido)
-- Comandos: [init](#init) · [add](#add) · [refinar](#refinar) · [referencia](#referencia) · [credencial](#credencial) · [run](#run) · [inbox](#inbox) · [item](#item) ·
+- Comandos: [init](#init) · [add](#add) · [especificar](#especificar) · [refinar](#refinar) · [referencia](#referencia) · [credencial](#credencial) · [run](#run) · [inbox](#inbox) · [item](#item) ·
   [aprovar](#aprovar) · [responder](#responder) · [cancelar](#cancelar) ·
   [integracao](#integracao) · [entregar](#entregar) · [rejeitar](#rejeitar) · [status](#status) · [runs](#runs) ·
   [projetos](#projetos) · [projeto](#projeto) · [exec](#exec) · [completion](#completion)
@@ -101,7 +101,8 @@ Ordem em que aparecem na lista (a mesma de `src/commands.ts`).
 |---|---|---|---|---|---|
 | `init` | `init [--stack node\|python\|go\|rust]` | não (cria) | — (o próprio comando pergunta) | não | sem perguntas |
 | `add` | `add "<título>" [--intencao] [--criterio]… [--fora-do-escopo]… [--depende]… [--restricoes]` | sim | — (o próprio comando pergunta) | não | exige título e `--intencao` |
-| `refinar` | `refinar [<n>] [--refazer] [--aceitar \| --descartar]` | sim | — (o próprio comando abre o menu de itens) | não | sem `<n>` lista; com `<n>` mostra a proposta; `--aceitar` grava |
+| `especificar` | `especificar [<slug>] [--refazer] [--aceitar \| --descartar]` | sim | não | não | sem `<slug>` lista; com `<slug>` roda a primeira rodada e mostra a proposta e as perguntas; `--aceitar` responde com as sugestões e grava (sem proposta: aceita a spec do arquivo) |
+| `refinar` | `refinar [<n>] [--refazer] [--aceitar \| --descartar]` | sim | — (o próprio comando abre o menu de itens) | não | sem `<n>` lista; com `<n>` roda a primeira rodada e mostra a proposta e as perguntas; `--aceitar` responde com as sugestões e grava |
 | `referencia` | `referencia` · `referencia api <nome> <url>` · `referencia tela <nome> <url-figma> [--escala <n>]` · `referencia tela <nome> --png <arquivo>` | sim | não | não | igual |
 | `credencial` | `credencial` · `credencial figma --expira <AAAA-MM-DD>` | não (global) | não | não | igual |
 | `run` | `run [--item <n>] [--uma] [--sem-lote]` | sim | não | **sim** | sem perguntas; política decide |
@@ -110,7 +111,7 @@ Ordem em que aparecem na lista (a mesma de `src/commands.ts`).
 | `responder` | `responder <n> "<resposta>" [--replanejar]` | sim | número, resposta, replanejar? | não | igual |
 | `cancelar` | `cancelar <n>` | sim | número + confirmação | não | igual, **sem confirmação** |
 | `integracao` | `integracao` | sim | não | não | igual |
-| `entregar` | `entregar [--substituir] [--rascunho]` | sim | não | não | igual |
+| `entregar` | `entregar [<slug> \| #<n>] [--com <unidade>]… [--parcial] [--substituir] [--rascunho]` | sim | — (o próprio comando abre o menu das unidades) | não | sem unidade lista as prontas; parcial exige `--parcial` |
 | `rejeitar` | `rejeitar <n> "<motivo>" [--cancelar]` | sim | número, motivo, cancelar? | **sim** | igual |
 | `exec` | `exec "<prompt>" [--model] [--max-turns] [--max-budget-usd] [--allowed-tools] [--cwd]` | não | prompt | não | igual |
 | `status` | `status [--atualizar]` | não (mostra o quadro se houver) | não | não | igual |
@@ -210,48 +211,90 @@ o `backlog.md`.
   surpreender quem passou só título e intenção esperando ser perguntado do resto.
 - A prioridade é a ordem no arquivo; o `add` sempre põe no fim. Sem `--antes`/`--topo`.
 
-### refinar
+### especificar
 
-**Para quê:** antes do planejamento, pedir a um agente uma proposta de critérios, fora do
-escopo, decisões de negócio e regras críticas de um item, e gravar no `backlog.md` só o que
-você aceitar. Spec: `docs/specs/refinamento.md`.
+**Para quê:** especificar uma funcionalidade com um agente, pelo Example Mapping (história →
+regras → exemplos → perguntas), e aceitar a spec (`docs/specs/specs-e-entrega.md`).
 
 | Parâmetro | Efeito |
 |---|---|
-| (nenhum) | TTY: menu dos itens refináveis com estado e situação; o escolhido abre a revisão e o menu volta ao terminar (`q` sai). Fora de TTY: tabela `# · título · estado · refinamento` |
-| `<n>` (aceita `#3`) | Usa a proposta pendente ou roda o agente; no TTY abre a revisão, fora dele imprime a proposta e como aceitar |
-| `--refazer` | Descarta a proposta pendente e roda o agente de novo |
-| `--aceitar` | Grava a proposta como veio (perguntas com sugestão viram decisões; as sem sugestão ficam para o planejamento). Pensado para fora do TTY |
+| (nenhum) | Lista as specs de `.mabel/specs/` com estado, tarefas, validade, proposta pendente e tamanho |
+| `<slug>` | A spec em `.mabel/specs/<slug>.md` (o rascunho pode ser só a história). Continua a proposta pendente ou roda o agente; no TTY, responde as perguntas rodada a rodada e abre a revisão; fora dele, roda a primeira rodada e imprime a proposta e as perguntas |
+| `--refazer` | Descarta a proposta pendente e começa uma conversa nova |
+| `--aceitar` | Com proposta pendente: responde as perguntas com as sugestões (as sem sugestão ficam para o planejamento), segue as rodadas e grava sem revisão. Sem ela: aceita a spec como está no arquivo, se passar na validação |
 | `--descartar` | Descarta a proposta pendente sem gravar |
 
-Só itens em `backlog` ou `ready` que nunca entraram em planejamento. Situações: `não
-refinado`, `proposta pendente`, `proposta desatualizada` (o item mudou depois da
-proposta; o agente roda de novo), `refinado`, `descartado`. Item já refinado: no TTY,
-pergunta `Pedir outra proposta ao agente? [s/N]` antes de gastar outra run.
+Validação da spec: regra com exemplo, algum exemplo `(borda)`, nenhum `→ ?`, fora do escopo
+declarado. Tarefa com `Spec:` só vai a `ready` com a spec aceita, válida e com as `Regras:`
+citadas. Spec `entregue` não é especificada de novo; spec `aceita` pergunta antes de pedir
+outra proposta (TTY).
 
-**A run:** etapa `refine`, só leitura (`Read`, `Glob`, `Grep`) na raiz do projeto, com as
-travas das outras etapas; modelo `models.refine` (padrão `sonnet`), limites
-`limits.refine` (30 turnos, US$ 1). Antes dela, a política de saldo numa chamada: sem
-leitura recente faz a chamada mínima; saldo baixo ou acima do ritmo pergunta
-`Refinar mesmo assim? [s/N]` (TTY) ou recusa. Ctrl+C interrompe a run (sai com 130).
+**Rodadas:** etapa `specify`, só leitura (`Read`, `Glob`, `Grep`) na raiz, com as travas
+do refinamento e o modelo e os limites de `refine` no config, até 5 rodadas na mesma
+sessão. O agente recebe o rascunho, o código, o `.mabel/regras.md` (até 20.000 caracteres;
+acima, o Mabel avisa e pede para consolidar) e acha as entregas anteriores com `Grep`. Cada
+exemplo sem resultado dedutível vira pergunta (no máximo 5 por rodada). A rodada seguinte
+recebe as respostas e as regras que elas mexem. Saída inválida (exemplo sem resultado e sem
+pergunta, mais de 5 perguntas, regra citada que não existe) volta ao agente uma vez, na
+mesma sessão. Ctrl+C deixa a proposta pendente com as respostas já dadas.
 
 **Revisão (TTY)**
 
 | Etapa | Entradas aceitas |
 |---|---|
-| Entendimento do agente | — (só leitura) |
-| Cada pergunta, com a sugestão | Enter aceita a sugestão · texto responde · `p` deixa para o planejamento |
-| Critérios, fora do escopo, regras críticas propostos | Enter aceita · `e` edita um a um (Enter mantém, `-` remove, texto substitui, depois acrescenta até linha vazia) · `-` descarta |
-| Quebra sugerida | — (informativa; crie os itens com `/add`) |
-| Prévia do bloco e `Gravar no backlog? [S/n/d]` | Enter grava · `n` deixa a proposta pendente · `d` descarta |
+| Cada pergunta, com a regra e a sugestão | Enter aceita a sugestão · texto responde · `p` deixa para o planejamento |
+| História | Enter aceita · `e` edita |
+| Regras e exemplos | Enter aceita · `e` edita uma a uma (texto da regra, depois os exemplos como lista) |
+| Decisões, fora do escopo, regras críticas, alterações nas regras vigentes | Enter aceita · `e` edita um a um · `-` descarta |
+| Tarefas | Enter aceita · `e` edita uma a uma (Enter mantém, `-` remove, texto troca o título) · `-` descarta |
+| Sugestão de quebra e tamanho | — (informativos) |
+| Prévia (spec e tarefas) e `Gravar? [S/n/d]` | Enter grava · `n` deixa a proposta pendente · `d` descarta |
 
-Respostas viram `Decisões: - <pergunta> → <resposta>`. A gravação acrescenta sem repetir
-entradas iguais, regrava só o trecho do item no `backlog.md` e sincroniza. Ctrl+C na
-revisão deixa a proposta pendente.
+**Grava:** `.mabel/specs/<slug>.md` (a proposta substitui o rascunho), as tarefas no fim do
+`backlog.md` com `Spec:`, `Regras:` e `Depende de:` (nenhuma, se a spec já tinha tarefas),
+o estado `aceita` e as métricas de tamanho (regras, exemplos, rodadas, perguntas, tarefas).
 
 **Pontos a refinar**
 
-- A quebra sugerida não é aplicada; criar os itens e ajustar o original é manual.
+- `--json` e passos sem TTY para clientes, no desenho do `nascer` (fora desta entrega).
+- `especificar --de <n>` (transformar um avulso em spec) não existe: escrever o rascunho é manual.
+- Reespecificar uma spec com tarefas não ajusta as tarefas existentes.
+
+### refinar
+
+**Para quê:** antes do planejamento, especificar um avulso com o mesmo motor do
+[especificar](#especificar) (Example Mapping, uma tarefa só) e gravar no `backlog.md` só o
+que você aceitar. Specs: `docs/specs/refinamento.md` e `docs/specs/specs-e-entrega.md`.
+
+| Parâmetro | Efeito |
+|---|---|
+| (nenhum) | TTY: menu dos itens refináveis com estado e situação; o escolhido abre a conversa e o menu volta ao terminar (`q` sai). Fora de TTY: tabela `# · título · estado · refinamento` |
+| `<n>` (aceita `#3`) | Continua a proposta pendente ou roda o agente; no TTY responde as perguntas e abre a revisão, fora dele imprime a proposta, as perguntas e como aceitar |
+| `--refazer` | Descarta a proposta pendente e começa uma conversa nova |
+| `--aceitar` | Responde as perguntas com as sugestões (as sem sugestão ficam para o planejamento), segue as rodadas e grava sem revisão |
+| `--descartar` | Descarta a proposta pendente sem gravar |
+
+Só avulsos (sem `Spec:`) em `backlog` ou `ready` que nunca entraram em planejamento; tarefa
+de spec aponta para o `especificar`. Situações: `não refinado`, `perguntas pendentes`,
+`proposta pendente`, `proposta desatualizada` (o item mudou depois da proposta, ou é do
+refinamento antigo; o agente roda de novo), `refinado`, `descartado`. Item já refinado: no
+TTY, pergunta `Pedir outra proposta ao agente? [s/N]` antes de gastar outra run. Antes da
+primeira rodada, a política de saldo numa chamada: sem leitura recente faz a chamada
+mínima; saldo baixo ou acima do ritmo pergunta `Refinar mesmo assim? [s/N]` (TTY) ou recusa.
+
+**Revisão (TTY):** a mesma do `especificar`, sem as tarefas; com a etapa das referências e,
+em `Tipo: bug`, a reprodução (passos, esperado, obtido hoje). Prévia do bloco e
+`Gravar? [S/n/d]`.
+
+**Grava:** regras e exemplos como `Critérios:` (`<regra>: situação → resultado`; no bug, a
+`Reprodução: passos → esperado (hoje: obtido)` primeiro), respostas como
+`Decisões: - <pergunta> → <resposta>`, fora do escopo, regras críticas e `Regras vigentes:`
+(aplicadas na entrega). A história vira a intenção só se o item não tinha. Acrescenta sem
+repetir entradas iguais, regrava só o trecho do item e sincroniza. Proposta com mais de uma
+tarefa sugere transformar o avulso em spec.
+
+**Pontos a refinar**
+
 - Comentários HTML no meio do bloco do item somem quando a proposta é gravada.
 - `--aceitar` e `--descartar` exigem o número; não há "aceitar todas as pendentes".
 - O `run` não avisa sobre itens `ready` nunca refinados.
@@ -317,9 +360,19 @@ integrar os itens.
 
 **Durante**
 
-- Abertura: cria ou atualiza a branch de integração (pode pausar a fila se ela estiver
-  aberta num worktree ou divergir da base com conflito), remove worktrees órfãos, marca
-  `done` os itens já levados à base e regrava o relatório da integração.
+- Abertura (com integração): marca `done` as tarefas cuja unidade chegou à base e apaga a
+  branch da unidade entregue; no primeiro `run` deste modelo, migra as tarefas da
+  `mabel/integracao` antiga para a unidade `legado` (`mabel/spec/legado`); faz o merge da
+  base em cada unidade aberta (`mabel/spec/<slug>`, `mabel/avulso/<n>-<slug>`), com
+  `rerere` — conflito **pausa a unidade** (as tarefas dela não são escolhidas; as outras
+  seguem); refaz a `mabel/integracao` a partir da base com o merge de cada unidade aberta,
+  na ordem da primeira integração (a que conflita fica de fora, com aviso); roda a
+  verificação do projeto nela (vermelho: aviso). Pausa a fila só se a `mabel/integracao`
+  estiver aberta num worktree fora do Mabel. Remove worktrees órfãos e regrava o `run.md`.
+- Cada tarefa nasce da branch da sua unidade (criada da base na primeira tarefa); antes,
+  recebe o merge das unidades de que depende e que ainda não chegaram à base. Aprovada, entra
+  por merge na branch da unidade (a da tarefa é apagada) e a unidade entra na integração:
+  conflito ou verificação vermelha ali vão ao `run.md` com a tarefa, sem desfazer nada.
 - Antes de cada etapa com agente, aplica a política de saldo: pode fazer uma chamada
   mínima (haiku) para ler o saldo, **perguntar** se segue (TTY), **esperar** o reset da
   janela de 5h ou o ritmo de 7 dias (com contagem regressiva), ou **pausar** (7 dias
@@ -486,68 +539,92 @@ No REPL sem argumentos, pede o número e confirma `[s/N]`; no shell, **não conf
 
 ### integracao
 
-**Para quê:** ver o relatório da branch de integração (`mabel/integracao`): o que levar
-à base e o que olhar primeiro.
+**Para quê:** ver as unidades do relatório de run: o que está pronto para entregar (spec
+com tarefas concluídas, `n/total`, ou avulso), o que está em andamento e a integração
+(`base (commit) + unidades · de fora · verificação`), com o que olhar primeiro.
 
-Sem parâmetros (argumentos ignorados). Regrava `.mabel/integracao.md` e imprime o mesmo
-conteúdo: por item integrado, plano, arquivos alterados, prova, devoluções por gate,
-custo.
+Sem parâmetros (argumentos ignorados). Regrava `.mabel/run.md` e imprime as seções de
+unidade dele: por item integrado, plano, arquivos alterados, prova, devoluções por gate,
+custo. O `run.md` substituiu o `.mabel/integracao.md` (S.1).
 
 **Pontos a refinar**
 
-- É só leitura: para levar a integração à base, `entregar` (abaixo) ou `git merge`.
+- É só leitura: para levar uma unidade à base, `entregar` (abaixo). A integração é só para
+  teste e nunca é entregue.
 - Não atualiza estados: itens já levados à base só viram `done` no próximo `run` (a
   confirmar se o relatório os mostra até lá).
 - Não tem atalho para abrir o diff de um item.
 
 ### entregar
 
-**Para quê:** levar a integração à base por PR (`docs/specs/entregar.md`).
+**Para quê:** levar uma unidade de entrega (spec ou avulso) à base por PR, provada antes
+(`docs/specs/entregar.md`, S.6 de `docs/specs/specs-e-entrega.md`).
 
 | Parâmetro | Efeito |
 |---|---|
-| `--substituir` | Com uma entrega aberta, abre outra com a integração atual e fecha o PR anterior |
+| (nenhum) | TTY: menu das unidades com tarefas concluídas fora da base. Fora dele: a lista, com o comando de cada uma (código 0) |
+| `<slug>` · `#<n>` | A unidade: o slug da spec (ou `legado`) ou o número de uma tarefa (a unidade dela; no avulso, ele mesmo) |
+| `--com <unidade>` | Entrega junto a unidade de que esta depende, numa branch só (`mabel/entrega/a+b`); pode repetir |
+| `--parcial` | Entrega a spec com tarefas ainda não concluídas; sem ele, o TTY pergunta `Entregar só o que está pronto? [s/N]` e fora dele recusa |
+| `--substituir` | Com uma entrega aberta da unidade, abre outra com a branch atual dela e fecha o PR anterior |
 | `--rascunho` | Abre o PR como rascunho |
 
-Cria `mabel/entrega/<data>` no commit atual da integração (o `run` pode seguir integrando
-sem mudar o PR), publica no remoto da base e abre o PR pelo `gh`, com o relatório como
-corpo. Recusa se o repositório não permitir merge commit (squash e rebase impedem o `done`).
-Sem `gh` ou com o remoto no Bitbucket, mostra o endereço para abrir o PR e o arquivo do corpo;
-sem remoto, o `git merge --no-ff`.
+Passos: (1) a unidade tem tarefa concluída; tarefa dela ainda aberta → entrega parcial;
+(2) unidade que depende de outra fora da base → recusa, com a sugestão `--com`; (3)
+snapshot = a branch da unidade (com `--com`, um merge das branches feito pelo Mabel); (4)
+**prova**: num worktree temporário, a base mais o merge do snapshot (com `rerere`) e a
+verificação do projeto — conflito recusa ("faça o merge da base na unidade"), vermelho
+recusa com a saída; nada é criado; (5) documento de entrega
+(`.mabel/entregas/<data>-<unidade>.md`: resumo com os assuntos das regras alteradas, spec
+e base, olhe primeiro — inclusive entrega parcial e conflito visto na integração —,
+decisões, suposições, critérios e prova, desvios, tarefas e regras vigentes alteradas) e as
+alterações da spec (ou do campo `Regras vigentes:` do avulso) aplicadas ao
+`.mabel/regras.md` do snapshot (`incluir`; `alterar` com `antigo → novo`, sem a seta
+inclui; `remover`); (6) `mabel/entrega/<unidade>` = snapshot + um commit do Mabel só com
+esses dois arquivos (`mabel: entrega <unidade>`, trailer `Mabel-Entrega`); (7) publica no
+remoto da base e abre o PR pelo `gh`, com o documento como corpo (cortado acima de 60.000
+caracteres) e o título `Mabel: <unidade> (#n, …)`. Recusa se o repositório não permitir
+merge commit (squash e rebase impedem o `done`). Sem `gh` ou com o remoto no Bitbucket,
+mostra o endereço para abrir o PR e o arquivo do corpo; sem remoto, o `git merge --no-ff`.
 Volta o checkout da raiz para a base só se ele estiver na integração ou numa entrega e sem
-alteração versionada. Uma entrega aberta por projeto; a que ficou sem PR é retomada ao
-rodar de novo. Não pega a trava do projeto: lê a integração uma vez.
+alteração versionada. Uma entrega aberta por unidade; a que ficou sem PR é retomada ao
+rodar de novo. Não pega a trava do projeto.
 
-Na abertura do `run`: entrega na base vira `merged` (branch local apagada); integrada só
-no remoto ou por squash, o `run` avisa o que fazer.
+Na abertura do `run`: entrega na base vira `merged` (branch local apagada), as tarefas da
+unidade vão a `done`, a branch da unidade é apagada e a spec com todas as tarefas
+concluídas vira `entregue`; o `regras.md` da base já tem as alterações (vieram no merge).
+Integrada só no remoto ou por squash, o `run` avisa o que fazer.
 
 **Pontos a refinar**
 
 - PR fechado sem merge no GitHub não é detectado: a entrega continua aberta até o
   `--substituir`.
+- A prova roda o `setup` e o `verify` inteiros a cada entrega, sem cache.
 
 ### rejeitar
 
-**Para quê:** desfazer a entrega de um item integrado e devolvê-lo ao planejamento.
+**Para quê:** desfazer uma tarefa concluída na branch da unidade e devolvê-la ao
+planejamento.
 
 | Parâmetro | Efeito |
 |---|---|
-| `<n>` | Item em `awaiting_merge` com commit na integração |
+| `<n>` | Tarefa em `awaiting_merge` com merge na branch da unidade |
 | `"<motivo>"` | Obrigatório; vai para o replanejamento |
 | `--cancelar` | Cancela o item em vez de replanejar |
 
-Pega a trava do projeto (não roda junto com `run`). Reverte o merge do item na branch de
-integração num worktree temporário. Conflito no revert: nada muda e a mensagem aponta os
-itens integrados depois nos mesmos arquivos ("rejeite antes #…"). Item já na base: recusa
-("reverta por lá"). Avisa os itens integrados que dependem dele (não os reverte). Regrava
-o relatório.
+Pega a trava do projeto (não roda junto com `run`). Tarefa de spec: reverte o merge dela
+na branch da spec num worktree temporário; conflito no revert: nada muda e a mensagem
+aponta as tarefas concluídas depois nos mesmos arquivos ("rejeite antes #…"). Avulso: a
+branch dele volta ao commit da base. A integração não é revertida: o próximo `run` a refaz.
+Tarefa já na base: recusa ("reverta por lá"). Avisa as tarefas concluídas que dependem
+dela (não as reverte). Regrava o relatório.
 
 No REPL sem argumentos: número, motivo, `Cancelar o item em vez de replanejar? [s/N]`.
 
 **Pontos a refinar**
 
-- Sem confirmação no shell, apesar de reescrever a branch de integração.
-- Dependentes ficam na integração quebrados; poderia oferecer rejeitá-los junto.
+- Sem confirmação no shell, apesar de reescrever a branch da unidade.
+- Dependentes ficam concluídos e quebrados; poderia oferecer rejeitá-los junto.
 - Não há rejeição para item em `awaiting_merge` sem integração (`integracao: null`): ali
   a "rejeição" é só não fazer o merge, e o item fica parado.
 

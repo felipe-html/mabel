@@ -48,6 +48,9 @@ export const tableScope: Record<string, TableScope> = {
   queue_events: { scope: 'project', where: 'project_id = ?' },
   deliveries: { scope: 'project', where: 'project_id = ?' },
   births: { scope: 'project', where: 'project_id = ?' },
+  specs: { scope: 'project', where: 'project_id = ?' },
+  spec_proposals: { scope: 'project', where: 'project_id = ?' },
+  integration_state: { scope: 'project', where: 'project_id = ?' },
   projects: { scope: 'project', where: 'id = ?' },
   removals: { scope: 'global' },
 };

@@ -22,7 +22,8 @@ import type { ScopeContext } from './scope.ts';
 import { type ResultTotals, type ToolResult, type ToolUse, parseLine } from './stream.ts';
 
 export type RunKind = 'exec' | 'probe' | 'stage';
-export type RunStage = 'refine' | 'plan' | 'execute' | 'review' | 'birth';
+/** `refine`: etapa antiga do `mabel refinar`, hoje no motor `specify`; fica pelas runs gravadas. */
+export type RunStage = 'refine' | 'specify' | 'plan' | 'execute' | 'review' | 'birth';
 export type RunStatus = 'running' | 'succeeded' | 'failed' | 'interrupted';
 
 export interface RunRequest {

@@ -18,8 +18,9 @@ import { inboxSession, pendingItems, runInbox, terminalIO } from './inbox.ts';
 import { type Item, type ItemStatus, getItemById, listItems, syncBacklog, transition } from './items.ts';
 import { writeJson } from './json.ts';
 import { type Notify, notify as systemNotify } from './notify.ts';
-import { finishIntegrated, openIntegration } from './integration.ts';
-import { writeIntegrationReport } from './report.ts';
+import { finishIntegrated, unitOf } from './integration.ts';
+import { markDeliveredSpecs, openUnitModel, removeDeliveredBranches } from './units.ts';
+import { QUEUE_ENDINGS, RUN_REPORT_FILE, writeRunReport } from './runreport.ts';
 import { LockError, acquireLock } from './lock.ts';
 import { type AdvanceResult, advanceItem, autonomousDecisions } from './pipeline.ts';
 import { type Project, ProjectError, commitPendingMabel, mabelCommitted, resolveProject } from './project.ts';
@@ -169,7 +170,7 @@ export function listQueueEvents(db: DatabaseSync, projectId: string, limit = 20)
   }));
 }
 
-const STAGE_LABELS: Record<RunStage, string> = { refine: 'refinar', plan: 'planejar', execute: 'executar', review: 'revisar', birth: 'nascer' };
+const STAGE_LABELS: Record<RunStage, string> = { refine: 'refinar', specify: 'especificar', plan: 'planejar', execute: 'executar', review: 'revisar', birth: 'nascer' };
 const IN_PROGRESS: ItemStatus[] = ['planning', 'executing', 'verifying', 'reviewing'];
 const PLANNING: ItemStatus[] = ['ready', 'planning'];
 const EXECUTING: ItemStatus[] = ['planned', 'executing', 'verifying', 'reviewing'];
@@ -370,8 +371,12 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; stop
     return true;
   };
 
+  let pausedUnits = new Set<string>();
+
   /** Próximo item da fila e se ele para em `planned`; `undefined` quando a fila acabou. */
-  const pick = async (items: Item[]): Promise<{ target: Item; until?: 'planned' } | { end: QueueEnd; message?: string }> => {
+  const pick = async (all: Item[]): Promise<{ target: Item; until?: 'planned' } | { end: QueueEnd; message?: string }> => {
+    // Unidade pausada (a base conflita com a branch dela): as tarefas não iniciadas esperam.
+    const items = all.filter((item) => !(pausedUnits.has(unitOf(item)) && (item.status === 'ready' || item.status === 'planned')));
     const inProgress = items.find((item) => IN_PROGRESS.includes(item.status));
     if (options.itemNumber !== undefined && !inProgress) {
       if (finalStates.has(options.itemNumber)) return { end: 'once' };
@@ -399,17 +404,23 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; stop
    * sobraram de itens que já não precisam deles.
    */
   const open = (): string | undefined => {
-    const opened = openIntegration(home, project);
+    for (const note of checkDeliveries(db, project)) log.write(note);
+    // Unidade cuja branch chegou à base: entregue (tarefas a done, branch apagada).
+    finishIntegrated(db, project, listItems(db, project.id)).forEach(markDone);
+    const delivered: string[] = [];
+    removeDeliveredBranches(project, listItems(db, project.id), delivered);
+    markDeliveredSpecs(db, project, listItems(db, project.id), delivered);
+    for (const note of delivered) log.write(style.dim(note));
+    const opened = openUnitModel(home, db, project);
     for (const note of opened.notes) log.write(style.dim(note));
     if (opened.pause) {
       record({ kind: 'pause', cause: 'integration', detail: opened.pause });
       return opened.pause;
     }
-    for (const note of checkDeliveries(db, project)) log.write(note);
+    pausedUnits = opened.paused;
     const cleaned = removeOrphanWorktrees(db, home, project, listItems(db, project.id));
     if (cleaned.length > 0) log.write(style.dim(`worktrees removidos: ${cleaned.map((n) => `#${n}`).join(', ')}`));
-    finishIntegrated(db, project, listItems(db, project.id)).forEach(markDone);
-    writeIntegrationReport(db, home, project);
+    writeRunReport(db, home, project);
     return undefined;
   };
 
@@ -451,6 +462,8 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; stop
       current = undefined;
       log.flush();
       finalStates.set(target.number, getItemById(db, target.id).status);
+      // Se o processo cair, o relatório mostra até onde a fila foi.
+      writeRunReport(db, home, project);
 
       if (result.kind === 'interrupted') return { end: 'interrupted' };
       if (result.kind === 'paused' && stopping.signal.aborted && !abort.signal.aborted) {
@@ -480,6 +493,7 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; stop
       return result;
     } finally {
       record({ kind: 'stop', cause: 'queue', detail: end });
+      writeRunReport(db, home, project);
     }
   };
 
@@ -487,7 +501,7 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; stop
     const cost = db
       .prepare('SELECT coalesce(sum(cost_usd), 0) AS total FROM runs WHERE started_at >= ?')
       .get(startedAt.toISOString()) as { total: number };
-    if (end === 'empty' || end === 'once') notify(title, queueStatusLine(end, finalStates));
+    if (end === 'empty' || end === 'once') notify(title, `${queueStatusLine(end, finalStates)} · veja .mabel/${RUN_REPORT_FILE}`);
     else if (end === 'paused') notify(title, message ?? 'fila pausada');
     return {
       end,
@@ -505,21 +519,12 @@ export function notifyTitle(project: Project): string {
   return `Mabel · ${project.name}`;
 }
 
-const ENDINGS: Record<QueueEnd, string> = {
-  empty: 'fila vazia',
-  once: 'concluído',
-  interrupted: 'interrompido',
-  paused: 'pausado',
-  not_found: 'nada a fazer',
-  stopped: 'parado',
-};
-
 /** Fim da fila e estados finais, sem custo e tempo: `fila vazia · awaiting_merge 3 · needs_human 1`. */
 export function queueStatusLine(end: QueueEnd, finalStates: Map<number, ItemStatus>): string {
   const counts = new Map<ItemStatus, number>();
   for (const status of finalStates.values()) counts.set(status, (counts.get(status) ?? 0) + 1);
   const states = [...counts].map(([status, count]) => `${status} ${count}`).join(' · ') || 'nenhum item processado';
-  return `${ENDINGS[end]} · ${states}`;
+  return `${QUEUE_ENDINGS[end]} · ${states}`;
 }
 
 export function renderQueueSummary(result: QueueResult): string {

@@ -210,7 +210,8 @@ regras vigentes e tarefas. `Gravar? [S/n/d]`.
   `Critérios:` do avulso, as respostas viram `Decisões:`, e o resto vai para os campos que
   já existem. As alterações nas regras vigentes ficam num campo novo do avulso, aplicado na
   entrega. Se a proposta tiver mais de uma tarefa, o Mabel sugere transformar o avulso em
-  spec (`mabel especificar --de <n>`).
+  spec e explica o caminho manual (escrever a spec e tirar o avulso). Não há
+  `especificar --de <n>`: avulso é tarefa curta, como hotfix, e a conversão seria rara.
 - **Bug** (`Tipo: bug`): os cartões de regra viram passos para reproduzir, resultado
   esperado e resultado obtido. O exemplo de reprodução é o primeiro critério, e a prova
   mecânica exige o teste vermelho na base.

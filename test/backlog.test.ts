@@ -6,8 +6,15 @@ import { BACKLOG_TEMPLATE, insertIds, parseBacklog, renderItemBlock, validateBac
 import { getItem, listItems, syncBacklog, transition } from '../src/items.ts';
 import { setupProject } from './helpers.ts';
 
+/** Campos do item, sem as posições no texto e sem os campos de spec e de regras vigentes quando vazios (S.3, S.4). */
 function fields(text: string) {
-  return parseBacklog(text).map(({ headingEnd: _, start: __, contentEnd: ___, ...item }) => item);
+  return parseBacklog(text).map(({ headingEnd: _, start: __, contentEnd: ___, spec, rules, kind, ruleChanges, ...item }) => ({
+    ...item,
+    ...(spec ? { spec } : {}),
+    ...(rules.length > 0 ? { rules } : {}),
+    ...(kind ? { kind } : {}),
+    ...(ruleChanges.length > 0 ? { ruleChanges } : {}),
+  }));
 }
 
 test('parser: item mínimo, recomendado e completo, na ordem do arquivo', () => {

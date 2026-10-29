@@ -5,7 +5,7 @@
  */
 
 /** De onde vêm os valores de uma opção ou argumento. */
-export type ValueSource = 'item' | 'projeto' | 'stack' | 'referencia' | 'credencial' | 'arquivo' | 'diretorio';
+export type ValueSource = 'item' | 'projeto' | 'stack' | 'referencia' | 'spec' | 'credencial' | 'arquivo' | 'diretorio';
 
 export interface OptionSpec {
   type: 'string' | 'boolean';

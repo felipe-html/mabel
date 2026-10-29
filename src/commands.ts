@@ -3,7 +3,7 @@ import { birthArgs, birthCommand, birthOptions, birthUsageFull } from './birth.t
 import { referenceArgs, referenceCommand, referenceOptions, referenceUsage } from './capture.ts';
 import { credentialArgs, credentialCommand, credentialOptions, credentialUsage } from './credentials.ts';
 import { completionCommand, completionUsage, commandsCommand, commandsUsage } from './completion.ts';
-import { deliverCommand, deliverOptions, deliverUsage } from './delivery.ts';
+import { deliverArgs, deliverCommand, deliverOptions, deliverUsage } from './delivery.ts';
 import { askPrompt, exec, execArgs, execOptions, execUsage } from './exec.ts';
 import {
   approveCommand,
@@ -34,6 +34,7 @@ import { init, initOptions, initUsage } from './init.ts';
 import { type ArgSpec, type OptionSpecs, itemArg } from './options.ts';
 import { projectArgs, projectCommand, projectOptions, projectUsage, projectsCommand, projectsOptions, projectsUsage } from './projects.ts';
 import { refineArgs, refineCommand, refineOptions, refineUsage } from './refine.ts';
+import { specifyArgs, specifyCommand, specifyOptions, specifyUsage } from './specify.ts';
 import { run, runOptions, runUsage } from './run.ts';
 import { runsArgs, runsCommand, runsOptions, runsUsage } from './runs.ts';
 import {
@@ -88,6 +89,14 @@ export const commands: Command[] = [
     options: addOptions,
     args: addArgs,
     run: add,
+  },
+  {
+    name: 'especificar',
+    description: 'Specs em .mabel/specs/: lista, valida e aceita (as tarefas com "Spec:" só vão a ready com a spec aceita)',
+    usage: specifyUsage,
+    options: specifyOptions,
+    args: specifyArgs,
+    run: specifyCommand,
   },
   {
     name: 'refinar',
@@ -177,7 +186,7 @@ export const commands: Command[] = [
   },
   {
     name: 'integracao',
-    description: 'Mostra o relatório da branch de integração: o que levar à base e o que olhar primeiro',
+    description: 'Mostra as unidades do relatório de run: prontas para entregar, em andamento e a integração',
     usage: integrationUsage,
     run: integrationCommand,
   },
@@ -192,9 +201,10 @@ export const commands: Command[] = [
   },
   {
     name: 'entregar',
-    description: 'Publica um snapshot da integração e abre o PR com o relatório; volta o checkout para a base',
+    description: 'Prova e entrega uma unidade (spec ou avulso) por PR; volta o checkout para a base',
     usage: deliverUsage,
     options: deliverOptions,
+    args: deliverArgs,
     run: deliverCommand,
   },
   {

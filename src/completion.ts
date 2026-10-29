@@ -8,7 +8,7 @@ import { valuesFor } from './values.ts';
 export const completionUsage = 'mabel completion zsh';
 export const commandsUsage = 'mabel comandos [--json]';
 
-const VALUE_SOURCES: ValueSource[] = ['item', 'projeto', 'stack', 'referencia', 'credencial', 'arquivo', 'diretorio'];
+const VALUE_SOURCES: ValueSource[] = ['item', 'projeto', 'stack', 'referencia', 'spec', 'credencial', 'arquivo', 'diretorio'];
 
 function escape(text: string): string {
   return text.replaceAll("'", "'\\''").replaceAll(':', '\\:');

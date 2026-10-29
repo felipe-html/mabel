@@ -1,5 +1,7 @@
 /** Formato do `.mabel/backlog.md`: geração de blocos de item. */
 
+import { parseChange } from './specs.ts';
+
 export interface ItemFields {
   number?: number;
   title: string;
@@ -15,6 +17,14 @@ export interface ItemFields {
   criticalConcepts: string[];
   /** Telas, operações de API e arquivos de `.mabel/referencias/` (`docs/specs/referencias.md`). */
   references?: string[];
+  /** Slug da spec em `.mabel/specs/` (tarefa de spec); sem ela, a tarefa é avulso (S.3). */
+  spec?: string | null;
+  /** Regras da spec que a tarefa cita (`R1`, `R2`…). */
+  rules?: string[];
+  /** `bug`: avulso que corrige um defeito (`Tipo: bug`). */
+  kind?: 'bug' | null;
+  /** Alterações nas regras vigentes do avulso (`assunto: incluir "texto"`), aplicadas na entrega. */
+  ruleChanges?: string[];
 }
 
 export const BACKLOG_TEMPLATE = `# Backlog
@@ -35,6 +45,13 @@ Campos de um item:
 - Referências: lista "- ..." com o que o item usa de .mabel/referencias/:
   "tela: <nome>", "api: <nome> <MÉTODO> <caminho>" (ou "api: <nome> <operationId>")
   ou um caminho de arquivo. Item com referência que não existe fica no backlog.
+- Spec: <slug> — a spec de .mabel/specs/<slug>.md que a tarefa implementa. Só fica pronta
+  com a spec aceita (mabel especificar <slug>); a intenção vem da história da spec.
+- Regras: R1, R2 — regras da spec que a tarefa cobre; os exemplos delas são critérios.
+- Tipo: bug — avulso (sem Spec:) que corrige um defeito. O primeiro critério é o de
+  reprodução ("Reprodução: passos → esperado (hoje: obtido)"); sem ele, fica no backlog.
+- Regras vigentes: lista "- assunto: incluir|alterar|remover "texto"" com o que o avulso
+  muda em .mabel/regras.md; aplicada na entrega.
 - Depende de: <n>, <n> — itens que precisam estar concluídos antes.
 - Restrições: <texto> — limites para a implementação, numa linha.
 
@@ -68,7 +85,7 @@ Restrições: não adicionar bibliotecas novas
 export function renderItemBlock(item: ItemFields): string {
   const lines = [`## ${item.title}`];
   if (item.number !== undefined) lines.push(`id: ${item.number}`);
-  lines.push(item.intent.trim());
+  if (item.intent.trim()) lines.push(item.intent.trim());
   const list = (label: string, entries: string[]) => {
     if (entries.length > 0) lines.push('', `${label}:`, ...entries.map((entry) => `- ${entry}`));
   };
@@ -77,7 +94,11 @@ export function renderItemBlock(item: ItemFields): string {
   list('Decisões', item.decisions);
   list('Regras críticas', item.criticalConcepts);
   list('Referências', item.references ?? []);
+  list('Regras vigentes', item.ruleChanges ?? []);
   const tail: string[] = [];
+  if (item.spec) tail.push(`Spec: ${item.spec}`);
+  if (item.rules && item.rules.length > 0) tail.push(`Regras: ${item.rules.join(', ')}`);
+  if (item.kind) tail.push(`Tipo: ${item.kind}`);
   if (item.dependsOn.length > 0) tail.push(`Depende de: ${item.dependsOn.join(', ')}`);
   if (item.restrictions) tail.push(`Restrições: ${item.restrictions}`);
   if (tail.length > 0) lines.push('', ...tail);
@@ -99,6 +120,10 @@ export function appendBlocks(text: string, blocks: string[]): string {
 
 export interface ParsedItem extends ItemFields {
   references: string[];
+  spec: string | null;
+  rules: string[];
+  kind: 'bug' | null;
+  ruleChanges: string[];
   /** Ordem no arquivo, a partir de 0. */
   position: number;
   /** Erros de formato; item com erro fica `blocked`. */
@@ -124,11 +149,15 @@ const OUT_OF_SCOPE_LINE = /^fora do escopo:\s*(.*?)\s*$/i;
 const DECISIONS_LINE = /^decis[õo]es:\s*(.*?)\s*$/i;
 const CRITICAL_LINE = /^regras? cr[íi]ticas?:\s*(.*?)\s*$/i;
 const REFERENCES_LINE = /^refer[êe]ncias:\s*(.*?)\s*$/i;
+const RULE_CHANGES_LINE = /^regras vigentes:\s*(.*?)\s*$/i;
 const DEPENDS_LINE = /^depende de:\s*(.*?)\s*$/i;
+const SPEC_LINE = /^spec:\s*(.*?)\s*$/i;
+const RULES_LINE = /^regras:\s*(.*?)\s*$/i;
+const KIND_LINE = /^tipo:\s*(.*?)\s*$/i;
 const RESTRICTIONS_LINE = /^restri[çc][õo]es:\s*(.*?)\s*$/i;
 const LIST_ITEM = /^\s*[-*]\s+(.+?)\s*$/;
 
-type ListField = 'criteria' | 'outOfScope' | 'decisions' | 'criticalConcepts' | 'references';
+type ListField = 'criteria' | 'outOfScope' | 'decisions' | 'criticalConcepts' | 'references' | 'ruleChanges';
 
 /** Campos em lista: rótulo numa linha e itens `- …` abaixo (ou o valor na mesma linha). */
 const LIST_LINES: [RegExp, ListField][] = [
@@ -136,6 +165,7 @@ const LIST_LINES: [RegExp, ListField][] = [
   [DECISIONS_LINE, 'decisions'],
   [CRITICAL_LINE, 'criticalConcepts'],
   [REFERENCES_LINE, 'references'],
+  [RULE_CHANGES_LINE, 'ruleChanges'],
 ];
 
 /** Lê o `backlog.md`. Erros de formato ficam no item, nunca lançam. */
@@ -164,6 +194,10 @@ export function parseBacklog(text: string): ParsedItem[] {
         decisions: [],
         criticalConcepts: [],
         references: [],
+        spec: null,
+        rules: [],
+        kind: null,
+        ruleChanges: [],
         position: items.length,
         errors: [],
         headingEnd: Math.min(lineEnd + 1, text.length),
@@ -216,6 +250,27 @@ export function parseBacklog(text: string): ParsedItem[] {
       }
       continue;
     }
+    const spec = SPEC_LINE.exec(line);
+    if (spec) {
+      current.spec = spec[1] || null;
+      continue;
+    }
+    const rules = RULES_LINE.exec(line);
+    if (rules) {
+      for (const token of (rules[1] ?? '').split(',').map((part) => part.trim().toUpperCase())) {
+        if (!token) continue;
+        if (/^R\d+$/.test(token)) current.rules.push(token);
+        else current.errors.push(`regra inválida: "${token}"`);
+      }
+      continue;
+    }
+    const kind = KIND_LINE.exec(line);
+    if (kind) {
+      const value = (kind[1] ?? '').toLowerCase();
+      if (value === 'bug') current.kind = 'bug';
+      else if (value) current.errors.push(`tipo inválido: "${kind[1]}" (só "bug")`);
+      continue;
+    }
     const restrictions = RESTRICTIONS_LINE.exec(line);
     if (restrictions) {
       current.restrictions = restrictions[1] || null;
@@ -224,10 +279,15 @@ export function parseBacklog(text: string): ParsedItem[] {
     current.intentLines.push(line.trimEnd());
   }
 
-  return items.map(({ intentLines, inList: _, ...item }) => ({
-    ...item,
-    intent: intentLines.join('\n').trim().replace(/\n{3,}/g, '\n\n'),
-  }));
+  return items.map(({ intentLines, inList: _, ...item }) => {
+    if (item.rules.length > 0 && !item.spec) item.errors.push('Regras: sem Spec:');
+    if (item.kind && item.spec) item.errors.push('Tipo: bug vale só para avulso (sem Spec:)');
+    if (item.ruleChanges.length > 0 && item.spec) item.errors.push('Regras vigentes: vale só para avulso (na tarefa de spec, ficam na spec)');
+    for (const change of item.ruleChanges) {
+      if (!parseChange(change)) item.errors.push(`regra vigente inválida: "${change}" (assunto: incluir|alterar|remover "texto")`);
+    }
+    return { ...item, intent: intentLines.join('\n').trim().replace(/\n{3,}/g, '\n\n') };
+  });
 }
 
 /**
