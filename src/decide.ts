@@ -20,6 +20,7 @@ import { itemDir, readArtifact } from './stages.ts';
 import { signals, signalsLine, situation } from './refine.ts';
 import { type RecentRun, renderRecentRuns } from './status.ts';
 import { style } from './style.ts';
+import { type ArgSpec, type OptionSpecs, itemArg, jsonOption } from './options.ts';
 
 function parseNumber(value: string | undefined): number | undefined {
   const number = Number((value ?? '').replace(/^#/, ''));
@@ -174,6 +175,19 @@ export function renderDenials(db: DatabaseSync, itemId: string): string[] {
 }
 
 export const itemUsage = 'mabel item <n>';
+
+export const approveOptions = { json: jsonOption } satisfies OptionSpecs;
+export const respondOptions = {
+  replanejar: { type: 'boolean', description: 'Descarta o ciclo atual e volta ao planejamento com o plano anterior como referência' },
+  respostas: { type: 'string', value: '<arquivo.json>', values: 'arquivo', description: 'Uma resposta por pergunta, em vez de um texto só' },
+  json: jsonOption,
+} satisfies OptionSpecs;
+export const rejectOptions = {
+  cancelar: { type: 'boolean', description: 'Cancela o item em vez de devolvê-lo ao planejamento' },
+} satisfies OptionSpecs;
+
+export const respondArgs: ArgSpec[] = [itemArg, { name: '"<resposta>"', description: 'A resposta, quando há uma pergunta só' }];
+export const rejectArgs: ArgSpec[] = [itemArg, { name: '"<motivo>"', description: 'Por que o item volta; o planejamento o recebe' }];
 export const approveUsage = 'mabel aprovar <n> [--json]';
 export const respondUsage = 'mabel responder <n> "<resposta>" [--replanejar] [--json]\n       mabel responder <n> --respostas <arquivo.json> [--replanejar] [--json]';
 export const cancelUsage = 'mabel cancelar <n>';
@@ -196,7 +210,7 @@ function decisionJson(db: DatabaseSync, project: Project, item: Item): void {
 export function approveCommand(args: string[]): Promise<number> {
   let parsed;
   try {
-    parsed = parseArgs({ args, allowPositionals: true, options: { json: { type: 'boolean' } } });
+    parsed = parseArgs({ args, allowPositionals: true, options: approveOptions });
   } catch (error) {
     return Promise.resolve(fail('argumento_invalido', (error as Error).message, approveUsage));
   }
@@ -229,7 +243,7 @@ export function respondCommand(args: string[]): Promise<number> {
     parsed = parseArgs({
       args,
       allowPositionals: true,
-      options: { replanejar: { type: 'boolean' }, respostas: { type: 'string' }, json: { type: 'boolean' } },
+      options: respondOptions,
     });
   } catch (error) {
     return Promise.resolve(fail('argumento_invalido', (error as Error).message, respondUsage));
@@ -271,7 +285,7 @@ export function cancelCommand(args: string[]): Promise<number> {
 export function rejectCommand(args: string[]): Promise<number> {
   let parsed;
   try {
-    parsed = parseArgs({ args, allowPositionals: true, options: { cancelar: { type: 'boolean' } } });
+    parsed = parseArgs({ args, allowPositionals: true, options: rejectOptions });
   } catch (error) {
     process.stderr.write(`${(error as Error).message}\nUso: ${rejectUsage}\n`);
     return Promise.resolve(1);

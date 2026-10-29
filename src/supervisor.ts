@@ -11,6 +11,7 @@ import { writeJson } from './json.ts';
 import { lockHolder } from './lock.ts';
 import { ProjectError, resolveProject } from './project.ts';
 import { style } from './style.ts';
+import { type ArgSpec, type OptionSpecs, jsonOption } from './options.ts';
 
 /**
  * Supervisor (`docs/specs/integracao-externa.md`): um processo por máquina que inicia as
@@ -440,6 +441,20 @@ async function state(home: string): Promise<number> {
 
 export const attachUsage = 'mabel anexar';
 export const stopUsage = 'mabel parar [--json]';
+
+export const stopOptions = { json: jsonOption } satisfies OptionSpecs;
+
+export const supervisorArgs: ArgSpec[] = [
+  {
+    name: 'instalar | remover | estado',
+    description: 'Sem nada, roda o supervisor neste terminal',
+    choices: [
+      { name: 'instalar', description: 'Instala o supervisor no launchd, para subir com o login' },
+      { name: 'remover', description: 'Tira o supervisor do launchd' },
+      { name: 'estado', description: 'Mostra se o supervisor está instalado e rodando' },
+    ],
+  },
+];
 
 /** Lê o que o arquivo ganhou desde `offset`. */
 function readFrom(path: string, offset: number): { text: string; offset: number } {

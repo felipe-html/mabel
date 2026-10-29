@@ -31,8 +31,17 @@ import { style } from './style.ts';
 import { mabelCodeChanged } from './version.ts';
 import { checkDeliveries } from './delivery.ts';
 import { deleteBranch, isMerged, removeOrphanWorktrees, removeWorktree } from './worktree.ts';
+import { type OptionSpecs, jsonOption } from './options.ts';
 
 export const runUsage = 'mabel run [--item <n>] [--uma] [--sem-lote] [--fundo [--json]]';
+
+export const runOptions = {
+  item: { type: 'string', value: '<n>', values: 'item', description: 'Processa só este item, do planejamento ao fim' },
+  uma: { type: 'boolean', description: 'Processa um item só, item a item, e para' },
+  'sem-lote': { type: 'boolean', description: 'Item a item: cada um vai do planejamento ao fim antes do próximo' },
+  fundo: { type: 'boolean', description: 'Entrega a fila ao supervisor e volta na hora; acompanhe com `mabel anexar`' },
+  json: { ...jsonOption, description: 'Com --fundo: a confirmação da entrega em JSON' },
+} satisfies OptionSpecs;
 
 /** Relógio injetável: os testes avançam o tempo sem esperar de verdade. */
 export interface Clock {
@@ -530,13 +539,7 @@ export async function run(args: string[]): Promise<number> {
   try {
     ({ values } = parseArgs({
       args,
-      options: {
-        item: { type: 'string' },
-        uma: { type: 'boolean' },
-        'sem-lote': { type: 'boolean' },
-        fundo: { type: 'boolean' },
-        json: { type: 'boolean' },
-      },
+      options: runOptions,
     }));
   } catch (error) {
     return fail('argumento_invalido', (error as Error).message, runUsage);

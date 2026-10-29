@@ -7,9 +7,20 @@ import { formatCost, formatDuration, formatTokens, truncate } from './format.ts'
 import { type RunOutcome, type RunRequest, startRun } from './runner.ts';
 import { toolTarget } from './stream.ts';
 import { style } from './style.ts';
+import type { ArgSpec, OptionSpecs } from './options.ts';
 
 export const execUsage =
   'mabel exec "<prompt>" [--model <m>] [--max-turns <n>] [--max-budget-usd <x>] [--allowed-tools <a,b>] [--cwd <dir>]';
+
+export const execOptions = {
+  model: { type: 'string', value: '<m>', description: 'Modelo do Claude Code (sonnet, opus, haiku…)' },
+  'max-turns': { type: 'string', value: '<n>', description: 'Limite de turnos do agente' },
+  'max-budget-usd': { type: 'string', value: '<x>', description: 'Limite de custo em dólares' },
+  'allowed-tools': { type: 'string', value: '<a,b>', description: 'Ferramentas liberadas, separadas por vírgula' },
+  cwd: { type: 'string', value: '<dir>', values: 'diretorio', description: 'Diretório em que o agente roda (padrão: o atual)' },
+} satisfies OptionSpecs;
+
+export const execArgs: ArgSpec[] = [{ name: '"<prompt>"', description: 'O pedido ao agente' }];
 
 /** Converte os argumentos de `mabel exec` num pedido de run, ou devolve a mensagem de erro. */
 export function parseExecArgs(args: string[], baseCwd = process.cwd()): RunRequest | string {
@@ -18,13 +29,7 @@ export function parseExecArgs(args: string[], baseCwd = process.cwd()): RunReque
     parsed = parseArgs({
       args,
       allowPositionals: true,
-      options: {
-        model: { type: 'string' },
-        'max-turns': { type: 'string' },
-        'max-budget-usd': { type: 'string' },
-        'allowed-tools': { type: 'string' },
-        cwd: { type: 'string' },
-      },
+      options: execOptions,
     });
   } catch (error) {
     return (error as Error).message;

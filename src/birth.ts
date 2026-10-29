@@ -25,6 +25,7 @@ import { validate } from './schemas/validate.ts';
 import { STACKS, type Stack, detectCommands, findStack, stackLabel } from './stacks.ts';
 import { SCHEMAS, STAGE_ALLOWED, STAGE_TOOLS, scopeHooks, systemPrompt } from './stages.ts';
 import { style } from './style.ts';
+import { type ArgSpec, type OptionSpecs, jsonOption } from './options.ts';
 
 /**
  * `mabel nascer` (`docs/specs/nascer.md`): conversa curta com um agente, só de leitura, que
@@ -32,6 +33,20 @@ import { style } from './style.ts';
  */
 
 export const birthUsage = 'mabel nascer ["<descrição>"] [--stack <id>] [--modelo <m>]';
+
+export const birthOptions = {
+  stack: { type: 'string', value: '<id>', values: 'stack', description: 'Fixa a stack em vez de deixar o agente propor' },
+  modelo: { type: 'string', value: '<m>', description: 'Modelo das rodadas (padrão sonnet)' },
+  responder: { type: 'string', value: '<id>', description: 'Sem terminal: responde às perguntas da rodada do nascimento <id>' },
+  respostas: { type: 'string', value: '<arquivo.json>', values: 'arquivo', description: 'Com --responder: as respostas, uma por pergunta' },
+  aceitar: { type: 'string', value: '<id>', description: 'Sem terminal: grava a proposta do nascimento <id>' },
+  proposta: { type: 'string', value: '<arquivo.json>', values: 'arquivo', description: 'Com --aceitar: a proposta editada no lugar da original' },
+  descartar: { type: 'string', value: '<id>', description: 'Descarta o nascimento <id> sem gravar nada' },
+  lista: { type: 'boolean', description: 'Lista os nascimentos em andamento neste diretório' },
+  json: jsonOption,
+} satisfies OptionSpecs;
+
+export const birthArgs: ArgSpec[] = [{ name: '"<descrição>"', description: 'O que o projeto vai ser, em poucas frases' }];
 
 /** Rodadas de perguntas e resposta; na última, o agente propõe com suposições. */
 export const MAX_ROUNDS = 3;
@@ -1279,17 +1294,7 @@ export async function birthCommand(args: string[]): Promise<number> {
     parsed = parseArgs({
       args,
       allowPositionals: true,
-      options: {
-        stack: { type: 'string' },
-        modelo: { type: 'string' },
-        json: { type: 'boolean' },
-        responder: { type: 'string' },
-        respostas: { type: 'string' },
-        aceitar: { type: 'string' },
-        proposta: { type: 'string' },
-        descartar: { type: 'string' },
-        lista: { type: 'boolean' },
-      },
+      options: birthOptions,
     });
   } catch (error) {
     return fail('argumento_invalido', (error as Error).message, birthUsageFull);

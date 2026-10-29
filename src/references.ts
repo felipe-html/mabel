@@ -164,7 +164,7 @@ export function extractOperation(spec: OpenApi, op: Pick<Operation, 'method' | '
 
 // Conferência e arquivos -----------------------------------------------------------------
 
-function filesUnder(dir: string): string[] {
+export function filesUnder(dir: string): string[] {
   const result: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
     const path = join(dir, entry.name);

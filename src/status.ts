@@ -12,6 +12,7 @@ import { balanceJson, balancePause, queueState, runningStages, writeJson } from 
 import { ProjectError, type Project, resolveProject } from './project.ts';
 import { type RunOutcome, type RunRequest, startRun } from './runner.ts';
 import { paint, style } from './style.ts';
+import { type OptionSpecs, jsonOption } from './options.ts';
 
 export const PROBE_PROMPT = 'Responda apenas: ok';
 
@@ -124,6 +125,11 @@ export function statusJson(db: DatabaseSync, home: string, now: Date): Record<st
 export const statusUsage = 'mabel status [--atualizar] [--json]';
 export const balanceUsage = 'mabel saldo [--atualizar] [--json]';
 
+export const balanceOptions = {
+  atualizar: { type: 'boolean', description: 'Lê o saldo agora, com uma chamada mínima ao haiku' },
+  json: jsonOption,
+} satisfies OptionSpecs;
+
 /** Abre o banco, atualiza o saldo se pedido e entrega o resto a `show`. */
 async function withBalance(
   args: string[],
@@ -133,7 +139,7 @@ async function withBalance(
   let refresh: boolean;
   let json: boolean;
   try {
-    const { values } = parseArgs({ args, options: { atualizar: { type: 'boolean' }, json: { type: 'boolean' } } });
+    const { values } = parseArgs({ args, options: balanceOptions });
     refresh = values.atualizar ?? false;
     json = values.json ?? false;
   } catch (error) {

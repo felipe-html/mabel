@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { dataDir } from './db.ts';
 import { paint } from './style.ts';
+import type { ArgSpec, OptionSpecs } from './options.ts';
 
 /**
  * Validade das credenciais que o Mabel usa fora das runs (`FIGMA_TOKEN`). O Mabel não guarda
@@ -10,6 +11,14 @@ import { paint } from './style.ts';
  */
 
 export const credentialUsage = ['mabel credencial', 'mabel credencial figma --expira <AAAA-MM-DD>'].join('\n       ');
+
+export const credentialOptions = {
+  expira: { type: 'string', value: '<AAAA-MM-DD>', description: 'Data em que o token vence; o Mabel avisa antes' },
+} satisfies OptionSpecs;
+
+export const credentialArgs: ArgSpec[] = [
+  { name: '<credencial>', description: 'Qual token; sem ela, mostra a validade de todos', values: 'credencial' },
+];
 
 export const CREDENTIALS_FILE = 'credenciais.json';
 
@@ -103,7 +112,7 @@ export function renderCredentials(home: string, env: NodeJS.ProcessEnv, now = ne
 export function credentialCommand(args: string[]): number {
   let parsed;
   try {
-    parsed = parseArgs({ args, allowPositionals: true, options: { expira: { type: 'string' } } });
+    parsed = parseArgs({ args, allowPositionals: true, options: credentialOptions });
   } catch (error) {
     process.stderr.write(`${(error as Error).message}\nUso: ${credentialUsage}\n`);
     return 1;

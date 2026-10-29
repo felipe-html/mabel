@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { banner } from './banner.ts';
 import { type Command, commands, findCommand } from './commands.ts';
 import { Interrupted } from './ask.ts';
+import { renderHelp } from './completion.ts';
 import { fail, setJsonErrors } from './errors.ts';
 import { repl } from './repl.ts';
 import { style } from './style.ts';
@@ -27,7 +28,7 @@ function menu(): string {
     style.bold('Comandos'),
     ...lines,
     '',
-    style.dim('Use `mabel <comando> --help` para ver o uso.'),
+    style.dim('Use `mabel <comando> --help` para ver o uso e as opções, ou `mabel comandos` para ver todas.'),
   ].join('\n');
 }
 
@@ -67,7 +68,7 @@ async function main(argv: string[]): Promise<number> {
     return 1;
   }
   if (args.includes('--help') || args.includes('-h')) {
-    process.stdout.write(`${command.description}\n\nUso: ${command.usage}\n`);
+    process.stdout.write(`${renderHelp(command)}\n`);
     return 0;
   }
   if (!command.run) return fail('argumento_invalido', `\`mabel ${command.name}\` ${plannedNote(command)}.`);
