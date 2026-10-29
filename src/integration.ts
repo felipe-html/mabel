@@ -1,7 +1,7 @@
 import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { git, tryGit } from './git.ts';
+import { git, tryGit, withTrailers } from './git.ts';
 import { type Item, listItems, transition, updateItem } from './items.ts';
 import type { Project } from './project.ts';
 import { branchExists, worktreesDir } from './worktree.ts';
@@ -166,11 +166,22 @@ export function integrateItem(project: Project, item: Item): { commit: string } 
     return { error: `a ${integration} mudou durante o item; o item não contém o que já foi integrado` };
   }
   const tree = git(worktree, 'rev-parse', 'HEAD^{tree}');
-  const commit = git(project.root, 'commit-tree', tree, '-p', old, '-p', head, '-m', `mabel: integra #${item.number} ${item.title}`);
+  const message = withTrailers(`mabel: integra #${item.number} ${item.title}`, itemTrailers(item));
+  const commit = git(project.root, 'commit-tree', tree, '-p', old, '-p', head, '-m', message);
   if (tryGit(project.root, 'update-ref', `refs/heads/${integration}`, commit, old) === undefined) {
     return { error: `a ${integration} mudou durante a integração; nada foi integrado` };
   }
   return { commit };
+}
+
+/** Unidade de entrega da tarefa. Antes das specs (S.3), toda tarefa é avulso. */
+export function unitOf(item: Pick<Item, 'number'>): string {
+  return `avulso-${item.number}`;
+}
+
+/** Trailers dos commits de merge do Mabel: `Mabel-Item` e `Mabel-Unidade`. */
+export function itemTrailers(item: Pick<Item, 'number'>): Record<string, string> {
+  return { 'Mabel-Item': `#${item.number}`, 'Mabel-Unidade': unitOf(item) };
 }
 
 /** Grava o commit de integração no item (ou o limpa, na rejeição). */

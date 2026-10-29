@@ -4,10 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { checkDeliveries, deliver, deliveryBodyPath, deliveryTitle, type RemoteRepo, listDeliveries, newPrUrl, remoteRepo } from '../src/delivery.ts';
+import { BODY_LIMIT, checkDeliveries, deliver, deliveryBody, deliveryBodyPath, deliveryTitle, type RemoteRepo, listDeliveries, newPrUrl, remoteRepo } from '../src/delivery.ts';
 import { git, tryGit } from '../src/git.ts';
 import { getItem, syncBacklog } from '../src/items.ts';
-import { renderIntegrationReport } from '../src/report.ts';
+import { integrationSection } from '../src/report.ts';
 import { type QueueOptions, startQueue } from '../src/run.ts';
 import { PLAN, REVIEW_OK, setupProject, useScenario } from './helpers.ts';
 
@@ -94,18 +94,19 @@ test('entregar critério 1: snapshot da integração, push, PR com o relatório 
   assert.equal(result.code, 0, result.lines.join('\n'));
   const delivery = result.delivery!;
   assert.match(delivery.branch, BRANCH);
-  assert.equal(q.ref(delivery.branch), q.ref(INTEGRATION));
-  assert.equal(q.remoteRef(delivery.branch), q.ref(INTEGRATION));
+  assert.equal(git(q.root, 'rev-parse', `${delivery.branch}^`), q.ref(INTEGRATION), 'snapshot + o commit do documento');
+  assert.equal(delivery.snapshot, q.ref(INTEGRATION));
+  assert.equal(q.remoteRef(delivery.branch), q.ref(delivery.branch));
   assert.deepEqual(delivery.items, [1, 2, 3]);
   assert.equal(delivery.prUrl, PR);
 
   const create = calls().find((call) => call.argv[0] === 'pr' && call.argv[1] === 'create')!;
   assert.deepEqual(create.argv.slice(2, 8), ['--base', 'main', '--head', delivery.branch, '--title', 'Mabel: 3 itens (#1, #2, #3)']);
   assert.ok(!create.argv.includes('--draft'));
-  assert.match(create.body ?? '', new RegExp(`^# Entrega · ${delivery.branch} · 3 itens desde a main\n`));
-  assert.match(create.body ?? '', /Create a merge commit/);
+  assert.match(create.body ?? '', /^Faça o merge com merge commit \("Create a merge commit"[^\n]*\n\nResumo: integracao · \d{4}-\d{2}-\d{2} · /);
+  assert.match(create.body ?? '', /\n# Entrega: integracao\n/);
   assert.match(create.body ?? '', /## Olhe primeiro/);
-  assert.match(create.body ?? '', /## #3 Item 3/);
+  assert.match(create.body ?? '', /- #3 Item 3 · merge [0-9a-f]{7}/);
   assert.doesNotMatch(create.body ?? '', /git merge --no-ff/);
   assert.equal(readFileSync(deliveryBodyPath(q.home, q.project.id, delivery.branch), 'utf8'), create.body);
 
@@ -116,7 +117,7 @@ test('entregar critério 1: snapshot da integração, push, PR com o relatório 
   assert.match(result.lines.join('\n'), /Faça o merge com merge commit, sem squash nem rebase\. Depois, na main: git pull/);
 
   // O relatório da integração aponta a entrega aberta.
-  assert.match(renderIntegrationReport(q.db, q.home, q.project), new RegExp(`ou: mabel entregar\nEntrega aberta: ${delivery.branch} · ${PR}`));
+  assert.match(integrationSection(q.db, q.home, q.project).join('\n'), new RegExp(`ou: mabel entregar\nEntrega aberta: ${delivery.branch} · ${PR}`));
 });
 
 test('entregar critérios 2 e 5: a entrega fica no snapshot; aberta, recusa sem flag e --substituir abre outra', async () => {
@@ -170,7 +171,7 @@ test('entregar critério 4: sem gh publica e mostra o corpo; sem remoto, só a b
   const result = deliver(q.db, q.home, q.project);
   assert.equal(result.code, 0, result.lines.join('\n'));
   const branch = result.delivery!.branch;
-  assert.equal(q.remoteRef(branch), q.ref(INTEGRATION));
+  assert.equal(q.remoteRef(branch), q.ref(branch));
   const out = result.lines.join('\n');
   assert.match(out, /sem PR automático \(gh não instalado\)/);
   assert.match(out, new RegExp(`Corpo do PR: ${deliveryBodyPath(q.home, q.project.id, branch).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
@@ -188,7 +189,7 @@ test('entregar critério 4: sem gh publica e mostra o corpo; sem remoto, só a b
   const offline = deliver(local.db, local.home, local.project);
   assert.equal(offline.code, 0, offline.lines.join('\n'));
   assert.match(offline.lines.join('\n'), new RegExp(`sem remoto: para levar à main, git merge --no-ff ${offline.delivery!.branch}`));
-  assert.equal(local.ref(offline.delivery!.branch), local.ref(INTEGRATION));
+  assert.equal(git(local.root, 'rev-parse', `${offline.delivery!.branch}^`), local.ref(INTEGRATION));
 });
 
 test('entregar: remoto no Bitbucket publica, mostra o link do PR e não chama o gh', async () => {
@@ -199,7 +200,7 @@ test('entregar: remoto no Bitbucket publica, mostra o link do PR e não chama o 
   const result = deliver(q.db, q.home, q.project);
   assert.equal(result.code, 0, result.lines.join('\n'));
   const branch = result.delivery!.branch;
-  assert.equal(q.remoteRef(branch), q.ref(INTEGRATION));
+  assert.equal(q.remoteRef(branch), q.ref(branch));
   const out = result.lines.join('\n');
   assert.match(out, /sem PR automático \(o remoto origin está no Bitbucket; o gh só abre PR no GitHub\)/);
   assert.match(out, new RegExp(`Abra o PR: https://bitbucket\\.org/seasolutions/app/pull-requests/new\\?source=${encodeURIComponent(branch)}&dest=main`));
@@ -324,16 +325,18 @@ test('entregar critério 11: remoção do projeto leva as entregas e o corpo do 
   assert.ok(!existsSync(deliveryBodyPath(q.home, q.project.id, delivery.branch)));
 });
 
-test('entregar: corpo acima do limite corta os itens do fim, nunca o "Olhe primeiro"', async () => {
+test('entregar: corpo acima do limite corta o documento na última linha inteira e aponta o arquivo', async () => {
   const q = await integrated(3);
-  const full = renderIntegrationReport(q.db, q.home, q.project);
-  const head = full.slice(0, full.indexOf('\n\n## #1'));
-  const cut = renderIntegrationReport(q.db, q.home, q.project, { maxChars: head.length + 200 });
-  assert.ok(cut.length <= head.length + 200, `${cut.length}`);
-  assert.match(cut, /## Olhe primeiro/);
-  assert.doesNotMatch(cut, /## #3/);
-  assert.match(cut, /… \d itens? sem detalhe aqui; rode mabel integracao\.\n$/);
-  assert.equal(renderIntegrationReport(q.db, q.home, q.project, { maxChars: 1_000_000 }), full);
+  useGh(q.root, GH_OK);
+  const delivery = deliver(q.db, q.home, q.project).delivery!;
+  const full = deliveryBody(q.project, delivery);
+  assert.ok(full.length < BODY_LIMIT);
+  const limit = full.indexOf('## Tarefas');
+  const cut = deliveryBody(q.project, delivery, limit);
+  assert.ok(cut.length <= limit, `${cut.length}`);
+  assert.match(cut, /^Faça o merge[\s\S]*## Olhe primeiro/);
+  assert.doesNotMatch(cut, /## Tarefas/);
+  assert.match(cut, /\n\n… documento cortado; a íntegra está em \.mabel\/entregas\/[\d-]+-integracao\.md na branch mabel\/entrega\/[\d-]+\.\n$/);
 });
 
 test('entregar: integração desligada e nada a entregar', async () => {

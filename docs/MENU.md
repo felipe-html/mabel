@@ -511,8 +511,11 @@ custo. O `run.md` substituiu o `.mabel/integracao.md` (S.1).
 | `--rascunho` | Abre o PR como rascunho |
 
 Cria `mabel/entrega/<data>` no commit atual da integração (o `run` pode seguir integrando
-sem mudar o PR), publica no remoto da base e abre o PR pelo `gh`, com o relatório como
-corpo. Recusa se o repositório não permitir merge commit (squash e rebase impedem o `done`).
+sem mudar o PR) mais um commit do Mabel só com o documento de entrega
+(`.mabel/entregas/<data>-integracao.md`: resumo, olhe primeiro, decisões, suposições,
+critérios e prova, desvios e tarefas; trailer `Mabel-Entrega`), publica no remoto da base e
+abre o PR pelo `gh`, com o documento como corpo (cortado acima de 60.000 caracteres). Pelo
+merge do PR, o documento chega à base junto do código. Recusa se o repositório não permitir merge commit (squash e rebase impedem o `done`).
 Sem `gh` ou com o remoto no Bitbucket, mostra o endereço para abrir o PR e o arquivo do corpo;
 sem remoto, o `git merge --no-ff`.
 Volta o checkout da raiz para a base só se ele estiver na integração ou numa entrega e sem

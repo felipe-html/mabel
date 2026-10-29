@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { truncate } from './format.ts';
-import { tryGit } from './git.ts';
-import { integratedItems, isAncestor, onTempWorktree } from './integration.ts';
+import { tryGit, withTrailers } from './git.ts';
+import { integratedItems, isAncestor, itemTrailers, onTempWorktree } from './integration.ts';
 import {
   type Item,
   type ItemStatus,
@@ -182,7 +182,9 @@ export function reject(
     home,
     project,
     integration,
-    (path) => tryGit(path, 'revert', '--no-edit', '-m', '1', commit) !== undefined,
+    (path) =>
+      tryGit(path, 'revert', '--no-commit', '-m', '1', commit) !== undefined &&
+      tryGit(path, 'commit', '-q', '-m', withTrailers(`mabel: rejeita #${item.number} ${item.title}`, itemTrailers(item))) !== undefined,
     ['revert', '--abort'],
   );
   if (reverted.kind === 'conflict') {

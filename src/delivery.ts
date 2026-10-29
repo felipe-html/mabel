@@ -1,13 +1,15 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
 import { dataDir, openDb } from './db.ts';
-import { git, tryGit } from './git.ts';
+import { git, gitWith, tryGit, withTrailers } from './git.ts';
+import { deliveryDocPath, renderDeliveryDoc } from './deliverydoc.ts';
 import { checkedOutAt, integratedItems, isAncestor } from './integration.ts';
 import { type Project, ProjectError, resolveProject } from './project.ts';
-import { lookFirstLines, renderIntegrationReport } from './report.ts';
+import { lookFirstLines } from './report.ts';
 import { style } from './style.ts';
 import type { OptionSpecs } from './options.ts';
 
@@ -22,7 +24,9 @@ export const deliverOptions = {
 
 const PREFIX = 'mabel/entrega/';
 /** O GitHub aceita 65.536 caracteres no corpo do PR; a margem cobre o que o `gh` acrescenta. */
-const BODY_LIMIT = 60_000;
+export const BODY_LIMIT = 60_000;
+/** Unidade de entrega enquanto há uma integração única (até o S.6). */
+const UNIT = 'integracao';
 const TITLE_LIMIT = 70;
 
 export type DeliveryStatus = 'open' | 'merged' | 'replaced';
@@ -31,7 +35,10 @@ export interface Delivery {
   id: number;
   projectId: string;
   branch: string;
+  /** Ponta da branch de entrega: o snapshot mais o commit do documento (S.2). */
   commit: string;
+  /** Snapshot da integração entregue. Entregas antigas, sem documento: o próprio `commit`. */
+  snapshot: string;
   items: number[];
   remote: string | null;
   prUrl: string | null;
@@ -45,6 +52,7 @@ interface DeliveryRow {
   project_id: string;
   branch: string;
   commit_sha: string;
+  snapshot_sha: string | null;
   items: string;
   remote: string | null;
   pr_url: string | null;
@@ -59,6 +67,7 @@ function fromRow(row: DeliveryRow): Delivery {
     projectId: row.project_id,
     branch: row.branch,
     commit: row.commit_sha,
+    snapshot: row.snapshot_sha ?? row.commit_sha,
     items: JSON.parse(row.items) as number[],
     remote: row.remote,
     prUrl: row.pr_url,
@@ -82,10 +91,10 @@ function insertDelivery(db: DatabaseSync, delivery: Omit<Delivery, 'id' | 'statu
   const createdAt = new Date().toISOString();
   const { lastInsertRowid } = db
     .prepare(
-      `INSERT INTO deliveries (project_id, branch, commit_sha, items, remote, pr_url, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'open', ?)`,
+      `INSERT INTO deliveries (project_id, branch, commit_sha, snapshot_sha, items, remote, pr_url, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?)`,
     )
-    .run(delivery.projectId, delivery.branch, delivery.commit, JSON.stringify(delivery.items), delivery.remote, delivery.prUrl, createdAt);
+    .run(delivery.projectId, delivery.branch, delivery.commit, delivery.snapshot, JSON.stringify(delivery.items), delivery.remote, delivery.prUrl, createdAt);
   return { ...delivery, id: Number(lastInsertRowid), status: 'open', createdAt, closedAt: null };
 }
 
@@ -237,6 +246,47 @@ function switchToBase(project: Project, out: string[]): void {
   }
 }
 
+/**
+ * Commit do Mabel sobre o snapshot só com o documento de entrega, montado num índice
+ * temporário: nenhum worktree é tocado, e a base não recebe nada (G10).
+ */
+function commitDocument(root: string, snapshot: string, path: string, content: string, name: string): string {
+  const dir = mkdtempSync(join(tmpdir(), 'mabel-entrega-'));
+  try {
+    const env = { GIT_INDEX_FILE: join(dir, 'index') };
+    gitWith(root, { env }, 'read-tree', snapshot);
+    const blob = gitWith(root, { input: content }, 'hash-object', '-w', '--stdin');
+    gitWith(root, { env }, 'update-index', '--add', '--cacheinfo', `100644,${blob},${path}`);
+    const tree = gitWith(root, { env }, 'write-tree');
+    const message = withTrailers(`mabel: entrega ${UNIT}`, { 'Mabel-Entrega': name });
+    return git(root, 'commit-tree', tree, '-p', snapshot, '-m', message);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** Nome do documento da entrega, pelo arquivo que o commit dela acrescentou. */
+function deliveryDocOf(root: string, delivery: Delivery): string | undefined {
+  if (delivery.commit === delivery.snapshot) return undefined;
+  const files = tryGit(root, 'diff-tree', '--no-commit-id', '--name-only', '-r', delivery.snapshot, delivery.commit) ?? '';
+  return files.split('\n').find((file) => file.startsWith('.mabel/entregas/'));
+}
+
+/**
+ * Corpo do PR: o aviso do merge commit e o documento da entrega, lido da branch. Acima do
+ * limite, o documento é cortado na última linha inteira e aponta para o arquivo.
+ */
+export function deliveryBody(project: Project, delivery: Delivery, limit = BODY_LIMIT): string {
+  const path = deliveryDocOf(project.root, delivery);
+  const doc = path ? (tryGit(project.root, 'show', `${delivery.commit}:${path}`) ?? '') : '';
+  const head = 'Faça o merge com merge commit ("Create a merge commit" no GitHub, "Merge commit" no Bitbucket): squash e rebase impedem o Mabel de dar os itens como concluídos.\n\n';
+  const body = `${head}${doc}\n`;
+  if (body.length <= limit) return body;
+  const tail = `\n\n… documento cortado; a íntegra está em ${path} na branch ${delivery.branch}.\n`;
+  const kept = body.slice(0, limit - tail.length);
+  return `${kept.slice(0, kept.lastIndexOf('\n'))}${tail}`;
+}
+
 function describe(delivery: Delivery, base: string): string[] {
   return [
     `${style.bold('Entrega')} ${delivery.branch} · ${delivery.items.length} ${delivery.items.length === 1 ? 'item' : 'itens'} desde a ${base}`,
@@ -280,7 +330,7 @@ function deliverChecked(db: DatabaseSync, home: string, project: Project, option
   let delivery: Delivery | undefined;
   let previous: Delivery | undefined;
   if (open) {
-    const advanced = snapshot !== undefined && snapshot !== open.commit && items.length > 0;
+    const advanced = snapshot !== undefined && snapshot !== open.snapshot && items.length > 0;
     if (options.replace && advanced) {
       previous = open;
     } else if (open.prUrl === null) {
@@ -317,11 +367,15 @@ function deliverChecked(db: DatabaseSync, home: string, project: Project, option
 
   if (!delivery) {
     const branch = nextBranch(db, project);
-    git(project.root, 'update-ref', `refs/heads/${branch}`, snapshot as string, '');
+    const name = `${branch.slice(PREFIX.length)}-${UNIT}`;
+    const doc = renderDeliveryDoc(db, home, project, { name, unit: UNIT, snapshot: snapshot as string, date: today() });
+    const commit = commitDocument(project.root, snapshot as string, deliveryDocPath(name), doc, name);
+    git(project.root, 'update-ref', `refs/heads/${branch}`, commit, '');
     delivery = insertDelivery(db, {
       projectId: project.id,
       branch,
-      commit: snapshot as string,
+      commit,
+      snapshot: snapshot as string,
       items: items.map((item) => item.number),
       remote: remote ?? null,
       prUrl: null,
@@ -332,15 +386,14 @@ function deliverChecked(db: DatabaseSync, home: string, project: Project, option
     updateDelivery(db, delivery, { remote: remote ?? null });
   }
   out.push(...describe(delivery, base));
-  const lookFirst = lookFirstLines(db, home, project, delivery.commit).length;
+  const lookFirst = lookFirstLines(db, home, project, delivery.snapshot).length;
   if (lookFirst > 0) out.push(`  Olhe primeiro: ${lookFirst} (no corpo do PR)`);
+  const docPath = deliveryDocOf(project.root, delivery);
+  if (docPath) out.push(`  Documento: ${docPath} (na branch da entrega)`);
 
   const bodyPath = deliveryBodyPath(home, project.id, delivery.branch);
   mkdirSync(join(bodyPath, '..'), { recursive: true });
-  writeFileSync(
-    bodyPath,
-    renderIntegrationReport(db, home, project, { delivery: { branch: delivery.branch, commit: delivery.commit }, maxChars: BODY_LIMIT }),
-  );
+  writeFileSync(bodyPath, deliveryBody(project, delivery));
 
   let code = 0;
   if (!remote) {
@@ -398,7 +451,7 @@ function deliverChecked(db: DatabaseSync, home: string, project: Project, option
         : undefined;
       out.push(closed?.ok ? `PR anterior fechado: ${previous.prUrl}` : `Feche o PR anterior: ${previous.prUrl}`);
     }
-    if (isAncestor(project.root, previous.commit, delivery.commit)) tryGit(project.root, 'branch', '-D', previous.branch);
+    if (isAncestor(project.root, previous.snapshot, delivery.snapshot)) tryGit(project.root, 'branch', '-D', previous.branch);
   }
 
   if (code === 0) {

@@ -569,7 +569,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       <div class="node">
         <span class="kicker">Mabel · G10</span>
         <h4>Integra o item</h4>
-        <p>Commit de merge em <code>mabel/integracao</code>, apaga worktree e branch do item. A fila regrava <code>.mabel/run.md</code> e passa ao próximo item.</p>
+        <p>Commit de merge em <code>mabel/integracao</code> (trailers <code>Mabel-Item</code> e <code>Mabel-Unidade</code>), apaga worktree e branch do item. A fila regrava <code>.mabel/run.md</code> e passa ao próximo item.</p>
       </div>
       <div class="exits">
         <div class="exit stop"><span class="k">failed</span><span>merge na integração falhou</span></div>
@@ -804,8 +804,8 @@ Retomar a esteira agora? [S/n]</pre>
         <article class="cmd">
           <header><span class="name">entregar</span><span class="badge human">você pede</span></header>
           <p class="usage">mabel entregar [--substituir] [--rascunho]</p>
-          <p>Snapshot da integração e PR para a base, com o relatório no corpo. O merge é seu; no próximo <code>run</code> os itens viram <code>done</code>.</p>
-          <p class="writes"><b>Grava:</b> branch <code>mabel/entrega/&lt;data&gt;</code>, push no remoto, PR pelo <code>gh</code>. Sem <code>gh</code>: o endereço e o arquivo do corpo.</p>
+          <p>Snapshot da integração mais o documento de entrega, e PR para a base com o documento no corpo. O merge é seu; no próximo <code>run</code> os itens viram <code>done</code>, e o documento fica na base junto do código.</p>
+          <p class="writes"><b>Grava:</b> branch <code>mabel/entrega/&lt;data&gt;</code> = snapshot + commit <code>mabel: entrega integracao</code> só com <code>.mabel/entregas/&lt;data&gt;-integracao.md</code> (trailer <code>Mabel-Entrega</code>; a base não recebe commit), push no remoto, PR pelo <code>gh</code>. Sem <code>gh</code>: o endereço e o arquivo do corpo.</p>
 <pre class="term">Entrega mabel/entrega/2026-10-28 · 3 itens desde a main
 <span class="g">PR aberto: https://github.com/…/pull/31</span></pre>
         </article>

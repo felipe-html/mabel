@@ -229,6 +229,9 @@ const migrations: string[] = [
   );
   CREATE INDEX births_root ON births(root, created_at);
   `,
+  `
+  ALTER TABLE deliveries ADD COLUMN snapshot_sha TEXT;
+  `,
 ];
 
 function migrate(db: DatabaseSync): void {
