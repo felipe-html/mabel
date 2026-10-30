@@ -108,6 +108,15 @@ O financeiro exporta os pedidos do período para conciliar no ERP.
 ```
 
 - Cada regra tem um id estável (`R1`, `R2`…), que as tarefas citam.
+- Regra é comportamento observável e testável, de negócio ou técnico: uma decisão técnica
+  já tomada (uma ADR, por exemplo) entra como regra com exemplos.
+- Seções que o Mabel não interpreta (`## Contexto`, `## Alternativas rejeitadas`…) são do
+  humano: o agente as lê, a gravação as mantém depois da história e as tarefas as recebem
+  no contexto (no hash só quando existem).
+- `## Referências` (o formato do campo do backlog) vale para todas as tarefas da spec:
+  soma-se às referências de cada uma no gate do `ready`, no hash e na cópia congelada.
+- Decisão pode trazer o motivo (`pergunta → resposta, porque …`), para a alternativa
+  rejeitada não voltar.
 - Cada exemplo é um caso concreto: situação → resultado.
 - `Alterações nas regras vigentes` é o que a entrega aplica ao `regras.md` (R2): a regra
   só vira vigente quando o código chega à base.

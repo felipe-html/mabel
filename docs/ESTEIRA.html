@@ -620,10 +620,10 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       <dl>
         <dt>Quando</dt><dd>Spec de <code>.mabel/specs/</code> não entregue (<code>especificar</code>) ou avulso em <code>backlog</code> ou <code>ready</code> que nunca foi planejado (<code>refinar</code>).</dd>
         <dt>Run</dt><dd><code>sonnet</code> (<code>models.refine</code>) · Read Glob Grep · 30 turnos · US$ 1 por rodada · na raiz do projeto · até 5 rodadas na mesma sessão (<code>--resume</code>)</dd>
-        <dt>Recebe</dt><dd>O rascunho da spec (ou o avulso), o código, o <code>.mabel/regras.md</code> (com orçamento de 20.000 caracteres; acima, aviso de consolidar) e, por <code>Grep</code>, as entregas anteriores. Nas rodadas seguintes, as respostas e as regras que elas mexem.</dd>
+        <dt>Recebe</dt><dd>O rascunho da spec (ou o avulso) com as referências da spec, o código, o <code>.mabel/regras.md</code> (com orçamento de 20.000 caracteres; acima, aviso de consolidar) e, por <code>Grep</code>, as entregas anteriores. Nas rodadas seguintes, as respostas e as regras que elas mexem.</dd>
         <dt>Devolve</dt><dd>Example Mapping: <code>historia</code>, <code>regras</code> com <code>exemplos</code> (situação → resultado, <code>borda</code>), <code>perguntas</code> (≤ 5, cada uma de um exemplo sem resultado), <code>decisoes</code>, <code>foraDoEscopo</code>, <code>conceitosCriticos</code>, <code>alteracoesRegrasVigentes</code>, <code>tarefas</code>, <code>sugestaoQuebra</code>, <code>reproducao</code> (bug).</dd>
         <dt>Limites</dt><dd>Exemplo sem resultado e sem pergunta, mais de 5 perguntas, pergunta na última rodada, tarefa citando regra que não existe, <code>alterar</code> nas regras vigentes sem <code>antiga → nova</code> ou com a regra antiga fora do assunto, ou bug sem reprodução: correção pedida na mesma sessão, uma vez.</dd>
-        <dt>Depois</dt><dd>Você responde (enter aceita a sugestão, texto responde, <code>p</code> adia) e revisa parte a parte. <code>especificar</code> grava a spec, as tarefas e o estado <code>aceita</code>; <code>refinar</code>, o bloco do avulso.</dd>
+        <dt>Depois</dt><dd>Você responde (enter aceita a sugestão, texto responde, <code>p</code> adia) e revisa parte a parte. <code>especificar</code> grava a spec (com as seções próprias e as <code>Referências</code> do rascunho como estavam), as tarefas e o estado <code>aceita</code>; <code>refinar</code>, o bloco do avulso.</dd>
       </dl>
     </article>
     <article class="agent-card">
@@ -631,7 +631,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       <dl>
         <dt>Quando</dt><dd>Item em <code>planning</code>, dentro do <code>run</code>.</dd>
         <dt>Run</dt><dd><code>opus</code> · Read Glob Grep · 40 turnos · US$ 3 · no worktree do item</dd>
-        <dt>Recebe</dt><dd>Item, regras críticas, referências congeladas; num replanejamento, o plano anterior e o resumo das tentativas.</dd>
+        <dt>Recebe</dt><dd>Item (tarefa de spec: história, seções próprias, regras citadas, decisões e fora do escopo da spec), regras críticas, referências congeladas (as do item e as herdadas da spec); num replanejamento, o plano anterior e o resumo das tentativas.</dd>
         <dt>Devolve</dt><dd><code>plano.json</code>: critérios com <code>verificacao</code> e <code>comportamento</code>, <code>escopo</code> em globs, <code>passos</code>, <code>suposicoes</code>, <code>conceitosCriticos</code>, <code>perguntas</code>.</dd>
         <dt>Depois</dt><dd>Gate de início (G2) → <code>planned</code> ou <code>needs_human</code>.</dd>
       </dl>
@@ -704,7 +704,7 @@ Refinar o item agora com um agente? [s/N]</pre>
         <article class="cmd">
           <header><span class="name">especificar</span><span class="badge agent">especificador</span></header>
           <p class="usage">mabel especificar [slug] [--refazer] [--aceitar | --descartar]</p>
-          <p>Example Mapping sobre a spec de <code>.mabel/specs/slug.md</code> (o rascunho pode ser só a história): rodadas de perguntas nascidas dos exemplos sem resultado, até a spec ficar válida, e a revisão parte a parte (história, regras com exemplos, decisões, fora do escopo, regras críticas, alterações nas regras vigentes, tarefas), com a sugestão de quebra e o tamanho. Sem proposta pendente, <code>--aceitar</code> aceita a spec escrita à mão que passa na validação; com ela, responde com as sugestões e grava. Planejador, executor e revisor recebem a história, as regras citadas com exemplos (critérios de aceite), as decisões e o fora do escopo.</p>
+          <p>Example Mapping sobre a spec de <code>.mabel/specs/slug.md</code> (o rascunho pode ser só a história): rodadas de perguntas nascidas dos exemplos sem resultado, até a spec ficar válida, e a revisão parte a parte (história, regras com exemplos, decisões, fora do escopo, regras críticas, alterações nas regras vigentes, tarefas), com a sugestão de quebra e o tamanho. Sem proposta pendente, <code>--aceitar</code> aceita a spec escrita à mão que passa na validação; com ela, responde com as sugestões e grava. Planejador, executor e revisor recebem a história, as seções próprias da spec (<code>## Contexto</code>, <code>## Alternativas rejeitadas</code>…), as regras citadas com exemplos (critérios de aceite), as decisões e o fora do escopo; as <code>## Referências</code> da spec valem para todas as tarefas dela.</p>
           <p class="writes"><b>Grava:</b> <code>.mabel/specs/slug.md</code>, as tarefas no fim do <code>backlog.md</code> com <code>Spec:</code>, <code>Regras:</code> e <code>Depende de:</code>, e no SQLite o estado <code>aceita</code>, as métricas de tamanho (regras, exemplos, rodadas, perguntas, tarefas) e a proposta (<code>spec_proposals</code>). Respostas da inbox de tarefa de spec vão para as <code>Decisões</code> da spec.</p>
 <pre class="term"><span class="a">▸ especificar · sonnet</span>
 1/2 Pedido cancelado entra? <span class="d">(R2 Cancelados)</span>

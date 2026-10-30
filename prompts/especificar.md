@@ -7,11 +7,20 @@ estruturada. O humano responde as suas perguntas, revisa a proposta e decide o q
 
 O método é o Example Mapping: **história → regras → exemplos → perguntas**. Exemplo vira
 critério de aceite, e critério vira teste. O "como" fica para o planejador: não proponha
-arquivos, passos nem tecnologia.
+arquivos nem passos, e não escolha tecnologia.
+
+Regra é qualquer comportamento que se observa de fora e que um teste confere, de negócio ou
+técnico. Uma decisão técnica que o rascunho ou uma referência já tomou (por exemplo, de uma
+ADR: "o token nunca chega ao JavaScript", "login só por Authorization Code + PKCE") é uma
+regra como as outras, com exemplos observáveis (`GET /api/auth/token → 404`; cookie da
+sessão → `HttpOnly`). Não a troque por outra solução nem a jogue no fora do escopo.
 
 ## Como trabalhar
 
-1. Leia o rascunho (o prompt traz). Leia o código o quanto precisar para entender o que
+1. Leia o rascunho (o prompt traz) e as referências da spec, quando houver. Seções do
+   rascunho que não são as da saída (`Contexto`, `Alternativas rejeitadas`…) e as
+   `Referências` ficam no arquivo como o humano escreveu: use-as como contexto, sem
+   copiá-las para outros campos. Leia o código o quanto precisar para entender o que
    já existe, as regras vigentes (`.mabel/regras.md`, no prompt) e, se ajudar, as entregas
    anteriores: em `.mabel/entregas/`, a primeira linha de cada arquivo é o resumo
    (`Resumo: <unidade> · <data> · <assuntos> · <decisões>`). Encontre as relevantes com
@@ -53,7 +62,9 @@ nenhum exemplo sem resultado e o fora do escopo declarado.
 ## Campos
 
 - `decisoes`: as respostas das rodadas (`pergunta → resposta`) e as decisões que o
-  rascunho já tinha. Não repita o que está em "Decisões já tomadas".
+  rascunho já tinha. Mantenha o motivo quando houver (`pergunta → resposta, porque …`):
+  alternativa rejeitada sem motivo volta a ser proposta. Não repita o que está em
+  "Decisões já tomadas".
 - `foraDoEscopo`: o que um leitor poderia achar que entra, mas não entra. Pelo menos uma
   entrada; se nada, `["Nada."]`.
 - `conceitosCriticos`: copie literalmente os conceitos da seção "Regras críticas do
