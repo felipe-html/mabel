@@ -422,7 +422,7 @@ Sem parâmetros (argumentos são ignorados).
 | Plano incompleto | Motivo | texto orienta o plano · `c` cancela (confirma) · `p` pula |
 | Aprovação de item crítico | Motivos, critérios, escopo, suposições | `a` aprova · texto ajusta os critérios · `c` cancela · `p` pula (`d` recusado) |
 | Tentativas esgotadas | O que reprovou em cada tentativa, em português; "Causa provável: bloqueio do ambiente" com o caminho do log quando ele mostra bloqueio do sandbox ou da rede; diagnóstico do executor na última tentativa | texto orienta novo ciclo (modelo escalonado) · `r <texto>` replaneja · `c` cancela · `p` pula |
-| Impedimento de ambiente | O motivo declarado pelo executor, confirmado pela verificação do Mabel fora do sandbox (com o log), e o que ajustar | texto diz o que mudou no ambiente e retoma · `r <texto>` replaneja · `c` cancela · `p` pula |
+| Impedimento de ambiente | O motivo declarado pelo executor (sem nada a verificar, ou confirmado pela prova fora do sandbox, com o log) e o que ajustar | texto diz o que mudou no ambiente e retoma · `r <texto>` replaneja · `c` cancela · `p` pula |
 | Conflito com a integração | Arquivos em conflito | texto orienta a resolução · `r <texto>` replaneja · `c` cancela · `p` pula |
 
 Cada item vira uma decisão, gravada no fim do item. Ctrl+C descarta só o item em

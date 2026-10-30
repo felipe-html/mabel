@@ -767,24 +767,17 @@ function verifyStep(env: PipelineEnv, item: Item): Step {
     writeFileSync(logPath, output);
     const passed = code === 0;
     recordGate(env.db, item.id, attemptNo, command.name, passed, passed ? null : `\`${command.command}\` saiu com ${code}`, logPath);
-    if (!passed && blocker) {
-      // O impedimento se confirmou fora do sandbox: outra tentativa não muda o ambiente.
-      const reason = `${blocker} A verificação do Mabel, fora do sandbox, também falhou em \`${command.command}\` (log: ${logPath}).`;
-      recordGate(env.db, item.id, attemptNo, 'environment', false, reason);
-      return stopForHuman(
-        env,
-        item,
-        'environment_block',
-        { reason, sessionId: lastExecuteSession(env.db, item.id) ?? null },
-        `impedimento de ambiente: ${reason}`,
-      );
-    }
     if (!passed) {
+      // Com impedimento declarado, a falha fora do sandbox não prova que o ambiente é a
+      // causa: o executor recebe o resultado real e a tentativa conta como qualquer outra.
+      const outside = blocker
+        ? `Você declarou o impedimento "${blocker}". O Mabel rodou a verificação fora do sandbox, sem esse bloqueio, e ela falhou pelo motivo abaixo: corrija a partir deste log.\n`
+        : '';
       return attemptFailed(
         env,
         item,
         item.attempts,
-        `O comando de verificação \`${command.command}\` falhou (código ${code}). Últimas linhas:\n${tail(output, 200)}`,
+        `${outside}O comando de verificação \`${command.command}\` falhou (código ${code}). Últimas linhas:\n${tail(output, 200)}`,
       );
     }
   }

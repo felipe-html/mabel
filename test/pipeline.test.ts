@@ -342,33 +342,31 @@ test('impedimento que não se confirma na verificação do Mabel não para o ite
   );
 });
 
-test('impedimento confirmado pela verificação do Mabel para o item sem gastar tentativas; responder retoma', async () => {
-  const blocked = { ...EXECUTION, impedimento: 'o build baixa fontes de fonts.googleapis.com, fora da rede' };
-  // O "ambiente" só deixa a verificação passar depois que o humano o ajusta.
-  const marker = join(mkdtempSync(join(tmpdir(), 'mabel-ambiente-')), 'liberado');
+test('impedimento com a verificação do Mabel falhando: o executor recebe o log real e a tentativa conta', async () => {
+  const blocked = { ...EXECUTION, impedimento: 'o sandbox bloqueia o socket do Docker' };
+  // Fora do sandbox a verificação roda e falha pelo código; a segunda execução corrige.
   const p = pipeline(
     [
       { structured_output: PLAN },
       exec(1, { session_id: 'exec-1', structured_output: blocked }),
-      { structured_output: EXECUTION },
+      exec(2),
       { structured_output: REVIEW_OK },
     ],
-    { verify: [{ name: 'ambiente', command: `test -f ${marker}` }] },
+    { verify: [{ name: 'testes', command: 'grep -q "versao 2" src/soma.js || { echo "esperado 200, recebido 302"; exit 1; }' }] },
   );
-  assert.deepEqual(await p.advance(), { kind: 'stopped', status: 'needs_human' });
-  assert.equal(p.item().pendingKind, 'environment_block');
-  assert.match(p.item().pending?.reason ?? '', /fonts\.googleapis\.com[\s\S]*verificação do Mabel, fora do sandbox, também falhou em `test -f/);
-  assert.equal(p.item().pending?.sessionId, 'exec-1');
-  assert.equal(p.branchLog(), 'mabel(#1): Soma — execução 1', 'o trabalho feito fica commitado');
-  assert.deepEqual(p.gates().at(-1), { attempt: 1, gate: 'environment', passed: 0 });
-
-  writeFileSync(marker, '');
-  assert.equal(respond(p.ctx.db, p.ctx.project, p.item(), 'Liberei o domínio.'), 'executing');
-  assert.equal(p.item().attempts, 0);
   assert.deepEqual(await p.advance(), { kind: 'stopped', status: 'awaiting_merge' });
-  const resumed = p.calls()[2];
-  assert.equal(resumed?.resume, 'exec-1');
-  assert.match(resumed?.prompt ?? '', /Liberei o domínio\./);
+  assert.equal(p.item().pendingKind, null);
+  assert.ok(!p.gates().some((g) => g.gate === 'environment' && g.passed === 0), 'não vira impedimento de ambiente');
+  assert.deepEqual(
+    p.gates().filter((g) => g.gate === 'testes'),
+    [
+      { attempt: 1, gate: 'testes', passed: 0 },
+      { attempt: 2, gate: 'testes', passed: 1 },
+    ],
+  );
+  const retry = p.calls()[2];
+  assert.equal(retry?.resume, 'exec-1');
+  assert.match(retry?.prompt ?? '', /impedimento "o sandbox bloqueia o socket do Docker"[\s\S]*fora do sandbox[\s\S]*esperado 200, recebido 302/);
 });
 
 test('responder em attempts_exhausted abre novo ciclo escalonado em sessão nova', async () => {
