@@ -121,6 +121,11 @@ dados do Mabel; o repositório do projeto não é alterado.
 - Impedimento de ambiente declarado pelo executor (rede, sandbox, permissão) é conferido
   pela verificação do Mabel, fora do sandbox. Se ela passar, o item segue; se falhar, o
   item vai a `needs_human` na hora, com o trabalho commitado e sem gastar tentativas.
+  Sem comando de verificação no projeto, quem confere é a prova: teste que não chega a
+  rodar no item confirma o impedimento.
+- Teste que não chega a rodar no item (setup, import ou ambiente quebrado) em duas
+  tentativas seguidas leva o item a `needs_human` como impedimento de ambiente, sem a
+  terceira tentativa.
 - A tabela de roteamento só é alterada com base em amostragem relevante da auditoria. O
   Mabel sugere a mudança; o humano decide.
 

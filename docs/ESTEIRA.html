@@ -535,11 +535,12 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
         <i class="arm" aria-hidden="true"></i>
         <span class="kicker">Prova · G3</span>
         <h4>O teste protege o critério?</h4>
-        <p>Roda cada teste no item e no código da base. <code>novo</code>: falha na base e passa no item. <code>mantido</code>: passa nos dois.</p>
-        <div class="out"><span class="file">prova-N.json</span><code>provado</code><code>nao_provado</code><code>sem_prova</code></div>
+        <p>Roda cada teste no item e no código da base, com uma linha na saída ao vivo por teste. <code>novo</code>: falha na base e passa no item. <code>mantido</code>: passa nos dois. Falha no item sem o nome do teste na saída é teste que não rodou (setup, import ou ambiente): a prova para ali, sem rodar a base. Com <code>verify</code> vazio, é ela que confere o impedimento declarado.</p>
+        <div class="out"><span class="file">prova-N.json</span><code>provado</code><code>nao_provado</code><code>sem_prova</code><code>naoRodou</code></div>
       </div>
       <div class="exits">
-        <div class="exit retry"><span class="k">↺ reprova</span><span>teste que passaria sem a mudança</span></div>
+        <div class="exit retry"><span class="k">↺ reprova</span><span>teste que passaria sem a mudança, ou que não rodou (com as últimas linhas do log)</span></div>
+        <div class="exit human"><span class="k">needs_human · environment_block</span><span>teste não rodou com impedimento declarado e <code>verify</code> vazio, ou em duas tentativas seguidas</span></div>
         <div class="exit stop"><span class="k">failed</span><span>worktree não restaurado após a prova</span></div>
       </div>
 
