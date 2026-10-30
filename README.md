@@ -47,9 +47,10 @@ desvios: needs_human (pergunta para você) · blocked · failed · cancelled
 - **Impedimento de ambiente:** quando a verificação não passa por causa do ambiente
   (domínio fora da `rede`, bloqueio do sandbox), o executor o declara. O Mabel roda a
   própria verificação, fora do sandbox: se passar, o item segue (o bloqueio era só do
-  sandbox do agente); se falhar, o item para para você na hora, com o trabalho commitado e
-  sem gastar tentativas. Ajuste o ambiente e responda o que mudou: a execução retoma e
-  verifica de novo.
+  sandbox do agente); se falhar, o executor recebe o log de fora do sandbox e corrige numa
+  nova tentativa, que conta como qualquer outra. O item só para para você na hora quando
+  não há nada a verificar (nenhuma alteração). Ajuste o ambiente e responda o que mudou: a
+  execução retoma e verifica de novo.
 - **Planejamento em lote:** o `run` planeja todos os itens prontos antes de executar, para
   que as perguntas cheguem juntas no começo e a execução siga sem você.
 - **Saldo:** antes de cada etapa, o Mabel confere as janelas de uso de 5 horas e de 7 dias

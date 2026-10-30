@@ -119,10 +119,12 @@ dados do Mabel; o repositório do projeto não é alterado.
 - Retentativa sem alteração nova, num item que já tem commits, volta à verificação com o
   código já commitado; a tentativa conta se ela reprovar de novo.
 - Impedimento de ambiente declarado pelo executor (rede, sandbox, permissão) é conferido
-  pela verificação do Mabel, fora do sandbox. Se ela passar, o item segue; se falhar, o
-  item vai a `needs_human` na hora, com o trabalho commitado e sem gastar tentativas.
-  Sem comando de verificação no projeto, quem confere é a prova: teste que não chega a
-  rodar no item confirma o impedimento.
+  pela verificação do Mabel, fora do sandbox. Se ela passar, o item segue; se falhar, a
+  falha não é atribuída ao ambiente: o executor recebe o log de fora do sandbox e a
+  tentativa conta como qualquer outra. Execução sem nada a verificar (sem alteração e sem
+  commits do item) com impedimento vai a `needs_human` na hora. Sem comando de verificação
+  no projeto, quem confere é a prova: teste que não chega a rodar no item confirma o
+  impedimento.
 - Teste que não chega a rodar no item (setup, import ou ambiente quebrado) em duas
   tentativas seguidas leva o item a `needs_human` como impedimento de ambiente, sem a
   terceira tentativa.
