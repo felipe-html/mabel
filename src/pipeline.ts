@@ -29,7 +29,7 @@ import { git, tryGit } from './git.ts';
 import { integrateItem, mergeInProgress, mergeOrigin, setIntegrated } from './integration.ts';
 import { bringDependencies, integrateUnit } from './units.ts';
 import { projectContext } from './hermetic.ts';
-import { foundTests, proofDetail, runProof } from './proof.ts';
+import { type ProofResult, foundTests, proofDetail, runProof } from './proof.ts';
 import { scopeViolation } from './scope.ts';
 import { type PreparedWorktree, commitAll, commitMessage, itemOrigin, prepareWorktree, removeWorktree, shell, unitBranch } from './worktree.ts';
 
@@ -789,7 +789,8 @@ function verifyStep(env: PipelineEnv, item: Item): Step {
     }
   }
 
-  if (blocker) {
+  // Sem comando no `verify`, nada conferiu o impedimento ainda: a prova decide.
+  if (blocker && env.project.config.verify.length > 0) {
     recordGate(env.db, item.id, attemptNo, 'environment', true, `não se confirmou fora do sandbox: ${blocker}`);
     env.log?.(`#${item.number} ${item.title}: impedimento do executor não se confirmou; a verificação do Mabel passou`);
   }
@@ -811,7 +812,8 @@ function proofStep(env: PipelineEnv, item: Item, plan: PlanOutput, execution: Ex
   const worktree = item.worktree as string;
   const logDir = join(itemDir(env.home, item.id), `prova-${attemptNo}`);
   const base = git(worktree, 'merge-base', 'HEAD', itemOrigin(env.project, item));
-  const result = runProof({ worktree, base, config: env.project.config, plan, execution, logDir });
+  const log = env.log && ((line: string) => env.log?.(`#${item.number} ${item.title}: ${line}`));
+  const result = runProof({ worktree, base, config: env.project.config, plan, execution, logDir, log });
   writeArtifact(env.home, item.id, `prova-${attemptNo}.json`, result);
   if (!result.restored || result.error) {
     const reason = result.restored ? `prova interrompida: ${result.error}` : 'worktree não restaurado após a prova';
@@ -821,6 +823,35 @@ function proofStep(env: PipelineEnv, item: Item, plan: PlanOutput, execution: Ex
   }
   const gaps = result.criteria.filter((c) => c.status === 'nao_provado');
   recordGate(env.db, item.id, attemptNo, 'proof', gaps.length === 0, proofDetail(result) || null, logDir);
+  const blocker = execution.impedimento?.trim();
+  const unverified = blocker && env.project.config.verify.length === 0;
+  if (result.naoRodou) {
+    const notRun = result.naoRodou;
+    const failure = `A prova não conseguiu rodar o teste \`${notRun.nome}\` (${notRun.criterio}) no item. Últimas linhas:\n${notRun.saida}`;
+    // Fora do sandbox o teste também não roda: o impedimento se confirmou (ou se repetiu),
+    // e outra tentativa não muda o ambiente.
+    // `attempts` já conta esta tentativa: a anterior é do mesmo ciclo só a partir da segunda.
+    const previous = item.attempts >= 2 ? readArtifact<ProofResult>(env.home, item.id, `prova-${attemptNo - 1}.json`) : undefined;
+    const repeated = previous?.naoRodou !== undefined;
+    if (unverified || repeated) {
+      const reason = unverified
+        ? `${blocker} A prova do Mabel, fora do sandbox, também não rodou \`${notRun.nome}\` (log: ${logDir}).`
+        : `duas tentativas seguidas em que a prova não rodou o teste; a última em \`${notRun.nome}\` (log: ${logDir}).`;
+      recordGate(env.db, item.id, attemptNo, 'environment', false, reason);
+      return stopForHuman(
+        env,
+        item,
+        'environment_block',
+        { reason: `${reason}\n${notRun.saida}`, sessionId: lastExecuteSession(env.db, item.id) ?? null },
+        `impedimento de ambiente: ${reason}`,
+      );
+    }
+    return attemptFailed(env, item, item.attempts, failure);
+  }
+  if (unverified) {
+    recordGate(env.db, item.id, attemptNo, 'environment', true, `não se confirmou fora do sandbox: ${blocker}`);
+    env.log?.(`#${item.number} ${item.title}: impedimento do executor não se confirmou; a prova do Mabel rodou os testes`);
+  }
   if (gaps.length > 0) {
     return attemptFailed(
       env,

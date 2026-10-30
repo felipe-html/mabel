@@ -8,7 +8,7 @@ import { git } from '../src/git.ts';
 import { getItem, syncBacklog } from '../src/items.ts';
 import { type PipelineEnv, advanceItem } from '../src/pipeline.ts';
 import { DEFAULT_TEST_GLOBS, readConfig } from '../src/project.ts';
-import { type ProofInput, proofDetail, runProof, singleTestCommand, withBaseCode } from '../src/proof.ts';
+import { type ProofInput, proofDetail, runProof, singleTestCommand, testRan, withBaseCode } from '../src/proof.ts';
 import type { ExecuteOutput, PlanOutput } from '../src/schemas/stages.ts';
 import { STACKS, findStack, proofTestCommand } from '../src/stacks.ts';
 import { CLI, PLAN, REVIEW_OK, makeRepo, setupProject, useScenario } from './helpers.ts';
@@ -150,17 +150,62 @@ test('P.2 critério 6: modo por item, sem testeUnico, roda o comando de teste um
   assert.equal(proofDetail(none), 'C1 sem_prova: sem `testeUnico` nem comando de teste no `verify`');
 });
 
+const BROKEN_SETUP = "echo 'Keycloak não respondeu 200 em 180s'; exit 1 # {arquivo} {padrao}";
+
+test('teste que falha no item cita o nome; setup quebrado não roda teste nenhum', () => {
+  assert.equal(testRan('not ok 1 - soma(2,  3)\n  devolve 5', 'soma(2, 3) devolve 5'), true);
+  assert.equal(testRan('Error: Keycloak não respondeu', 'soma(2, 3) devolve 5'), false);
+
+  const failing = itemRepo({}, { 'src/soma.mjs': 'export const soma = () => 0;\n', 'test/soma.test.mjs': STRONG_TEST });
+  const lines: string[] = [];
+  const failed = runProof(failing.input({ plan: plan('novo'), execution: execution('test/soma.test.mjs', NAME), log: (l) => lines.push(l) }));
+  assert.equal(proofDetail(failed), `C1 nao_provado: o teste \`${NAME}\` falha no item`);
+  assert.equal(failed.naoRodou, undefined);
+  assert.deepEqual(
+    lines.map((l) => l.replace(/em [\d,]+s$/, 'em Ns')),
+    [`prova C1 no item: \`${NAME}\`…`, 'prova C1 no item: falhou em Ns', `prova C1 no base: \`${NAME}\`…`, 'prova C1 no base: falhou em Ns'],
+  );
+});
+
+test('setup quebrado no item: a prova para no primeiro teste, sem rodar a base', () => {
+  const repo = itemRepo({}, { 'src/soma.mjs': SOMA, 'test/soma.test.mjs': STRONG_TEST });
+  const twoCriteria: PlanOutput = {
+    ...plan('novo'),
+    criterios: [
+      { id: 'C1', texto: 'a', verificacao: 'teste', comportamento: 'novo' },
+      { id: 'C2', texto: 'b', verificacao: 'teste', comportamento: 'novo' },
+    ],
+  };
+  const both: ExecuteOutput = {
+    ...execution('test/soma.test.mjs', NAME),
+    criterios: [
+      { id: 'C1', testes: [{ arquivo: 'test/soma.test.mjs', nome: NAME }] },
+      { id: 'C2', testes: [{ arquivo: 'test/soma.test.mjs', nome: NAME }] },
+    ],
+  };
+  const config = { testeUnico: BROKEN_SETUP, arquivosDeTeste: DEFAULT_TEST_GLOBS, verify: [] };
+  const result = runProof(repo.input({ config, plan: twoCriteria, execution: both }));
+  assert.equal(
+    proofDetail(result),
+    `C1 nao_provado: o comando não chegou a rodar o teste \`${NAME}\` (setup, import ou ambiente quebrado, ou nome que o filtro não acha); C2 nao_provado: não verificado: a prova parou no C1`,
+  );
+  assert.deepEqual(result.naoRodou, { criterio: 'C1', nome: NAME, saida: 'Keycloak não respondeu 200 em 180s' });
+  assert.equal(existsSync(join(repo.logDir, 'C2-item.log')), false);
+  assert.equal(existsSync(join(repo.logDir, 'C1-base.log')), false);
+  assert.equal(repo.status(), '');
+});
+
 // Pelo pipeline, num projeto Node mínimo com node:test (critérios 1, 2, 5 e 8) ----------------
 
-function proofPipeline(responses: unknown[], testeUnico = NODE_TEST) {
+function proofPipeline(responses: unknown[], testeUnico = NODE_TEST, verify = [{ name: 'test', command: 'node --test' }]) {
   const ctx = setupProject('\n## Soma\nQuero uma função soma.\n');
-  Object.assign(ctx.project.config, { setup: null, testeUnico, verify: [{ name: 'test', command: 'node --test' }] });
+  Object.assign(ctx.project.config, { setup: null, testeUnico, verify });
   syncBacklog(ctx.db, ctx.project);
   const { log } = useScenario(ctx.root, responses);
   const env: PipelineEnv = { db: ctx.db, home: ctx.home, project: ctx.project };
   const item = () => getItem(ctx.db, ctx.project.id, 1)!;
-  const gates = () =>
-    (ctx.db.prepare("SELECT attempt, passed, detail FROM gate_results WHERE gate = 'proof' ORDER BY id").all() as object[]).map(
+  const gates = (gate = 'proof') =>
+    (ctx.db.prepare('SELECT attempt, passed, detail FROM gate_results WHERE gate = ? ORDER BY id').all(gate) as object[]).map(
       (row) => ({ ...row }),
     );
   return { ctx, item, gates, log, advance: () => advanceItem(env, item().id) };
@@ -199,6 +244,33 @@ test('P.2 critério 5: worktree sujo depois da prova leva o item a failed', asyn
   assert.deepEqual(await p.advance(), { kind: 'stopped', status: 'failed' });
   assert.equal(p.item().statusReason, 'worktree não restaurado após a prova');
   assert.deepEqual(p.gates(), [{ attempt: 1, passed: 0, detail: 'worktree não restaurado após a prova' }]);
+});
+
+test('teste que não roda no item volta ao executor com o log; na segunda vez seguida, para no humano', async () => {
+  const p = proofPipeline([PLAN_NOVO, executeWith(STRONG_TEST), executeWith(STRONG_TEST)], BROKEN_SETUP);
+  assert.deepEqual(await p.advance(), { kind: 'stopped', status: 'needs_human' });
+  assert.equal(p.item().pendingKind, 'environment_block');
+  assert.match(p.item().pending?.reason ?? '', /^duas tentativas seguidas em que a prova não rodou o teste[\s\S]*Keycloak não respondeu/);
+  const retry = p.log()[2]?.argv.at(-1) ?? '';
+  assert.match(retry, /A prova não conseguiu rodar o teste `soma\(2, 3\) devolve 5` \(C1\) no item\. Últimas linhas:\nKeycloak não respondeu/);
+  assert.deepEqual(p.gates('environment').map((g) => ({ ...g, detail: undefined })), [{ attempt: 2, passed: 0, detail: undefined }]);
+});
+
+test('impedimento com verify vazio: a prova confere fora do sandbox', async () => {
+  const blocked = (files: Record<string, string>) => ({
+    structured_output: { ...execution('test/soma.test.mjs', NAME), impedimento: 'o sandbox bloqueia o Docker' },
+    files,
+  });
+  const files = { 'src/soma.mjs': SOMA, 'test/soma.test.mjs': STRONG_TEST };
+  const confirmed = proofPipeline([PLAN_NOVO, blocked(files)], BROKEN_SETUP, []);
+  assert.deepEqual(await confirmed.advance(), { kind: 'stopped', status: 'needs_human' });
+  assert.equal(confirmed.item().pendingKind, 'environment_block');
+  assert.match(confirmed.item().pending?.reason ?? '', /^o sandbox bloqueia o Docker A prova do Mabel, fora do sandbox, também não rodou/);
+  assert.equal(confirmed.item().attempts, 1);
+
+  const cleared = proofPipeline([PLAN_NOVO, blocked(files), { structured_output: REVIEW_OK }], NODE_TEST, []);
+  assert.deepEqual(await cleared.advance(), { kind: 'stopped', status: 'awaiting_merge' });
+  assert.deepEqual(cleared.gates('environment'), [{ attempt: 1, passed: 1, detail: 'não se confirmou fora do sandbox: o sandbox bloqueia o Docker' }]);
 });
 
 // Catálogo e init (critério 7) -------------------------------------------------------------

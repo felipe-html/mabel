@@ -1,5 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
+import { formatDuration } from './format.ts';
 import { git, tryGit } from './git.ts';
 import { matchGlob } from './glob.ts';
 import type { ProjectConfig } from './project.ts';
@@ -39,6 +40,8 @@ export interface ProofResult {
   error?: string;
   /** Comando usado no lugar do `testeUnico` do config, quando o item trocou o runner. */
   testeUnico?: string;
+  /** Teste que nem chegou a rodar no item: a prova parou nele, sem rodar a base. */
+  naoRodou?: { criterio: string; nome: string; saida: string };
 }
 
 /** Testes declarados para o critério que existem no worktree e contêm o nome. */
@@ -128,10 +131,26 @@ export function withBaseCode<T>(
   return { value, restored: status(worktree) === before, error };
 }
 
-function run(command: string, worktree: string, logPath: string): boolean {
+function run(command: string, worktree: string, logPath: string): { passed: boolean; output: string } {
   const { code, output } = shell(command, worktree);
   appendFileSync(logPath, `$ ${command}\n${output}\n[saída ${code}]\n\n`);
-  return code === 0;
+  return { passed: code === 0, output };
+}
+
+function collapse(text: string): string {
+  return text.replace(/\s+/g, ' ');
+}
+
+/**
+ * O runner chegou a rodar o teste: todo runner do catálogo cita o nome do teste que falha.
+ * Falha sem o nome é setup, import ou ambiente quebrado, ou filtro que não achou o teste.
+ */
+export function testRan(output: string, nome: string): boolean {
+  return collapse(output).includes(collapse(nome).trim());
+}
+
+function lastLines(text: string, count: number): string {
+  return text.trimEnd().split('\n').slice(-count).join('\n');
 }
 
 export interface ProofInput {
@@ -142,11 +161,13 @@ export interface ProofInput {
   plan: PlanOutput;
   execution: ExecuteOutput;
   logDir: string;
+  /** Uma linha por teste rodado, para a saída ao vivo: cada teste pode levar minutos. */
+  log?: (line: string) => void;
 }
 
 /** Roda a prova no worktree do item. Não muda o estado do item; ver `proofVerdict`. */
 export function runProof(input: ProofInput): ProofResult {
-  const { worktree, base, config, plan, execution, logDir } = input;
+  const { worktree, base, config, plan, execution, logDir, log } = input;
   mkdirSync(logDir, { recursive: true });
   const restorable = restorableFiles(worktree, base, config.arquivosDeTeste);
   // Lido no código do item, antes de levar o worktree à base.
@@ -169,14 +190,38 @@ export function runProof(input: ProofInput): ProofResult {
   if (pending.length === 0) return { mode, criteria, restored: true, ...adjusted };
 
   if (template) {
-    const each = (side: 'item' | 'base') => {
-      for (const criterion of pending) {
-        const logPath = join(logDir, `${criterion.id}-${side}.log`);
-        for (const test of criterion.tests) test[side] = run(singleTestCommand(template, test), worktree, logPath);
-      }
+    const timed = (criterion: CriterionProof, side: 'item' | 'base', test: TestRun) => {
+      log?.(`prova ${criterion.id} no ${side}: \`${test.nome}\`…`);
+      const started = Date.now();
+      const outcome = run(singleTestCommand(template, test), worktree, join(logDir, `${criterion.id}-${side}.log`));
+      const ran = outcome.passed || side === 'base' || testRan(outcome.output, test.nome);
+      const verdict = outcome.passed ? 'passou' : ran ? 'falhou' : 'não rodou';
+      log?.(`prova ${criterion.id} no ${side}: ${verdict} em ${formatDuration(Date.now() - started)}`);
+      return { passed: outcome.passed, ran, output: outcome.output };
     };
-    each('item');
-    const result = withBaseCode(worktree, base, restorable, () => each('base'));
+    for (const criterion of pending) {
+      for (const test of criterion.tests) {
+        const outcome = timed(criterion, 'item', test);
+        test.item = outcome.passed;
+        if (outcome.ran) continue;
+        // Os outros testes passariam pelo mesmo setup quebrado: parar poupa minutos por teste.
+        for (const other of pending) {
+          Object.assign(other, {
+            status: 'nao_provado',
+            reason:
+              other === criterion
+                ? `o comando não chegou a rodar o teste \`${test.nome}\` (setup, import ou ambiente quebrado, ou nome que o filtro não acha)`
+                : `não verificado: a prova parou no ${criterion.id}`,
+          });
+        }
+        const naoRodou = { criterio: criterion.id, nome: test.nome, saida: lastLines(outcome.output, 40) };
+        return { mode, criteria, restored: true, naoRodou, ...adjusted };
+      }
+    }
+    const result = withBaseCode(worktree, base, restorable, () => {
+      // Na base, falha sem o nome é esperada: o código que o teste importa ainda não existe.
+      for (const criterion of pending) for (const test of criterion.tests) test.base = timed(criterion, 'base', test).passed;
+    });
     if (!result.restored || result.error) return { mode, criteria, restored: result.restored, error: result.error, ...adjusted };
     for (const criterion of pending) Object.assign(criterion, judge(criterion));
     return { mode, criteria, restored: true, ...adjusted };
@@ -188,8 +233,8 @@ export function runProof(input: ProofInput): ProofResult {
     for (const criterion of pending) Object.assign(criterion, { status: 'sem_prova', reason: 'sem `testeUnico` nem comando de teste no `verify`' });
     return { mode, criteria, restored: true };
   }
-  const passedOnItem = run(test.command, worktree, join(logDir, 'item.log'));
-  const result = withBaseCode(worktree, base, restorable, () => run(test.command, worktree, join(logDir, 'base.log')));
+  const passedOnItem = run(test.command, worktree, join(logDir, 'item.log')).passed;
+  const result = withBaseCode(worktree, base, restorable, () => run(test.command, worktree, join(logDir, 'base.log')).passed);
   if (!result.restored || result.error) return { mode, criteria, restored: result.restored, error: result.error };
   const expectBaseToFail = pending.some((c) => c.comportamento === 'novo');
   const gap = !passedOnItem
@@ -207,7 +252,7 @@ export function runProof(input: ProofInput): ProofResult {
 function judge(criterion: CriterionProof): Pick<CriterionProof, 'status' | 'reason'> {
   const failedOnItem = criterion.tests.find((t) => !t.item);
   if (failedOnItem) {
-    return { status: 'nao_provado', reason: `o teste \`${failedOnItem.nome}\` falha no item (teste instável ou nome errado)` };
+    return { status: 'nao_provado', reason: `o teste \`${failedOnItem.nome}\` falha no item` };
   }
   if (criterion.comportamento === 'novo') {
     const passedOnBase = criterion.tests.find((t) => t.base);
