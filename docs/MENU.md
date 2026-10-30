@@ -250,7 +250,14 @@ mesma sessão. Ctrl+C deixa a proposta pendente com as respostas já dadas.
 | Sugestão de quebra e tamanho | — (informativos) |
 | Prévia (spec e tarefas) e `Gravar? [S/n/d]` | Enter grava · `n` deixa a proposta pendente · `d` descarta |
 
-**Grava:** `.mabel/specs/<slug>.md` (a proposta substitui o rascunho), as tarefas no fim do
+**Seções do humano:** seções que o Mabel não interpreta (`## Contexto`, `## Alternativas
+rejeitadas`…) e as `## Referências` (formato do campo do backlog) ficam como você
+escreveu: o agente as lê, a gravação as mantém (as seções próprias logo depois da
+história), e o planejador, o executor e o revisor de cada tarefa recebem as seções. As
+referências da spec somam-se às de cada tarefa dela: entram no gate do `ready`, no hash e
+na cópia congelada, sem serem escritas no backlog.
+
+**Grava:** `.mabel/specs/<slug>.md` (a proposta substitui as partes do rascunho que o agente devolve), as tarefas no fim do
 `backlog.md` com `Spec:`, `Regras:` e `Depende de:` (nenhuma, se a spec já tinha tarefas),
 o estado `aceita` e as métricas de tamanho (regras, exemplos, rodadas, perguntas, tarefas).
 

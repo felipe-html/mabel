@@ -197,3 +197,20 @@ test('regras.md acima do orçamento: aviso de consolidar e o agente recebe só o
   assert.ok(rules.text.length < RULES_BUDGET + 200);
   assert.deepEqual(currentRules(join(q.root, 'nada')), { text: '' });
 });
+
+test('especificar mantém as seções próprias e as referências do rascunho, e o agente lê as referências', async () => {
+  const draft = `${DRAFT}\n## Contexto\nHoje exporta à mão.\n\n## Alternativas rejeitadas\n- Planilha compartilhada: sem histórico.\n\n## Referências\n- decisoes/adr.md\n`;
+  const q = project(draft);
+  mkdirSync(join(q.root, '.mabel', 'referencias', 'decisoes'), { recursive: true });
+  writeFileSync(join(q.root, '.mabel', 'referencias', 'decisoes', 'adr.md'), '# ADR\n');
+  const scenario = useScenario(q.root, [{ structured_output: ROUND2 }]);
+  assert.equal(q.cli('especificar', 'exportar-csv').status, 0);
+  const accepted = q.cli('especificar', 'exportar-csv', '--aceitar');
+  assert.equal(accepted.status, 0, accepted.stderr);
+  assert.match(scenario.log()[0]?.argv.at(-1) ?? '', /## Referências da spec\n\n[\s\S]*- decisoes\/adr\.md\n {2}- `.*decisoes\/adr\.md`/);
+
+  const text = readFileSync(q.specFile, 'utf8');
+  assert.match(text, /## História\nO financeiro exporta os pedidos do período para conciliar no ERP\.\n\n## Contexto\nHoje exporta à mão\.\n\n## Alternativas rejeitadas\n- Planilha compartilhada: sem histórico\.\n\n## Regras/);
+  assert.match(text, /## Referências\n- decisoes\/adr\.md/);
+  assert.deepEqual(getItem(q.db, q.project.id, 2)?.references, ['decisoes/adr.md']);
+});

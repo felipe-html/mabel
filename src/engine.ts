@@ -19,6 +19,7 @@ import {
   EDGE_MARK,
   parseChange,
   parseExample,
+  parseSpec,
   renderChange,
   renderExample,
   ruleChangeProblems,
@@ -123,7 +124,12 @@ export function firstPrompt(target: Target, root: string): { prompt: string; war
   const rules = currentRules(root);
   const head =
     target.kind === 'spec'
-      ? [`# Spec ${target.slug}: ${target.title}`, '', ...section('Rascunho (.mabel/specs/' + target.slug + '.md)', target.draft || '(vazio)')]
+      ? [
+          `# Spec ${target.slug}: ${target.title}`,
+          '',
+          ...section('Rascunho (.mabel/specs/' + target.slug + '.md)', target.draft || '(vazio)'),
+          ...section('Referências da spec', referencesSection(liveReferences(root, parseSpec(target.draft).referencias), '')),
+        ]
       : itemDraft(target.item, root);
   const kind =
     target.kind === 'spec'
@@ -202,7 +208,9 @@ export function specFromOutput(title: string, output: SpecifyOutput, answers: An
     decisoes: allDecisions(output, answers),
     foraDoEscopo: output.foraDoEscopo.filter((entry) => !NOTHING.test(entry.trim())),
     regrasCriticas: output.conceitosCriticos,
+    referencias: [],
     alteracoesRegrasVigentes: output.alteracoesRegrasVigentes,
+    secoes: [],
   };
 }
 

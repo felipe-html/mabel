@@ -6,7 +6,8 @@ import { type Project, mabelPath } from './project.ts';
 
 // Specs (S.3): uma funcionalidade com história, regras com exemplos (Example Mapping),
 // decisões, fora do escopo e regras críticas, em `.mabel/specs/<slug>.md`. O arquivo é só
-// conteúdo; o estado (rascunho, aceita, entregue) fica no banco.
+// conteúdo; o estado (rascunho, aceita, entregue) fica no banco. Seções que o Mabel não
+// conhece (`## Contexto`, `## Alternativas rejeitadas`…) são do humano: passam como estão.
 
 export const SPECS_DIR = 'specs';
 export const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -41,7 +42,16 @@ export interface Spec {
   /** `null`: a seção não foi declarada (diferente de "Nada."). */
   foraDoEscopo: string[] | null;
   regrasCriticas: string[];
+  /** Referências de `.mabel/referencias/`, no formato do backlog; as tarefas da spec as herdam. */
+  referencias: string[];
   alteracoesRegrasVigentes: RuleChange[];
+  /** Seções que o Mabel não interpreta, na ordem do arquivo, com o texto literal. */
+  secoes: SpecSection[];
+}
+
+export interface SpecSection {
+  titulo: string;
+  texto: string;
 }
 
 /** O que a tarefa recebe da spec: história, regras citadas com exemplos e o resto do contexto. */
@@ -53,6 +63,8 @@ export interface SpecExcerpt {
   decisoes: string[];
   foraDoEscopo: string[];
   regrasCriticas: string[];
+  /** Só quando a spec tem seções próprias: a spec sem elas mantém o hash das tarefas. */
+  secoes?: SpecSection[];
 }
 
 export function specPath(root: string, slug: string): string {
@@ -90,7 +102,7 @@ export function renderChange(change: RuleChange): string {
   return `${change.assunto}: ${change.acao} "${change.texto}"`;
 }
 
-type Section = 'historia' | 'regras' | 'decisoes' | 'fora' | 'criticas' | 'alteracoes' | 'outra';
+type Section = 'historia' | 'regras' | 'decisoes' | 'fora' | 'criticas' | 'referencias' | 'alteracoes' | 'outra';
 
 function sectionOf(title: string): Section {
   const t = title.toLowerCase();
@@ -100,15 +112,28 @@ function sectionOf(title: string): Section {
   if (t.startsWith('decis')) return 'decisoes';
   if (t.startsWith('fora do escopo')) return 'fora';
   if (t.startsWith('altera')) return 'alteracoes';
+  if (t.startsWith('refer')) return 'referencias';
   return 'outra';
 }
 
 /** Lê o arquivo de spec. Não lança: o que não confere aparece na validação. */
 export function parseSpec(text: string): Spec {
-  const spec: Spec = { titulo: '', historia: '', regras: [], decisoes: [], foraDoEscopo: null, regrasCriticas: [], alteracoesRegrasVigentes: [] };
+  const spec: Spec = {
+    titulo: '',
+    historia: '',
+    regras: [],
+    decisoes: [],
+    foraDoEscopo: null,
+    regrasCriticas: [],
+    referencias: [],
+    alteracoesRegrasVigentes: [],
+    secoes: [],
+  };
   const story: string[] = [];
   let section: Section | undefined;
   let rule: SpecRule | undefined;
+  let other: { titulo: string; linhas: string[] } | undefined;
+  const others: { titulo: string; linhas: string[] }[] = [];
   for (const raw of text.replace(/<!--[\s\S]*?-->/g, '').split('\n')) {
     const line = raw.trimEnd();
     const h1 = /^#\s+(.+)$/.exec(line);
@@ -120,6 +145,8 @@ export function parseSpec(text: string): Spec {
     if (h2 && !line.startsWith('###')) {
       section = sectionOf(h2[1] as string);
       rule = undefined;
+      other = section === 'outra' ? { titulo: (h2[1] as string).trim(), linhas: [] } : undefined;
+      if (other) others.push(other);
       if (section === 'fora') spec.foraDoEscopo ??= [];
       continue;
     }
@@ -130,7 +157,9 @@ export function parseSpec(text: string): Spec {
       continue;
     }
     const item = /^\s*[-*]\s+(.+?)\s*$/.exec(line)?.[1];
-    if (section === 'historia') {
+    if (other) {
+      other.linhas.push(line);
+    } else if (section === 'historia') {
       story.push(line);
     } else if (item && section === 'regras' && rule) {
       rule.exemplos.push(parseExample(item));
@@ -141,17 +170,22 @@ export function parseSpec(text: string): Spec {
       if (!NOTHING.test(entry)) spec.foraDoEscopo?.push(entry);
     } else if (item && section === 'criticas') {
       spec.regrasCriticas.push(item);
+    } else if (item && section === 'referencias') {
+      spec.referencias.push(item);
     } else if (item && section === 'alteracoes') {
       const change = parseChange(item);
       if (change) spec.alteracoesRegrasVigentes.push(change);
     }
   }
   spec.historia = story.join('\n').trim();
+  spec.secoes = others.map((entry) => ({ titulo: entry.titulo, texto: entry.linhas.join('\n').trim() }));
   return spec;
 }
 
 export function renderSpec(spec: Spec): string {
-  const lines = [`# ${spec.titulo}`, '', '## História', spec.historia, '', '## Regras'];
+  const lines = [`# ${spec.titulo}`, '', '## História', spec.historia];
+  for (const own of spec.secoes) lines.push('', `## ${own.titulo}`, ...(own.texto ? [own.texto] : []));
+  lines.push('', '## Regras');
   for (const rule of spec.regras) {
     lines.push('', `### ${rule.id} ${rule.texto}`, ...rule.exemplos.map((e) => `- ${renderExample(e)}`));
   }
@@ -162,6 +196,7 @@ export function renderSpec(spec: Spec): string {
   list('Decisões', spec.decisoes);
   list('Fora do escopo', spec.foraDoEscopo ?? [], 'Nada.');
   list('Regras críticas', spec.regrasCriticas);
+  list('Referências', spec.referencias);
   list('Alterações nas regras vigentes', spec.alteracoesRegrasVigentes.map(renderChange));
   return `${lines.join('\n')}\n`;
 }
@@ -215,6 +250,7 @@ export function specExcerpt(slug: string, spec: Spec, ruleIds: string[]): SpecEx
     decisoes: spec.decisoes,
     foraDoEscopo: spec.foraDoEscopo ?? [],
     regrasCriticas: spec.regrasCriticas,
+    ...(spec.secoes.length > 0 ? { secoes: spec.secoes } : {}),
   };
 }
 
