@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { approve, respond } from '../src/decisions.ts';
 import { getItem, syncBacklog } from '../src/items.ts';
-import { type PipelineEnv, advanceItem, criteriaWithoutTests, escalate, humanAttemptsSummary, reviewVerdict, startGate } from '../src/pipeline.ts';
+import { type PipelineEnv, advanceItem, criteriaWithoutTests, escalate, humanAttemptsSummary, reviewVerdict, sameAssumption, startGate } from '../src/pipeline.ts';
 import { reviewSchema } from '../src/schemas/stages.ts';
 import { validate } from '../src/schemas/validate.ts';
 import type { PlanOutput } from '../src/schemas/stages.ts';
@@ -219,6 +219,39 @@ test('G7: suposição crítica na execução também para', async () => {
   await p.advance();
   assert.equal(p.item().pendingKind, 'question_execute');
   assert.deepEqual(p.item().pending?.criticalAssumptions, ['taxa zero']);
+});
+
+test('G7: suposição crítica confirmada pelo humano não para de novo; uma nova para', async () => {
+  const confirmed = [{ texto: 'Taxa zero até o item 5.', regraCritica: true }];
+  const repeated = [{ texto: 'taxa zero até o item 5 (confirmado pelo humano)', regraCritica: true }];
+  const p = pipeline([
+    { structured_output: PLAN },
+    { session_id: 'exec-1', structured_output: { ...EXECUTION, suposicoes: confirmed }, files: EXECUTION_FILES },
+    exec(1, { structured_output: { ...EXECUTION, suposicoes: repeated } }),
+    { structured_output: REVIEW_OK },
+  ]);
+  assert.deepEqual(await p.advance(), { kind: 'stopped', status: 'needs_human' });
+  assert.equal(p.item().pendingKind, 'question_execute');
+  assert.equal(respond(p.ctx.db, p.ctx.project, p.item(), 'Confirmo.'), 'executing');
+  assert.deepEqual(p.item().confirmedAssumptions, ['Taxa zero até o item 5.']);
+  assert.deepEqual(await p.advance(), { kind: 'stopped', status: 'awaiting_merge' });
+  assert.match(p.calls()[2]?.prompt ?? '', /## Suposições críticas confirmadas pelo humano\n\n- Taxa zero até o item 5\./);
+
+  const fresh = pipeline([
+    { structured_output: PLAN },
+    { session_id: 'exec-1', structured_output: { ...EXECUTION, suposicoes: confirmed }, files: EXECUTION_FILES },
+    exec(1, { structured_output: { ...EXECUTION, suposicoes: [...repeated, { texto: 'arredonda para baixo', regraCritica: true }] } }),
+  ]);
+  await fresh.advance();
+  respond(fresh.ctx.db, fresh.ctx.project, fresh.item(), 'Confirmo.');
+  assert.deepEqual(await fresh.advance(), { kind: 'stopped', status: 'needs_human' });
+  assert.deepEqual(fresh.item().pending?.criticalAssumptions, ['arredonda para baixo']);
+});
+
+test('sameAssumption ignora caixa, pontuação final e observação entre parênteses', () => {
+  assert.ok(sameAssumption('Taxa zero até o item 5.', 'taxa zero até o item 5 (confirmado pelo humano)'));
+  assert.ok(sameAssumption('A e B juntos', 'a e  b juntos.'));
+  assert.ok(!sameAssumption('taxa zero', 'taxa um'));
 });
 
 test('G3 reprova por comando com erro e por critério sem teste encontrado', async () => {

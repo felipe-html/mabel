@@ -216,6 +216,11 @@ Depois de cada execução, antes do commit e da verificação:
   as perguntas e as suposições críticas. As alterações ficam no worktree, sem commit.
   Não conta como tentativa. Após `mabel responder`, o item volta a `executing` retomando
   a sessão daquela execução com a resposta.
+- As suposições críticas respondidas ficam no item (`confirmed_assumptions`, desde
+  2026-10-30) e valem também depois de um replanejamento. O G7 não para de novo nelas,
+  mesmo que o executor as repita com outra caixa, outra pontuação final ou uma observação
+  entre parênteses, como "(confirmado pelo humano)". O prompt da execução as lista como
+  decisões do humano. Suposição crítica nova continua parando.
 - Suposições não críticas não param o item: ficam no artefato da execução e são listadas
   para você no `awaiting_merge`.
 

@@ -350,6 +350,16 @@ export interface ExecutePromptInput {
   interrupted?: boolean;
 }
 
+/** Suposições críticas que o humano confirmou: decisões dele, não suposições a repetir. */
+function confirmedSection(item: Item): string[] {
+  if (item.confirmedAssumptions.length === 0) return [];
+  return section('Suposições críticas confirmadas pelo humano', [
+    bullet(item.confirmedAssumptions, ''),
+    '',
+    'São decisões do humano. Siga-as e não as repita em `suposicoes`; marque `regraCritica` só em suposição nova.',
+  ].join('\n'));
+}
+
 export function executePrompt(ctx: StageContext, input: ExecutePromptInput): string {
   if (input.resuming) {
     return [
@@ -358,6 +368,7 @@ export function executePrompt(ctx: StageContext, input: ExecutePromptInput): str
       ...(input.interrupted ? [INTERRUPTED, ''] : []),
       ...section('Falha da tentativa anterior', input.failure ?? ''),
       ...section('Resposta do humano', input.answer ?? ''),
+      ...confirmedSection(ctx.item),
       ...section(
         'Escopo ampliado',
         input.scopeExtended?.length
@@ -387,6 +398,7 @@ export function executePrompt(ctx: StageContext, input: ExecutePromptInput): str
     ...section('Tentativas anteriores', input.attemptsSummary ?? ''),
     ...section('Falha da tentativa anterior', input.failure ?? ''),
     ...section('Resposta do humano', input.answer ?? ''),
+    ...confirmedSection(ctx.item),
     '## Tarefa',
     '',
     'Implemente o plano no diretório atual. Não use git: o Mabel faz o commit.',

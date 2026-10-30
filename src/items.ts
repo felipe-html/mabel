@@ -74,6 +74,8 @@ export interface Item extends Required<Omit<ItemFields, 'number'>> {
   specContext: SpecExcerpt | null;
   /** Unidade de entrega fixada pelo Mabel (`legado`, na migração); nula, vem da spec ou do avulso. */
   unit: string | null;
+  /** Suposições críticas da execução que o humano confirmou: o G7 não para de novo nelas. */
+  confirmedAssumptions: string[];
 }
 
 export type PendingKind =
@@ -148,6 +150,7 @@ interface ItemRow {
   kind: 'bug' | null;
   rule_changes: string;
   unit: string | null;
+  confirmed_assumptions: string;
 }
 
 /**
@@ -204,6 +207,7 @@ function fromRow(row: ItemRow): Item {
     ruleChanges: JSON.parse(row.rule_changes) as string[],
     unit: row.unit,
     specContext: row.spec_context ? (JSON.parse(row.spec_context) as SpecExcerpt) : null,
+    confirmedAssumptions: JSON.parse(row.confirmed_assumptions) as string[],
   };
 }
 
@@ -218,6 +222,7 @@ export interface ItemUpdate {
   nextInput?: NextInput | null;
   integratedCommit?: string | null;
   unit?: string | null;
+  confirmedAssumptions?: string[];
 }
 
 const UPDATE_COLUMNS: Record<keyof ItemUpdate, string> = {
@@ -231,6 +236,7 @@ const UPDATE_COLUMNS: Record<keyof ItemUpdate, string> = {
   nextInput: 'next_input',
   integratedCommit: 'integrated_commit',
   unit: 'unit',
+  confirmedAssumptions: 'confirmed_assumptions',
 };
 
 /** Atualiza campos de controle do item (não o estado, que só muda por `transition`). */
@@ -239,7 +245,7 @@ export function updateItem(db: DatabaseSync, itemId: string, update: ItemUpdate)
   if (entries.length === 0) return;
   const values = entries.map(([key, value]) => {
     if (key === 'escalatedCycle') return value ? 1 : 0;
-    if ((key === 'pending' || key === 'nextInput') && value !== null) return JSON.stringify(value);
+    if ((key === 'pending' || key === 'nextInput' || key === 'confirmedAssumptions') && value !== null) return JSON.stringify(value);
     return value as string | number | null;
   });
   db.prepare(

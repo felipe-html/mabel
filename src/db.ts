@@ -284,6 +284,9 @@ const migrations: string[] = [
   `
   ALTER TABLE deliveries ADD COLUMN unit TEXT NOT NULL DEFAULT 'integracao';
   `,
+  `
+  ALTER TABLE items ADD COLUMN confirmed_assumptions TEXT NOT NULL DEFAULT '[]';
+  `,
 ];
 
 function migrate(db: DatabaseSync): void {
