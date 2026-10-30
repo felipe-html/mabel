@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import { respond } from '../src/decisions.ts';
 import { getItem, syncBacklog } from '../src/items.ts';
 import { startQueue } from '../src/run.ts';
-import { parseSpec, renderSpec, setSpecStatus, validateSpec } from '../src/specs.ts';
+import { parseSpec, renderSpec, setSpecStatus, specExcerpt, validateSpec } from '../src/specs.ts';
 import { PLAN, setupProject, useScenario } from './helpers.ts';
 
 const SPEC = `# Exportar pedidos em CSV
@@ -166,4 +166,41 @@ test('S.3 critério 8: resposta da inbox de uma tarefa de spec vai para as Decis
   assert.deepEqual(q.item(2).decisions, [`Qual fuso do período? → O da loja (inbox, #2, ${new Date().toISOString().slice(0, 10)})`]);
   // A decisão gravada não conta como edição do item iniciado.
   assert.deepEqual(q.sync().warnings, []);
+});
+
+const OWN = SPEC.replace(
+  '## Regras\n',
+  '## Contexto\nHoje o login usa o grant password.\n\n| Módulo | Login |\n|---|---|\n| acessos | password |\n\n## Regras\n',
+).replace('## Alterações nas regras vigentes', '## Referências\n- decisoes/0017-auth.md\n\n## Alterações nas regras vigentes');
+
+test('spec: seções próprias e referências passam como estão; spec sem elas mantém o trecho', () => {
+  const spec = parseSpec(OWN);
+  assert.deepEqual(spec.secoes, [{ titulo: 'Contexto', texto: 'Hoje o login usa o grant password.\n\n| Módulo | Login |\n|---|---|\n| acessos | password |' }]);
+  assert.deepEqual(spec.referencias, ['decisoes/0017-auth.md']);
+  assert.equal(spec.historia, 'O financeiro exporta os pedidos do período para conciliar no ERP.');
+  assert.deepEqual(parseSpec(renderSpec(spec)), spec);
+  assert.match(renderSpec(spec), /## História\nO financeiro .*\n\n## Contexto\nHoje o login/);
+  assert.equal('secoes' in specExcerpt('x', parseSpec(SPEC), ['R1']), false, 'sem seções, o hash das tarefas não muda');
+});
+
+test('tarefas herdam as referências da spec (gate, hash e prompt); as seções próprias vão ao planejamento', async () => {
+  const q = project(OWN, '\n## Exportar filtrados por período\nSpec: exportar-csv\nRegras: R1\n');
+  setSpecStatus(q.db, q.project.id, 'exportar-csv', 'aceita');
+  q.sync();
+  const backlog = readFileSync(q.path, 'utf8');
+  assert.equal(q.item(1).status, 'backlog');
+  assert.match(q.item(1).statusReason ?? '', /decisoes\/0017-auth\.md/);
+  assert.deepEqual(q.item(1).references, ['decisoes/0017-auth.md']);
+
+  mkdirSync(join(q.root, '.mabel', 'referencias', 'decisoes'), { recursive: true });
+  writeFileSync(join(q.root, '.mabel', 'referencias', 'decisoes', '0017-auth.md'), '# ADR 0017\n');
+  q.sync();
+  assert.equal(q.item(1).status, 'ready');
+  assert.equal(readFileSync(q.path, 'utf8'), backlog, 'a herança não grava no backlog');
+
+  const scenario = useScenario(q.root, [{ structured_output: { ...PLAN, perguntas: [{ texto: 'Qual separador?', sugestao: '', regraCritica: false }] } }]);
+  await startQueue({ db: q.db, home: q.home, project: q.project, notify: () => {}, itemNumber: 1 }).done;
+  const prompt = scenario.log().map((call) => call.argv.at(-1) ?? '').find((p) => p.startsWith('# Item #1')) ?? '';
+  assert.match(prompt, /### História\nO financeiro .*\n\n### Contexto\nHoje o login usa o grant password\./);
+  assert.match(prompt, /- decisoes\/0017-auth\.md\n {2}- `.*0017-auth\.md`/);
 });

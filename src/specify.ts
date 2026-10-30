@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
@@ -181,7 +181,8 @@ export function taskBlocks(slug: string, output: SpecifyOutput, first: number): 
 
 /**
  * Grava a spec aceita: `.mabel/specs/<slug>.md`, as tarefas no fim do `backlog.md` (com
- * `Spec:` e `Regras:`) e o estado `aceita`, com as métricas de tamanho.
+ * `Spec:` e `Regras:`) e o estado `aceita`, com as métricas de tamanho. As referências e as
+ * seções que o Mabel não interpreta vêm do arquivo como o humano as escreveu.
  */
 export function saveSpecification(
   db: DatabaseSync,
@@ -192,10 +193,11 @@ export function saveSpecification(
   conversation: Pick<Conversation, 'rounds' | 'questions'>,
   answers: Answers = noAnswers(),
 ): SpecSaved {
-  const spec = specFromOutput(title, output, answers);
+  const file = specPath(project.root, slug);
+  const draft = existsSync(file) ? parseSpec(readFileSync(file, 'utf8')) : undefined;
+  const spec = { ...specFromOutput(title, output, answers), referencias: draft?.referencias ?? [], secoes: draft?.secoes ?? [] };
   const errors = validateSpec(spec);
   if (errors.length > 0) throw new SpecifyError(`A spec ${slug} não passa na validação:\n${errors.map((e) => `- ${e}`).join('\n')}`);
-  const file = specPath(project.root, slug);
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, renderSpec(spec));
 

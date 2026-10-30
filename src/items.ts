@@ -440,9 +440,10 @@ export function appendItemDecision(db: DatabaseSync, project: Project, item: Ite
   const decisions = [...entry.decisions, decision];
   writeFileSync(path, replaceItemBlock(text, entry, renderItemBlock({ ...entry, decisions, number: item.number })));
   // O hash passa a ser o do backlog com a decisão: o `run` não a toma por edição do humano.
-  const references = entry.references.length > 0 ? referencesDigest(project.root, entry.references) : undefined;
+  const inherited = withSpecReferences(project, entry);
+  const references = inherited.references.length > 0 ? referencesDigest(project.root, inherited.references) : undefined;
   item.decisions = [...item.decisions, decision];
-  item.contentHash = contentHash({ ...entry, decisions }, references, entryExcerpt(project, entry));
+  item.contentHash = contentHash({ ...inherited, decisions }, references, entryExcerpt(project, entry));
   db.prepare('UPDATE items SET decisions = ?, content_hash = ?, updated_at = ? WHERE id = ?').run(
     JSON.stringify(item.decisions),
     item.contentHash,
@@ -465,9 +466,17 @@ export function acknowledgeSpecChange(db: DatabaseSync, project: Project, item: 
   }
   const entry = parseBacklog(text).find((parsed) => parsed.number === item.number);
   if (!entry) return;
-  const references = entry.references.length > 0 ? referencesDigest(project.root, entry.references) : undefined;
-  item.contentHash = contentHash(entry, references, entryExcerpt(project, entry));
+  const inherited = withSpecReferences(project, entry);
+  const references = inherited.references.length > 0 ? referencesDigest(project.root, inherited.references) : undefined;
+  item.contentHash = contentHash(inherited, references, entryExcerpt(project, entry));
   db.prepare('UPDATE items SET content_hash = ?, updated_at = ? WHERE id = ?').run(item.contentHash, new Date().toISOString(), item.id);
+}
+
+/** A entrada com as referências da spec que ela cita somadas às suas, sem repetir. */
+function withSpecReferences<T extends { spec?: string | null; references: string[] }>(project: Project, entry: T): T {
+  const inherited = entry.spec ? (readSpec(project.root, entry.spec)?.referencias ?? []) : [];
+  const extra = inherited.filter((reference) => !entry.references.includes(reference));
+  return extra.length > 0 ? { ...entry, references: [...entry.references, ...extra] } : entry;
 }
 
 /** Trecho da spec que a entrada do backlog cita, lido do disco; `null` sem spec ou sem arquivo. */
@@ -536,7 +545,8 @@ export function syncBacklog(db: DatabaseSync, project: Project): SyncResult {
   // 2. Itens do arquivo.
   const now = new Date().toISOString();
   const seen = new Set<number>();
-  for (const entry of parsed) {
+  for (const parsedEntry of parsed) {
+    const entry = withSpecReferences(project, parsedEntry);
     if (entry.number === undefined) {
       warnings.push(`Item "${entry.title}" ignorado: id inválido "${entry.invalidId}".`);
       continue;

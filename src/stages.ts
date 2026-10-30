@@ -241,8 +241,9 @@ function bullet(items: string[], empty: string): string {
 }
 
 /**
- * Contexto da spec da tarefa (cópia congelada no item): história, regras citadas com os
- * exemplos, decisões, fora do escopo e regras críticas. Os exemplos são critérios de aceite.
+ * Contexto da spec da tarefa (cópia congelada no item): história, seções próprias da spec,
+ * regras citadas com os exemplos, decisões, fora do escopo e regras críticas. Os exemplos
+ * são critérios de aceite.
  */
 function specSection(item: Item, role: 'plan' | 'execute' | 'review'): string[] {
   const spec = item.specContext;
@@ -257,6 +258,7 @@ function specSection(item: Item, role: 'plan' | 'execute' | 'review'): string[] 
     '### História',
     spec.historia,
     '',
+    ...(spec.secoes ?? []).flatMap((own) => (own.texto ? [`### ${own.titulo}`, own.texto, ''] : [])),
     ...(rules.length > 0 ? ['### Regras desta tarefa', '', ...rules] : []),
     ...(spec.decisoes.length > 0 ? ['### Decisões da spec', bullet(spec.decisoes, ''), ''] : []),
     ...(spec.foraDoEscopo.length > 0 ? ['### Fora do escopo da spec', bullet(spec.foraDoEscopo, ''), ''] : []),
