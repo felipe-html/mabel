@@ -55,7 +55,7 @@ function setup() {
   call.run('aaaa2222-0000-0000-0000-000000000002', 't1', 'Read', JSON.stringify({ file_path: 'src/nota.txt' }), at(62), at(63), 0);
   call.run('aaaa2222-0000-0000-0000-000000000002', 't2', 'Bash', JSON.stringify({ command: 'npm test' }), at(65), at(70), 1);
   const cli = (...args: string[]) =>
-    spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'runs', ...args], {
+    spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'consultar', ...args], {
       encoding: 'utf8',
       env: { ...process.env, MABEL_HOME: home, NO_COLOR: '1', MABEL_NOTIFICAR: '0' },
     });

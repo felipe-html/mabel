@@ -94,7 +94,7 @@ function twoProjects() {
       encoding: 'utf8',
       env: a.env(),
     });
-  assert.equal(cli(rootB, 'init').status, 0);
+  assert.equal(cli(rootB, 'preparar').status, 0);
   const db = a.db;
   const idB = (db.prepare('SELECT id FROM projects WHERE root <> ?').get(a.project.root) as { id: string }).id;
   const seededA = [seedItem(db, a.home, a.project.id, 11), seedItem(db, a.home, a.project.id, 12)];
@@ -133,14 +133,14 @@ test('toda entrada do diretório de dados está classificada', () => {
 
 test('projetos e projeto mostram texto simples fora do TTY', () => {
   const { a, cli, rootB } = twoProjects();
-  const list = cli('projetos');
+  const list = cli('listar');
   assert.equal(list.status, 0, list.stderr);
   assert.match(list.stdout, /nome\s+raiz\s+itens\s+runs\s+custo\s+última atividade/);
   assert.match(list.stdout, new RegExp(`${a.project.name}\\s+\\S+\\s+2 executing\\s+4\\s+US\\$ 2,00`));
   assert.match(list.stdout, new RegExp(basename(rootB)));
   assert.doesNotMatch(list.stdout, /\x1b\[/);
 
-  const detail = cli('projeto', a.project.name);
+  const detail = cli('auditar', a.project.name);
   assert.equal(detail.status, 0, detail.stderr);
   for (const section of ['Totais', 'Por etapa', 'Por modelo', 'Itens', 'Gates reprovados', 'Escalonamentos de modelo', 'Pausas da fila e decisões de saldo', 'Últimas transições']) {
     assert.match(detail.stdout, new RegExp(section));
@@ -151,7 +151,7 @@ test('projetos e projeto mostram texto simples fora do TTY', () => {
   assert.match(detail.stdout, /#12 tentativa 1 · verify — teste falhou/);
   assert.match(detail.stdout, /espera até \d\d\/\d\d \d\d:\d\d · saldo de 5h — saldo da janela de 5h em 20% \(abaixo de 30%\)/);
 
-  const byPrefix = cli('projeto', a.project.id.slice(0, 6));
+  const byPrefix = cli('auditar', a.project.id.slice(0, 6));
   assert.equal(byPrefix.status, 0);
   assert.match(byPrefix.stdout, new RegExp(a.project.name));
 });
@@ -166,7 +166,7 @@ test('nome repetido lista os candidatos e falha', () => {
     assert.match(error.message, /\/outro\/lugar/);
     return true;
   });
-  const result = a.cli('projeto', a.project.name);
+  const result = a.cli('auditar', a.project.name);
   assert.equal(result.status, 1);
   assert.match(result.stderr, /Há 2 projetos/);
 });
@@ -180,7 +180,7 @@ test('remoção apaga só o projeto e preserva o outro e as runs sem item', () =
     seededA[1]?.itemId ?? '',
   );
 
-  const summary = cli('projeto', 'remover', name);
+  const summary = cli('auditar', 'remover', name);
   assert.equal(summary.status, 1);
   assert.match(summary.stdout, /2 itens · 4 runs · US\$ 2,00/);
   assert.match(summary.stdout, /banco: events, tool_calls, rate_limits, gate_results, refinements, item_transitions, runs, items, queue_events, deliveries, births, specs, spec_proposals, integration_state, projects/);
@@ -189,10 +189,10 @@ test('remoção apaga só o projeto e preserva o outro e as runs sem item', () =
   assert.match(summary.stderr, /--confirmar/);
   assert.equal(count(db, 'SELECT count(*) AS n FROM items WHERE project_id = ?', a.project.id), 2);
 
-  assert.equal(cli('projeto', 'remover', name, '--confirmar', 'outro').status, 1);
+  assert.equal(cli('auditar', 'remover', name, '--confirmar', 'outro').status, 1);
   assert.equal(count(db, 'SELECT count(*) AS n FROM items WHERE project_id = ?', a.project.id), 2);
 
-  const result = cli('projeto', 'remover', name, '--confirmar', name);
+  const result = cli('auditar', 'remover', name, '--confirmar', name);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Projeto removido\. Registro em removals\./);
   assert.match(result.stdout, /git -C .+ worktree prune/);
@@ -228,7 +228,7 @@ test('remoção apaga só o projeto e preserva o outro e as runs sem item', () =
   assert.equal(existsSync(runDir(a.home, execRun)), true);
   assert.equal(existsSync(join(a.root, '.mabel', 'config.json')), true, 'repositório intocado');
 
-  const removed = cli('projetos', '--removidos');
+  const removed = cli('listar', '--removidos');
   assert.equal(removed.status, 0);
   assert.match(removed.stdout, new RegExp(`${name}\\s+\\S+\\s+${a.project.id.slice(0, 8)}\\s+2\\s+4\\s+US\\$ 2,00`));
 });
@@ -238,7 +238,7 @@ test('remoção recusada com run em andamento, trava ativa ou worktree sujo', ()
     const ctx = twoProjects();
     setup(ctx);
     const name = ctx.a.project.name;
-    const result = ctx.cli('projeto', 'remover', name, '--confirmar', name);
+    const result = ctx.cli('auditar', 'remover', name, '--confirmar', name);
     assert.equal(result.status, 1);
     assert.match(result.stderr, pattern);
     assert.match(result.stderr, /Nada foi removido/);
@@ -250,7 +250,7 @@ test('remoção recusada com run em andamento, trava ativa ou worktree sujo', ()
     ({ db, seededA }) => insertRun(db, seededA[0]?.itemId ?? null, { status: 'running', pid: process.pid }),
     /do item #11 em andamento/,
   );
-  refused(({ a }) => writeFileSync(lockPath(a.home, a.project.id), `${process.pid}\n`), /`mabel run` ativo neste projeto/);
+  refused(({ a }) => writeFileSync(lockPath(a.home, a.project.id), `${process.pid}\n`), /`mabel rodar` ativo neste projeto/);
   refused(({ a }) => {
     const path = join(a.home, 'worktrees', a.project.id, '2-item-2');
     const add = spawnSync('git', ['worktree', 'add', '-q', '-b', 'mabel/2-item-2', path], { cwd: a.root, encoding: 'utf8' });

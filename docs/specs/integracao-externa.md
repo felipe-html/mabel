@@ -28,16 +28,40 @@ atualizado e um commit.
 ## Supervisor
 
 Processo `mabel supervisor` dono das filas, iniciado por um LaunchAgent
-(`~/Library/LaunchAgents/dev.mabel.supervisor.plist`). Ele roda o `run` de cada projeto,
+(`~/Library/LaunchAgents/dev.mabel.supervisor.plist`). Ele roda o `rodar` de cada projeto,
 cada um com o lock que já existe (`~/.mabel/locks/<projeto>.lock`), e aplica a política
 de saldo única do contrato a todas as filas.
 
 | Comando | Efeito |
 |---|---|
-| `mabel run --fundo` | Entrega a fila do projeto atual ao supervisor e volta na hora. |
-| `mabel anexar` | Mostra ao vivo a saída da fila do projeto atual, como o `run` em primeiro plano. Ctrl+C solta, sem parar a fila. |
+| `mabel rodar --fundo` | Entrega a fila do projeto atual ao supervisor e volta na hora. |
+| `mabel acompanhar` | Mostra ao vivo a saída da fila do projeto atual, como o `rodar` em primeiro plano. Ctrl+C solta, sem parar a fila. |
 | `mabel parar` | Pede ao supervisor que pare a fila do projeto depois da etapa em andamento. |
 | `mabel supervisor instalar` / `remover` | Grava ou apaga o LaunchAgent. |
+
+### Troca de nomes (2026-10-31)
+
+Com o novo terminal (`docs/specs/terminal.md`), cada comando passou a ter um verbo, igual ao
+do título na tela inicial, sem apelido para o nome antigo; o nome antigo dá "Comando
+desconhecido". Campos e valores das saídas não mudaram.
+
+| Antes | Agora |
+|---|---|
+| `init` | `preparar` |
+| `nascer` | `criar` |
+| `add` | `adicionar` |
+| `referencia` | `capturar` |
+| `credencial` | `credenciar` |
+| `run` | `rodar` |
+| `anexar` | `acompanhar` |
+| `inbox` | `decidir` |
+| `item` | `detalhar` |
+| `status` | `conferir` |
+| `runs` | `consultar` |
+| `projetos` | `listar` |
+| `projeto` | `auditar` |
+| `exec` | `pedir` |
+| `integracao` | sai; `entregar` sem unidade mostra o mesmo |
 
 ## Saídas `--json`
 
@@ -45,13 +69,13 @@ Uma linha de JSON por chamada, com `"versao": 1` no topo.
 
 | Comando | Conteúdo |
 |---|---|
-| `mabel projetos --json` | Por projeto: `id`, `nome`, `raiz`, `fila` (`parada`, `rodando`, `pausada_por_saldo`, `aguardando_humano`), item e etapa em andamento, papel ativo, pendências da inbox, custo total, última atividade. Em `em_andamento`: `tentativa` (no ciclo, a partir de 1; nula fora de executar, verificar e revisar), `reprovacoes` (revisões reprovadas desde o último plano aprovado) e `ultima_revisao` (`null` ou `{"resultado": "aprovada" \| "reprovada", "em"}`). |
-| `mabel status --json` | Do projeto atual: a fila por estado, as etapas em andamento e o saldo. |
+| `mabel listar --json` | Por projeto: `id`, `nome`, `raiz`, `fila` (`parada`, `rodando`, `pausada_por_saldo`, `aguardando_humano`), item e etapa em andamento, papel ativo, pendências da inbox, custo total, última atividade. Em `em_andamento`: `tentativa` (no ciclo, a partir de 1; nula fora de executar, verificar e revisar), `reprovacoes` (revisões reprovadas desde o último plano aprovado) e `ultima_revisao` (`null` ou `{"resultado": "aprovada" \| "reprovada", "em"}`). |
+| `mabel conferir --json` | Do projeto atual: a fila por estado, as etapas em andamento e o saldo. |
 | `mabel saldo --json` | As duas janelas: `uso`, `reset`, `ritmo` (só 7d), `idade_leitura_s`, e a pausa em vigor com o motivo, se houver. |
-| `mabel inbox --json` | As pendências: item, tipo (`aprovar`, `responder`, `validar`), pergunta, sugestão, opções. |
-| `mabel projeto <nome> --json` | Diagnóstico de consumo: custo e uso de janela por etapa, por modelo e por item. |
-| `mabel comandos --json` | Por comando: `nome`, `descricao`, `uso`, `soNoShell`, `argumentos` (`nome`, `descricao`, `valores`, `escolhas`) e `opcoes` (`nome` com `--`, `tipo` `texto` ou `sinal`, `valor`, `descricao`, `repetivel`, `valores`). `valores` é a fonte do que se pode escolher: `item`, `projeto`, `stack`, `referencia`, `credencial`, `arquivo` ou `diretorio`. Dá ao cliente o formulário de cada comando sem repetir a CLI. |
-| `mabel referencia --json` | Do projeto atual, tudo o que um item pode citar em `Referências:`: `entrada` (pronta para gravar), `tipo` (`tela`, `api`, `arquivo`), `nome`, `detalhe` (arquivos da tela ou resumo da operação) e `itens` que já a citam. Cada operação de API é uma entrada. |
+| `mabel decidir --json` | As pendências: item, tipo (`aprovar`, `responder`, `validar`), pergunta, sugestão, opções. |
+| `mabel auditar <nome> --json` | Diagnóstico de consumo: custo e uso de janela por etapa, por modelo e por item. |
+| `mabel comandos --json` | Por comando: `nome`, `descricao`, `uso`, `soNoShell` (fora da tela inicial do terminal), `argumentos` (`nome`, `descricao`, `valores`, `escolhas`) e `opcoes` (`nome` com `--`, `tipo` `texto` ou `sinal`, `valor`, `descricao`, `repetivel`, `valores`). `valores` é a fonte do que se pode escolher: `item`, `projeto`, `stack`, `referencia`, `credencial`, `arquivo` ou `diretorio`. Dá ao cliente o formulário de cada comando sem repetir a CLI. |
+| `mabel capturar --json` | Do projeto atual, tudo o que um item pode citar em `Referências:`: `entrada` (pronta para gravar), `tipo` (`tela`, `api`, `arquivo`), `nome`, `detalhe` (arquivos da tela ou resumo da operação) e `itens` que já a citam. Cada operação de API é uma entrada. |
 
 ### Erros
 
@@ -65,16 +89,16 @@ Com `--json`, o erro sai no stderr numa linha, com código de saída diferente d
 |---|---|
 | `argumento_faltando` | Falta um argumento (número do item, resposta, `--confirmar`). |
 | `argumento_invalido` | Opção desconhecida, valor ou arquivo inválido, combinação recusada. |
-| `saldo_baixo` | A política de saldo barrou o passo (`nascer`). |
+| `saldo_baixo` | A política de saldo barrou o passo (`criar`). |
 | `nao_encontrado` | Item, projeto ou nascimento inexistente. |
-| `estado_invalido` | O item ou a fila não está no estado que o comando pede (outro `run`, item que não aguarda resposta). |
+| `estado_invalido` | O item ou a fila não está no estado que o comando pede (outro `rodar`, item que não aguarda resposta). |
 | `nao_e_projeto` | O diretório não é um projeto Mabel. |
-| `supervisor_indisponivel` | `run --fundo` sem o supervisor rodando. |
-| `falha_etapa` | A run do agente falhou ou deu saída inválida (`nascer`). |
+| `supervisor_indisponivel` | `rodar --fundo` sem o supervisor rodando. |
+| `falha_etapa` | A run do agente falhou ou deu saída inválida (`criar`). |
 | `interno` | Erro inesperado da CLI. |
 
 Código novo não muda a versão. As ações que o app roda também aceitam `--json`:
-`aprovar` e `responder` devolvem `{"item": {"numero", "titulo", "estado"}}`; `run --fundo`,
+`aprovar` e `responder` devolvem `{"item": {"numero", "titulo", "estado"}}`; `rodar --fundo`,
 `{"projeto": {...}, "pid"}`; `parar`, `{"parada_pedida", "pid"}`; `projeto remover <nome>
 --confirmar <nome>`, `{"removido": {"id", "nome", "raiz"}, "avisos"}`. `responder` aceita
 `--respostas <arquivo.json>`, uma resposta por pergunta (`docs/specs/inbox.md`).
@@ -83,7 +107,10 @@ Código novo não muda a versão. As ações que o app roda também aceitam `--j
 
 `docs/specs/exemplos/` tem um exemplo real de cada saída `--json` (`projetos.json`,
 `status.json`, `saldo.json`, `inbox.json`, `projeto.json`, `nascer-*.json`) e um evento de
-cada tipo (`eventos.ndjson`). Quem os grava é `test/examples.test.ts`, rodando o CLI num
+cada tipo (`eventos.ndjson`). Os arquivos guardam o nome de antes da troca dos comandos, que
+o `mabel-ui` copia: `projetos.json` é a saída do `mabel listar --json`, `status.json` a do
+`conferir`, `inbox.json` a do `decidir`, `projeto.json` a do `auditar <nome>` e
+`nascer-*.json` as do `criar`. Quem os grava é `test/examples.test.ts`, rodando o CLI num
 cenário fixo; o teste falha se a saída mudar sem o exemplo ser regravado:
 
 ```bash
@@ -120,27 +147,27 @@ local com o deslocamento, como nas saídas `--json`. Os campos exatos de cada ti
 
 ## Ações sem TTY
 
-Os comandos que um cliente roda precisam funcionar sem perguntas interativas: `mabel run
---fundo`, `mabel parar`, `mabel aprovar`, `mabel responder`, `mabel init` e `mabel
+Os comandos que um cliente roda precisam funcionar sem perguntas interativas: `mabel rodar
+--fundo`, `mabel parar`, `mabel aprovar`, `mabel responder`, `mabel preparar` e `mabel
 projeto remover <nome> --confirmar <nome>` (que já existe). Sem TTY, um comando que
 precisaria perguntar sai com código diferente de 0 e diz qual argumento falta.
 
-## `mabel nascer`
+## `mabel criar`
 
 Conversa com um agente, num diretório vazio ou num repositório sem `.mabel/`, que sai com
 uma proposta revisável: stack, `CLAUDE.md`, regras críticas e backlog inicial. O usuário
-revisa como no `refinar` e o `mabel init` grava. Parente do "`mabel add` assistido" no
+revisa como no `refinar` e o `mabel preparar` grava. Parente do "`mabel adicionar` assistido" no
 `BACKLOG.md`. Spec própria: `docs/specs/nascer.md`.
 
 ## Incrementos
 
-1. **`--json`** em `projetos`, `status`, `inbox`, `projeto <nome>` e o comando `saldo`.
+1. **`--json`** em `listar`, `conferir`, `decidir`, `auditar <nome>` e o comando `saldo`.
 2. **Fluxo de eventos:** `mabel eventos --json`, alimentado pelo que o runner e a fila já
    gravam (runs, ferramentas, gates, transições, leituras de saldo).
-3. **Supervisor:** `mabel supervisor`, `run --fundo`, `anexar`, `parar` e o LaunchAgent,
+3. **Supervisor:** `mabel supervisor`, `rodar --fundo`, `acompanhar`, `parar` e o LaunchAgent,
    com a política de saldo aplicada a todas as filas.
 4. **Ações sem TTY** conferidas comando a comando.
-5. **`mabel nascer`**, depois da spec própria.
+5. **`mabel criar`**, depois da spec própria.
 
 ## Critérios de aceite
 
@@ -148,7 +175,7 @@ revisa como no `refinar` e o `mabel init` grava. Parente do "`mabel add` assisti
 2. Um run de etapa produz, em ordem, os eventos `etapa` (iniciou), `ferramenta`, `gate` e
    `etapa` (terminou) no `mabel eventos`.
 3. Com o supervisor rodando a fila de dois projetos, fechar o terminal não para nenhuma;
-   `mabel anexar` em cada um mostra a saída ao vivo.
+   `mabel acompanhar` em cada um mostra a saída ao vivo.
 4. Com o saldo abaixo do piso, as duas filas pausam e o evento `fila`
    `pausada_por_saldo` sai para cada uma.
 5. Sem TTY, nenhum dos comandos de "Ações sem TTY" fica esperando resposta.

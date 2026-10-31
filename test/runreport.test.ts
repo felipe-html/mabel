@@ -36,7 +36,7 @@ test('S.1 critério 1: run.md com as seções na ordem; tarefa concluída, em ne
   assert.ok(positions.every((p) => p > 0), `seções presentes:\n${report}`);
   assert.deepEqual([...positions].sort((a, b) => a - b), positions, 'seções na ordem');
   assert.match(report, /^<!-- Gerado pelo Mabel[^\n]*\n# Run de \d{4}-\d{2}-\d{2} · \d{2}:\d{2} → \d{2}:\d{2} \([^)]+\)\n\nFim: fila vazia · US\$ /);
-  assert.match(report, /## Precisa de você\n- Inbox \(mabel inbox\): pergunta: #2\n- #3 C falhou: run de plan falhou: [^\n]+\n/);
+  assert.match(report, /## Precisa de você\n- Inbox \(mabel decidir\): pergunta: #2\n- #3 C falhou: run de plan falhou: [^\n]+\n/);
   assert.match(report, /## Prontas para entregar\n- #1 A · mabel\/1-a\n/);
   assert.match(report, /\| 1 \| avulso-1 \| concluída \| planejar, executar, revisar \| US\$ [\d,]+ \|/);
   assert.match(report, /\| 2 \| avulso-2 \| precisa de você \| planejar \| US\$ [\d,]+ \|/);

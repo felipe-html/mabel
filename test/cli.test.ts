@@ -13,11 +13,20 @@ function mabel(...args: string[]) {
   return spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8' });
 }
 
-test('sem argumentos mostra o banner e o menu', () => {
+test('sem argumentos e sem terminal mostra a versão e a lista de comandos, sem banner', () => {
   const result = mabel();
   assert.equal(result.status, 0);
-  assert.match(result.stdout, /██/);
-  assert.match(result.stdout, /Comandos/);
+  assert.doesNotMatch(result.stdout, /██/);
+  assert.match(result.stdout, /harness para frotas de agentes/);
+  assert.match(result.stdout, /Comandos\n {2}preparar /);
+});
+
+test('nomes antigos dos comandos não existem mais', () => {
+  for (const name of ['init', 'nascer', 'add', 'referencia', 'credencial', 'run', 'anexar', 'inbox', 'status', 'item', 'runs', 'projetos', 'projeto', 'exec', 'integracao']) {
+    const result = mabel(name);
+    assert.equal(result.status, 1, name);
+    assert.match(result.stderr, new RegExp(`Comando desconhecido: ${name}`));
+  }
 });
 
 test('--version imprime a versão do package.json', () => {
@@ -30,9 +39,9 @@ test('comando desconhecido falha com o menu', () => {
   assert.match(result.stderr, /Comando desconhecido: voar/);
 });
 
-test('inbox fora de um projeto Mabel falha com mensagem', () => {
+test('decidir fora de um projeto Mabel falha com mensagem', () => {
   const root = makeRepo();
-  const result = spawnSync(process.execPath, [CLI, 'inbox'], {
+  const result = spawnSync(process.execPath, [CLI, 'decidir'], {
     cwd: root,
     encoding: 'utf8',
     env: { ...process.env, MABEL_HOME: mkdtempSync(join(tmpdir(), 'mabel-home-')) },
@@ -45,14 +54,14 @@ test('completion zsh gera script com compdef e todos os comandos', () => {
   const result = mabel('completion', 'zsh');
   assert.equal(result.status, 0);
   assert.match(result.stdout, /compdef _mabel mabel/);
-  for (const name of ['init', 'add', 'exec', 'run', 'status', 'inbox', 'completion']) {
+  for (const name of ['preparar', 'adicionar', 'pedir', 'rodar', 'conferir', 'decidir', 'completion']) {
     assert.match(result.stdout, new RegExp(`'${name}:`));
   }
 });
 
 test('comandos implementados aparecem sem aviso de passo no autocompletar', () => {
   const { stdout } = mabel('completion', 'zsh');
-  for (const name of ['init', 'add', 'exec', 'status', 'run', 'item', 'aprovar', 'responder', 'cancelar']) {
+  for (const name of ['preparar', 'adicionar', 'pedir', 'conferir', 'rodar', 'detalhar', 'aprovar', 'responder', 'cancelar']) {
     assert.match(stdout, new RegExp(`'${name}:[^']*'`));
     assert.doesNotMatch(stdout, new RegExp(`'${name}:[^']*\\(passo`));
   }

@@ -25,13 +25,13 @@ import {
 } from './references.ts';
 import { style } from './style.ts';
 
-/** `mabel referencia`: captura e lista as referências do projeto (`docs/specs/referencias.md`). */
+/** `mabel capturar`: captura e lista as referências do projeto (`docs/specs/referencias.md`). */
 
 export const referenceUsage = [
-  'mabel referencia [--json]',
-  'mabel referencia api <nome> <url>',
-  'mabel referencia tela <nome> <url-figma> [--escala <n>]',
-  'mabel referencia tela <nome> --png <arquivo>',
+  'mabel capturar [--json]',
+  'mabel capturar api <nome> <url>',
+  'mabel capturar tela <nome> <url-figma> [--escala <n>]',
+  'mabel capturar tela <nome> --png <arquivo>',
 ].join('\n       ');
 
 export const referenceOptions = {
@@ -510,7 +510,7 @@ export async function referenceCommand(args: string[]): Promise<number> {
           `Tela ${relative(project.root, screen.dir)}/ gravada: ${screen.files.join(', ')}.`,
           ...warnings.map((warning) => `Aviso: ${warning}`),
           '',
-          style.dim('Confira o tela.md e acrescente estados e notas; o próximo `mabel run` commita o .mabel/ na base.'),
+          style.dim('Confira o tela.md e acrescente estados e notas; o próximo `mabel rodar` commita o .mabel/ na base.'),
           '',
         ].join('\n'),
       );
@@ -531,7 +531,7 @@ export async function referenceCommand(args: string[]): Promise<number> {
     }
     const { warnings } = syncBacklog(db, project);
     out.push(...warnings.map((warning) => `Aviso: ${warning}`));
-    out.push('', style.dim('O próximo `mabel run` commita o snapshot na base.'));
+    out.push('', style.dim('O próximo `mabel rodar` commita o snapshot na base.'));
     process.stdout.write(`${out.join('\n')}\n`);
     return 0;
   } catch (error) {

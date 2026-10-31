@@ -121,7 +121,7 @@ test('resumo do quadro para o status', () => {
 
 test('status dentro do projeto sincroniza o backlog e mostra o resumo', () => {
   const ctx = setupProject('\n## A\nprimeiro item\n');
-  const result = ctx.cli('status');
+  const result = ctx.cli('conferir');
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Projeto mabel-repo-\w+ · na fila 1/);
   assert.match(readFileSync(join(ctx.root, '.mabel', 'quadro.md'), 'utf8'), /- #1 A — ready/);

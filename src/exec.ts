@@ -11,7 +11,7 @@ import { style } from './style.ts';
 import type { ArgSpec, OptionSpecs } from './options.ts';
 
 export const execUsage =
-  'mabel exec "<prompt>" [--model <m>] [--max-turns <n>] [--max-budget-usd <x>] [--allowed-tools <a,b>] [--cwd <dir>]';
+  'mabel pedir "<prompt>" [--model <m>] [--max-turns <n>] [--max-budget-usd <x>] [--allowed-tools <a,b>] [--cwd <dir>]';
 
 export const execOptions = {
   model: { type: 'string', value: '<m>', description: 'Modelo do Claude Code (sonnet, opus, haiku…)' },
@@ -23,7 +23,7 @@ export const execOptions = {
 
 export const execArgs: ArgSpec[] = [{ name: '"<prompt>"', description: 'O pedido ao agente' }];
 
-/** Converte os argumentos de `mabel exec` num pedido de run, ou devolve a mensagem de erro. */
+/** Converte os argumentos de `mabel pedir` num pedido de run, ou devolve a mensagem de erro. */
 export function parseExecArgs(args: string[], baseCwd = process.cwd()): RunRequest | string {
   let parsed;
   try {

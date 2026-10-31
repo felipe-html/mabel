@@ -16,7 +16,7 @@ import { readArtifact } from './stages.ts';
 import { style } from './style.ts';
 import { type OptionSpecs, jsonOption } from './options.ts';
 
-export const inboxUsage = 'mabel inbox [--json]';
+export const inboxUsage = 'mabel decidir [--json]';
 
 export const inboxOptions = { json: jsonOption } satisfies OptionSpecs;
 
@@ -392,7 +392,7 @@ const PENDING_OPTIONS: Record<PendingKind, string[]> = {
   integration_conflict: ['responder', 'replanejar', 'cancelar'],
 };
 
-/** `mabel inbox --json`: as pendências do projeto, com as perguntas e as opções de cada uma. */
+/** `mabel decidir --json`: as pendências do projeto, com as perguntas e as opções de cada uma. */
 export function inboxJson(db: DatabaseSync, project: Project): Record<string, unknown> {
   return {
     projeto: { id: project.id, nome: project.name, raiz: project.root },

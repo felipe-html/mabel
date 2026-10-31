@@ -8,7 +8,7 @@ Três mudanças, que se completam:
 
 1. **Autonomia**: pergunta que não toca regra crítica e tem sugestão não para o item. O
    Mabel adota a sugestão, registra como suposição e mostra tudo no fim.
-2. **Planejar em lote**: o `run` planeja todos os itens `ready` antes de executar; as
+2. **Planejar em lote**: o `rodar` planeja todos os itens `ready` antes de executar; as
    perguntas que sobram se juntam numa inbox só, no começo. Novo estado `planned`.
 3. **Aviso**: notificação do sistema quando a esteira para ou espera o humano.
 
@@ -27,7 +27,7 @@ atualizado e commit:
 | Tema | Decisão |
 |---|---|
 | Autonomia | Ligada por padrão: `autonomia: "sugestoes"` no `config.json`. O projeto pode escolher `"perguntar"` (comportamento atual). Config sem o campo vale `"sugestoes"`. |
-| Planejar em lote | Padrão do `mabel run`. `--sem-lote` volta ao item a item. `--item <n>` e `--uma` implicam item a item. |
+| Planejar em lote | Padrão do `mabel rodar`. `--sem-lote` volta ao item a item. `--item <n>` e `--uma` implicam item a item. |
 | Item planejado aguardando a vez | Novo estado `planned`, entre `planning` e `executing`. Muda o ciclo de vida do contrato (autorizado pelo usuário em 2026-10-12). |
 | Aviso | Entra nesta spec. macOS via `osascript`; desligável com `MABEL_NOTIFICAR=0`. |
 
@@ -100,7 +100,7 @@ Suposição autônoma: `{ texto: "P: <pergunta> → R: <sugestão> (autônomo)",
 Como as suposições já entram nas notas do `awaiting_merge` (`mergeNotes`) e no
 `plano.md`, o humano revê as decisões autônomas no merge sem nada novo.
 
-### Resumo do `run`
+### Resumo do `rodar`
 
 Ao fim da fila, depois da linha `■ …`, listar as decisões autônomas desta execução:
 
@@ -112,7 +112,7 @@ Decididas pela sugestão (revise no merge):
 
 Fonte: `gate_results` com `gate = 'autonomy'` e `at >=` início da execução.
 
-### `mabel item`
+### `mabel detalhar`
 
 Seção "Decididas pela sugestão" com as linhas `autonomy` do item.
 
@@ -124,8 +124,8 @@ Seção "Decididas pela sugestão" com as linhas `autonomy` do item.
 3. Execução com perguntas não críticas e com sugestão commita e segue para a verificação;
    suposição crítica continua parando (G7).
 4. `autonomia: "perguntar"` reproduz o comportamento atual.
-5. Config sem `autonomia` vale `"sugestoes"`; `mabel init` grava o campo.
-6. Gate `autonomy` gravado; resumo do `run` e `mabel item` listam as decisões.
+5. Config sem `autonomia` vale `"sugestoes"`; `mabel preparar` grava o campo.
+6. Gate `autonomy` gravado; resumo do `rodar` e `mabel detalhar` listam as decisões.
 7. Item crítico (`critical_approval`) mostra na inbox as suposições autônomas junto dos
    critérios.
 
@@ -163,7 +163,7 @@ A cada volta do laço de `startQueue`:
    `planning` e caem no passo 1. Recusada, ou fora do TTY, a fila segue sem esperar.
 4. Item `planned`, em ordem de backlog: **executa** até `awaiting_merge`, `needs_human`,
    `failed` ou `blocked`.
-5. Nada disso: fim (`empty`); a oferta de inbox do fim do `run` continua valendo.
+5. Nada disso: fim (`empty`); a oferta de inbox do fim do `rodar` continua valendo.
 
 `advanceItem` ganha uma opção `{ until: 'planned' }` para o passo 2 parar ao chegar em
 `planned`. Item que vira `ready` durante a execução (dependência concluída) é planejado
@@ -174,7 +174,7 @@ Saída: separador ao trocar de fase, `── planejamento (3 itens) ──` e
 
 ### Opções
 
-`mabel run [--item <n>] [--uma] [--sem-lote]`
+`mabel rodar [--item <n>] [--uma] [--sem-lote]`
 
 - `--sem-lote`: ordem atual (cada item até o fim antes do próximo), passando por
   `planned` sem parar.
@@ -191,7 +191,7 @@ Saída: separador ao trocar de fase, `── planejamento (3 itens) ──` e
    replanejado antes das execuções.
 4. `--sem-lote`, `--item` e `--uma` mantêm o comportamento atual.
 5. Tabela de transições atualizada e testada; `aprovar` leva a `planned`.
-6. Quadro e `mabel status` mostram `planned`.
+6. Quadro e `mabel conferir` mostram `planned`.
 7. `docs/CONTRATO.md` com o ciclo de vida novo e o pedido de autonomia.
 
 ## J.3 — Aviso do sistema
@@ -216,7 +216,7 @@ Quando avisar (título `Mabel · <projeto>`):
 
 1. `notify` monta os argumentos acima (teste com `spawn` injetável).
 2. Desligado com `MABEL_NOTIFICAR=0` e fora do macOS.
-3. Chamado nos três eventos (teste com `notify` injetado em `startQueue`/`run`).
+3. Chamado nos três eventos (teste com `notify` injetado em `startQueue`/`rodar`).
 
 ## Fora desta spec
 

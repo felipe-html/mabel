@@ -16,8 +16,6 @@ import {
   askRespond,
   cancelCommand,
   cancelUsage,
-  integrationCommand,
-  integrationUsage,
   itemCommand,
   itemUsage,
   rejectArgs,
@@ -50,6 +48,34 @@ import {
 } from './supervisor.ts';
 import { balanceCommand, balanceOptions, balanceUsage, status, statusUsage } from './status.ts';
 
+/** Grupos da tela inicial, na ordem de quando nada sobe para o topo. */
+export const MENU_GROUPS = ['comecar', 'planejar', 'rodar', 'decidir', 'entregar', 'acompanhar', 'avulso'] as const;
+export type MenuGroup = (typeof MENU_GROUPS)[number];
+
+export const GROUP_TITLES: Record<MenuGroup, string> = {
+  comecar: 'Começar',
+  planejar: 'Planejar',
+  rodar: 'Rodar',
+  decidir: 'Decidir',
+  entregar: 'Entregar',
+  acompanhar: 'Acompanhar',
+  avulso: 'Avulso',
+};
+
+/** Contagem à direita do comando na tela inicial. */
+export type MenuBadge = 'ready' | 'pending' | 'units';
+
+export interface MenuEntry {
+  /** Título com verbo, igual ao nome no shell. */
+  title: string;
+  group: MenuGroup;
+  /** Não depende do projeto: aparece também onde o Mabel não foi preparado. */
+  global?: boolean;
+  badge?: MenuBadge;
+  /** Aberto sem argumentos, mostra um formulário com o próprio título. */
+  form?: boolean;
+}
+
 export interface Command {
   name: string;
   description: string;
@@ -61,103 +87,105 @@ export interface Command {
   /** Passo do plano em que o comando será implementado; ausente quando já está disponível. */
   plannedStep?: number;
   run?: (args: string[]) => number | Promise<number>;
-  /** Pede os argumentos quando o comando é chamado sem eles no modo Mabel; `null` quando o usuário volta. */
+  /** Pede os argumentos quando o comando é aberto sem eles na tela inicial; `null` quando o usuário volta. */
   promptArgs?: () => string[] | null | Promise<string[] | null>;
-  /** Só faz sentido no shell; não aparece no modo Mabel. */
-  shellOnly?: boolean;
+  /** Lugar na tela inicial; sem ele, o comando fica só no shell. */
+  menu?: MenuEntry;
 }
 
 export const commands: Command[] = [
   {
-    name: 'init',
-    description: 'Prepara o projeto atual para o Mabel',
+    name: 'preparar',
+    description: 'Prepara o projeto atual para o Mabel, detectando a stack pelo código.',
     usage: initUsage,
     options: initOptions,
     run: init,
+    menu: { title: 'Preparar este projeto', group: 'comecar' },
   },
   {
-    name: 'nascer',
-    description: 'Conversa com um agente que propõe stack, CLAUDE.md, regras críticas e backlog de um projeto novo',
+    name: 'criar',
+    description: 'Conversa com um agente que propõe stack, CLAUDE.md, regras críticas e backlog.',
     usage: birthUsageFull,
     options: birthOptions,
     args: birthArgs,
     run: birthCommand,
+    menu: { title: 'Criar um projeto novo', group: 'comecar' },
   },
   {
-    name: 'add',
-    description: 'Adiciona um item ao backlog do projeto',
+    name: 'adicionar',
+    description: 'Cria um item no backlog do projeto.',
     usage: addUsage,
     options: addOptions,
     args: addArgs,
     run: add,
+    menu: { title: 'Adicionar um item', group: 'planejar', form: true },
   },
   {
     name: 'especificar',
-    description: 'Specs em .mabel/specs/: lista, valida e aceita (as tarefas com "Spec:" só vão a ready com a spec aceita)',
+    description: 'Lista, valida e aceita as specs; as tarefas ligadas só ficam prontas com a spec aceita.',
     usage: specifyUsage,
     options: specifyOptions,
     args: specifyArgs,
     run: specifyCommand,
+    menu: { title: 'Especificar uma funcionalidade', group: 'planejar' },
   },
   {
     name: 'refinar',
-    description: 'Pede a um agente uma proposta de critérios, decisões e limites de um item, para você revisar',
+    description: 'Um agente propõe critérios, decisões e limites para um item, e você revisa.',
     usage: refineUsage,
     options: refineOptions,
     args: refineArgs,
     run: refineCommand,
+    menu: { title: 'Refinar um item', group: 'planejar' },
   },
   {
-    name: 'referencia',
-    description: 'Captura telas e APIs para os itens citarem em "Referências:"; sem argumentos, lista',
+    name: 'capturar',
+    description: 'Guarda uma tela do Figma ou uma API OpenAPI para os itens citarem.',
     usage: referenceUsage,
     options: referenceOptions,
     args: referenceArgs,
     run: referenceCommand,
+    menu: { title: 'Capturar uma referência', group: 'planejar' },
   },
   {
-    name: 'credencial',
-    description: 'Registra e mostra a validade dos tokens usados na captura (FIGMA_TOKEN)',
+    name: 'credenciar',
+    description: 'Registra quando vence cada token da captura, para o Mabel avisar antes.',
     usage: credentialUsage,
     options: credentialOptions,
     args: credentialArgs,
     run: credentialCommand,
+    menu: { title: 'Credenciar um token', group: 'planejar' },
   },
   {
-    name: 'run',
-    description: 'Consome a fila: planeja os itens prontos, depois executa',
+    name: 'rodar',
+    description: 'Planeja os itens prontos e depois executa um por um.',
     usage: runUsage,
     options: runOptions,
     run,
+    menu: { title: 'Rodar a fila', group: 'rodar', badge: 'ready' },
   },
   {
-    name: 'anexar',
-    description: 'Acompanha ao vivo a fila em segundo plano do projeto; ctrl+c solta sem parar',
+    name: 'acompanhar',
+    description: 'Mostra ao vivo a fila em segundo plano; sair não para a fila.',
     usage: attachUsage,
     run: attachCommand,
+    menu: { title: 'Acompanhar a fila', group: 'rodar' },
   },
   {
     name: 'parar',
-    description: 'Para a fila do projeto depois da etapa em andamento',
+    description: 'Encerra a fila depois da etapa em andamento.',
     usage: stopUsage,
     options: stopOptions,
     run: stopCommand,
+    menu: { title: 'Parar a fila', group: 'rodar' },
   },
   {
-    name: 'supervisor',
-    description: 'Processo que roda as filas em segundo plano; `instalar` o põe no launchd',
-    usage: supervisorUsage,
-    shellOnly: true,
-    args: supervisorArgs,
-    run: supervisorCommand,
-  },
-  {
-    name: 'item',
-    description: 'Mostra o detalhe de um item: estado, pendência, plano, custo e runs',
-    usage: itemUsage,
-    promptArgs: askItemNumber,
-    args: [itemArg],
-    run: itemCommand,
+    name: 'decidir',
+    description: 'Responde perguntas e aprova critérios: uma pendência ou todas, uma por vez.',
+    usage: inboxUsage,
+    options: inboxOptions,
+    run: inboxCommand,
+    menu: { title: 'Decidir as pendências', group: 'decidir', badge: 'pending' },
   },
   {
     name: 'aprovar',
@@ -179,50 +207,84 @@ export const commands: Command[] = [
   },
   {
     name: 'cancelar',
-    description: 'Cancela um item',
+    description: 'Tira um item da fila de vez.',
     usage: cancelUsage,
     promptArgs: askCancel,
     args: [itemArg],
     run: cancelCommand,
+    menu: { title: 'Cancelar um item', group: 'decidir', form: true },
   },
   {
-    name: 'integracao',
-    description: 'Mostra as unidades do relatório de run: prontas para entregar, em andamento e a integração',
-    usage: integrationUsage,
-    run: integrationCommand,
+    name: 'entregar',
+    description: 'Mostra as unidades prontas, prova uma contra a base e abre o PR.',
+    usage: deliverUsage,
+    options: deliverOptions,
+    args: deliverArgs,
+    run: deliverCommand,
+    menu: { title: 'Entregar uma unidade', group: 'entregar', badge: 'units' },
   },
   {
     name: 'rejeitar',
-    description: 'Reverte um item na integração e o devolve ao planejamento (ou o cancela)',
+    description: 'Desfaz um item na integração e o devolve ao planejamento.',
     usage: rejectUsage,
     promptArgs: askReject,
     options: rejectOptions,
     args: rejectArgs,
     run: rejectCommand,
+    menu: { title: 'Rejeitar um item', group: 'entregar', form: true },
   },
   {
-    name: 'entregar',
-    description: 'Prova e entrega uma unidade (spec ou avulso) por PR; volta o checkout para a base',
-    usage: deliverUsage,
-    options: deliverOptions,
-    args: deliverArgs,
-    run: deliverCommand,
+    name: 'conferir',
+    description: 'Mostra a fila, as etapas em andamento e as duas janelas de saldo.',
+    usage: statusUsage,
+    options: balanceOptions,
+    run: status,
+    menu: { title: 'Conferir o estado', group: 'acompanhar' },
   },
   {
-    name: 'exec',
-    description: 'Executa um prompt avulso no Claude Code, com auditoria',
+    name: 'detalhar',
+    description: 'Mostra estado, pendência, plano, custo e runs de um item.',
+    usage: itemUsage,
+    promptArgs: askItemNumber,
+    args: [itemArg],
+    run: itemCommand,
+    menu: { title: 'Detalhar um item', group: 'acompanhar', form: true },
+  },
+  {
+    name: 'consultar',
+    description: 'Lista as runs auditadas e mostra o detalhe e as ferramentas de cada uma.',
+    usage: runsUsage,
+    options: runsOptions,
+    args: runsArgs,
+    run: runsCommand,
+    menu: { title: 'Consultar as runs', group: 'acompanhar' },
+  },
+  {
+    name: 'listar',
+    description: 'Lista os projetos registrados, com itens, runs, custo e última atividade.',
+    usage: projectsUsage,
+    options: projectsOptions,
+    run: projectsCommand,
+    menu: { title: 'Listar os projetos', group: 'acompanhar', global: true },
+  },
+  {
+    name: 'auditar',
+    description: 'Mostra a auditoria de um projeto e permite remover os dados dele do Mabel.',
+    usage: projectUsage,
+    options: projectOptions,
+    args: projectArgs,
+    run: projectCommand,
+    menu: { title: 'Auditar um projeto', group: 'acompanhar', global: true },
+  },
+  {
+    name: 'pedir',
+    description: 'Manda um prompt ao Claude Code fora da fila, com auditoria.',
     usage: execUsage,
     promptArgs: askPrompt,
     options: execOptions,
     args: execArgs,
     run: exec,
-  },
-  {
-    name: 'status',
-    description: 'Mostra a fila, as etapas em andamento e o saldo',
-    usage: statusUsage,
-    options: balanceOptions,
-    run: status,
+    menu: { title: 'Pedir algo avulso', group: 'avulso', global: true },
   },
   {
     name: 'saldo',
@@ -232,40 +294,16 @@ export const commands: Command[] = [
     run: balanceCommand,
   },
   {
-    name: 'runs',
-    description: 'Lista as runs auditadas; com um id, mostra o detalhe e as ferramentas usadas',
-    usage: runsUsage,
-    options: runsOptions,
-    args: runsArgs,
-    run: runsCommand,
-  },
-  {
-    name: 'inbox',
-    description: 'Responde às decisões que aguardam você, uma por vez',
-    usage: inboxUsage,
-    options: inboxOptions,
-    run: inboxCommand,
-  },
-  {
-    name: 'projetos',
-    description: 'Lista os projetos registrados: itens, runs, custo e última atividade',
-    usage: projectsUsage,
-    options: projectsOptions,
-    run: projectsCommand,
-  },
-  {
-    name: 'projeto',
-    description: 'Auditoria de um projeto; `remover` apaga os dados dele no Mabel',
-    usage: projectUsage,
-    options: projectOptions,
-    args: projectArgs,
-    run: projectCommand,
+    name: 'supervisor',
+    description: 'Processo que roda as filas em segundo plano; `instalar` o põe no launchd',
+    usage: supervisorUsage,
+    args: supervisorArgs,
+    run: supervisorCommand,
   },
   {
     name: 'eventos',
     description: 'Fluxo de eventos de todos os projetos, uma linha de JSON por evento, até ser encerrado',
     usage: eventsUsage,
-    shellOnly: true,
     options: eventsOptions,
     run: eventsCommand,
   },
@@ -280,7 +318,6 @@ export const commands: Command[] = [
     name: 'completion',
     description: 'Gera o script de autocompletar do shell',
     usage: completionUsage,
-    shellOnly: true,
     args: [
       { name: 'zsh', description: 'Shell do script', choices: [{ name: 'zsh', description: 'Script para o .zshrc' }] },
     ],

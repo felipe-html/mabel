@@ -232,7 +232,7 @@ class StopAsking extends Error {}
 
 function savedLines(slug: string, saved: SpecSaved, metrics: string): string[] {
   const lines = [`✓ Spec ${slug} aceita · ${metrics}`];
-  if (saved.tasks.length > 0) lines.push(`  tarefas no backlog: ${saved.tasks.map((n) => `#${n}`).join(', ')} (vão a ready no próximo mabel run)`);
+  if (saved.tasks.length > 0) lines.push(`  tarefas no backlog: ${saved.tasks.map((n) => `#${n}`).join(', ')} (vão a ready no próximo mabel rodar)`);
   if (saved.existing.length > 0) {
     lines.push(style.dim(`  a spec já tinha as tarefas ${saved.existing.map((n) => `#${n}`).join(', ')}: nenhuma acrescentada; ajuste o backlog à mão se preciso`));
   }
@@ -286,7 +286,7 @@ export async function specifySpec(
       return 1;
     }
     setSpecStatus(db, project.id, slug, 'aceita');
-    out(`Spec ${slug} aceita. As tarefas com "Spec: ${slug}" podem ir a ready no próximo mabel run.`);
+    out(`Spec ${slug} aceita. As tarefas com "Spec: ${slug}" podem ir a ready no próximo mabel rodar.`);
     return 0;
   }
   if (!proposal && !flags.redo && io && status === 'aceita') {

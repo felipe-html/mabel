@@ -50,19 +50,19 @@ test('fila de três itens: dois em awaiting_merge, um em needs_human; responder 
     EXEC, REVIEW,
     PLAN_OK, EXEC, REVIEW,
   ]);
-  const first = q.cli('run');
+  const first = q.cli('rodar');
   assert.equal(first.status, 0, first.stderr);
   assert.deepEqual(q.states(), [[1, 'awaiting_merge'], [2, 'needs_human'], [3, 'awaiting_merge']]);
   assert.match(first.stdout, /#2 B: planning → needs_human · perguntas do planejamento: Qual banco usar\?/);
   assert.match(first.stdout, /■ fila vazia · awaiting_merge 2 · needs_human 1 · US\$ /);
   assert.match(first.stdout, / {4}→ Write/);
 
-  const detail = q.cli('item', '2');
+  const detail = q.cli('detalhar', '2');
   assert.match(detail.stdout, /\? Qual banco usar\?/);
   assert.match(detail.stdout, /mabel responder 2 "<resposta>"/);
 
   assert.equal(q.cli('responder', '2', 'Use o SQLite.').status, 0);
-  const second = q.cli('run');
+  const second = q.cli('rodar');
   assert.equal(second.status, 0, second.stderr);
   assert.deepEqual(q.states(), [[1, 'awaiting_merge'], [2, 'awaiting_merge'], [3, 'awaiting_merge']]);
   const resumed = q.calls().filter((c) => c.schema)[7];
@@ -74,21 +74,21 @@ test('fila de três itens: dois em awaiting_merge, um em needs_human; responder 
 
 test('merge manual da branch na base leva o item a done no próximo run e apaga a branch (P.3)', () => {
   const q = queueProject('\n## A\nprimeiro\n', [PLAN_OK, EXEC, REVIEW]);
-  assert.equal(q.cli('run').status, 0);
+  assert.equal(q.cli('rodar').status, 0);
   const item = getItem(q.db, q.project.id, 1)!;
   assert.equal(item.worktree, null);
   assert.equal(existsSync(worktreePath(q.home, q.project.id, item)), false);
   q.merge(1);
-  const result = q.cli('run');
+  const result = q.cli('rodar');
   assert.match(result.stdout, /#1 A: awaiting_merge → done/);
   assert.deepEqual(q.states(), [[1, 'done']]);
   assert.equal(tryGit(q.root, 'rev-parse', '--verify', '--quiet', `refs/heads/${item.branch}`), undefined);
-  assert.match(q.cli('status').stdout, /concluídos 1/);
+  assert.match(q.cli('conferir').stdout, /concluídos 1/);
 });
 
 test('P.3: branch fora da base não é apagada; worktrees órfãos saem na abertura do run', () => {
   const q = queueProject('\n## A\nprimeiro\n\n## B\nsegundo\n', [PLAN_OK, PLAN_OK, EXEC, REVIEW, EXEC, REVIEW]);
-  assert.equal(q.cli('run').status, 0);
+  assert.equal(q.cli('rodar').status, 0);
   const [a, b] = [getItem(q.db, q.project.id, 1)!, getItem(q.db, q.project.id, 2)!];
   assert.equal(deleteBranch(q.project, a.branch!), `branch ${a.branch} não está contida na main; não foi apagada`);
   assert.ok(tryGit(q.root, 'rev-parse', '--verify', '--quiet', `refs/heads/${a.branch}`));
@@ -97,7 +97,7 @@ test('P.3: branch fora da base não é apagada; worktrees órfãos saem na abert
   const orphan = worktreePath(q.home, q.project.id, b);
   spawnSync('git', ['worktree', 'add', '-q', orphan, b.branch!], { cwd: q.root });
   assert.ok(existsSync(orphan));
-  const out = q.cli('run');
+  const out = q.cli('rodar');
   assert.match(out.stdout, /worktrees removidos: #2/);
   assert.equal(existsSync(orphan), false);
   assert.doesNotMatch(spawnSync('git', ['worktree', 'list'], { cwd: q.root, encoding: 'utf8' }).stdout, new RegExp(orphan));
@@ -105,7 +105,7 @@ test('P.3: branch fora da base não é apagada; worktrees órfãos saem na abert
 
 test('P.3: retrabalho em awaiting_merge recria o worktree a partir da branch', () => {
   const q = queueProject('\n## A\nprimeiro\n', [PLAN_OK, EXEC, REVIEW]);
-  assert.equal(q.cli('run').status, 0);
+  assert.equal(q.cli('rodar').status, 0);
   const item = getItem(q.db, q.project.id, 1)!;
   transition(q.db, q.project, item.id, 'executing', 'retrabalho');
   const prepared = prepareWorktree(q.db, q.home, q.project, getItem(q.db, q.project.id, 1)!);
@@ -117,10 +117,10 @@ test('P.3: retrabalho em awaiting_merge recria o worktree a partir da branch', (
 test('item com dependência só inicia depois que a dependência fica done', () => {
   const execD = { ...EXEC, files: { ...EXECUTION_FILES, 'src/soma.js': 'export const soma = (a, b) => b + a;\n' } };
   const q = queueProject('\n## A\nprimeiro\n\n## D\ndepende\nDepende de: 1\n', [PLAN_OK, EXEC, REVIEW, PLAN_OK, execD, REVIEW]);
-  q.cli('run');
+  q.cli('rodar');
   assert.deepEqual(q.states(), [[1, 'awaiting_merge'], [2, 'backlog']]);
   q.merge(1);
-  const out = q.cli('run');
+  const out = q.cli('rodar');
   assert.deepEqual(q.states(), [[1, 'done'], [2, 'awaiting_merge']], out.stdout + out.stderr);
 });
 
@@ -131,7 +131,7 @@ test('ctrl+c no meio de uma etapa; novo run retoma pela mesma sessão; trava enq
     EXEC,
     REVIEW,
   ]);
-  const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'run'], {
+  const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'rodar'], {
     cwd: q.root,
     env: q.env(),
   });
@@ -143,9 +143,9 @@ test('ctrl+c no meio de uma etapa; novo run retoma pela mesma sessão; trava enq
     });
   });
 
-  const second = q.cli('run');
+  const second = q.cli('rodar');
   assert.equal(second.status, 1);
-  assert.match(second.stderr, /Já há um `mabel run` neste projeto \(pid \d+\)/);
+  assert.match(second.stderr, /Já há um `mabel rodar` neste projeto \(pid \d+\)/);
 
   child.kill('SIGINT');
   const code = await new Promise<number | null>((resolve) => child.on('close', resolve));
@@ -154,7 +154,7 @@ test('ctrl+c no meio de uma etapa; novo run retoma pela mesma sessão; trava enq
   assert.deepEqual(q.states(), [[1, 'executing']]);
   assert.equal(existsSync(lockPath(q.home, q.project.id)), false);
 
-  const again = q.cli('run');
+  const again = q.cli('rodar');
   assert.equal(again.status, 0, again.stderr);
   assert.deepEqual(q.states(), [[1, 'awaiting_merge']]);
   const resumed = q.calls().filter((c) => c.schema)[2];
@@ -325,9 +325,9 @@ test('aprovar e cancelar pela linha de comando', () => {
     { structured_output: { ...PLAN, conceitosCriticos: ['Desconto'] } },
     { structured_output: { ...PLAN, perguntas: [{ texto: '?', sugestao: '', regraCritica: false }] } },
   ]);
-  q.cli('run');
+  q.cli('rodar');
   assert.deepEqual(q.states(), [[1, 'needs_human'], [2, 'needs_human']]);
-  assert.match(q.cli('item', '1').stdout, /mabel aprovar 1/);
+  assert.match(q.cli('detalhar', '1').stdout, /mabel aprovar 1/);
   assert.equal(q.cli('aprovar', '1').status, 0);
   assert.equal(q.cli('aprovar', '2').status, 1);
   assert.equal(q.cli('cancelar', '2').status, 0);
@@ -344,7 +344,7 @@ test('run commita na base o que está pendente no .mabel/, sem levar o resto do 
   writeFileSync(join(ctx.root, 'outro.md'), 'staged do humano\n');
   git(ctx.root, 'add', 'outro.md');
 
-  const result = ctx.cli('run');
+  const result = ctx.cli('rodar');
   assert.match(result.stdout, /\.mabel\/ commitado na main: \.mabel\/specs\/a\.md, \.mabel\/specs\/b\.md/);
   assert.equal(git(ctx.root, 'show', 'main:.mabel/specs/b.md'), '# spec b');
   assert.equal(git(ctx.root, 'show', '--name-only', '--format=', 'main'), '.mabel/specs/a.md\n.mabel/specs/b.md');
@@ -355,7 +355,7 @@ test('run com a raiz fora da base não commita o .mabel/ e avisa', () => {
   const ctx = setupProject();
   git(ctx.root, 'switch', '-q', '-c', 'outra');
   writeFileSync(join(ctx.root, '.mabel', 'spec.md'), '# spec\n');
-  const result = ctx.cli('run');
+  const result = ctx.cli('rodar');
   assert.match(result.stdout, /Aviso: o \.mabel\/ tem alterações sem commit .*a raiz está na branch outra, não na main/);
   assert.equal(tryGit(ctx.root, 'cat-file', '-e', 'main:.mabel/spec.md'), undefined);
   assert.equal(git(ctx.root, 'status', '--porcelain'), '?? .mabel/spec.md');
@@ -366,7 +366,7 @@ test('run recusa começar com o .mabel/ fora da branch base', () => {
   spawnSync('git', ['rm', '-q', '-r', '--cached', '.mabel'], { cwd: ctx.root });
   spawnSync('git', ['commit', '-q', '-m', 'tira o .mabel'], { cwd: ctx.root });
   git(ctx.root, 'switch', '-q', '-c', 'outra');
-  const result = ctx.cli('run');
+  const result = ctx.cli('rodar');
   assert.equal(result.status, 1);
   assert.match(result.stderr, /não está commitado na branch main/);
   assert.equal(existsSync(lockPath(ctx.home, ctx.project.id)), false);

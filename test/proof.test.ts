@@ -340,7 +340,7 @@ test('P.2 critério 7: init grava os campos da prova; config sem eles vale modo 
   const init = (files: Record<string, string>) => {
     const root = makeRepo(files);
     const home = mkdtempSync(join(tmpdir(), 'mabel-home-'));
-    const result = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'init'], {
+    const result = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'preparar'], {
       cwd: root,
       encoding: 'utf8',
       env: { ...process.env, MABEL_HOME: home, NO_COLOR: '1' },

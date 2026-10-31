@@ -326,10 +326,10 @@ test('entregar critério 11: remoção do projeto leva as entregas e o corpo do 
   const q = await integrated(1);
   useGh(q.root, GH_OK);
   const delivery = deliver(q.db, q.home, q.project, UNIT).delivery!;
-  const summary = q.cli('projeto', 'remover', q.project.name);
+  const summary = q.cli('auditar', 'remover', q.project.name);
   assert.match(summary.stdout, /banco: .*deliveries/);
   assert.match(summary.stdout, /entregas\//);
-  const removed = q.cli('projeto', 'remover', q.project.name, '--confirmar', q.project.name);
+  const removed = q.cli('auditar', 'remover', q.project.name, '--confirmar', q.project.name);
   assert.equal(removed.status, 0, removed.stderr);
   assert.equal(listDeliveries(q.db, q.project.id).length, 0);
   assert.ok(!existsSync(deliveryBodyPath(q.home, q.project.id, delivery.branch)));
@@ -356,7 +356,8 @@ test('entregar: integração desligada e nada a entregar', async () => {
   git(empty.root, 'branch', INTEGRATION);
   const result = deliver(empty.db, empty.home, empty.project);
   assert.equal(result.code, 0);
-  assert.deepEqual(result.lines, ['Nada a entregar: nenhuma unidade com tarefa concluída fora da base.']);
+  assert.equal(result.lines[0], 'Nada a entregar: nenhuma unidade com tarefa concluída fora da base.');
+  assert.deepEqual(result.lines.slice(2, 4), ['## Em andamento', 'Nada.']);
   const cli = empty.cli('entregar');
   assert.equal(cli.status, 0, cli.stderr);
   assert.match(cli.stdout, /Nada a entregar/);

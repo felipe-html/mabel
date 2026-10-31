@@ -30,11 +30,11 @@ import { style } from './style.ts';
 import { type ArgSpec, type OptionSpecs, jsonOption } from './options.ts';
 
 /**
- * `mabel nascer` (`docs/specs/nascer.md`): conversa curta com um agente, só de leitura, que
+ * `mabel criar` (`docs/specs/nascer.md`): conversa curta com um agente, só de leitura, que
  * termina numa proposta de stack, `CLAUDE.md`, regras críticas e backlog inicial.
  */
 
-export const birthUsage = 'mabel nascer ["<descrição>"] [--stack <id>] [--modelo <m>]';
+export const birthUsage = 'mabel criar ["<descrição>"] [--stack <id>] [--modelo <m>]';
 
 export const birthOptions = {
   stack: { type: 'string', value: '<id>', values: 'stack', description: 'Fixa a stack em vez de deixar o agente propor' },
@@ -223,12 +223,12 @@ const IGNORED_ENTRIES = new Set(['.DS_Store']);
 export function birthSite(cwd: string): BirthSite {
   const root = gitRoot(cwd);
   if (root) {
-    if (readConfig(root)) throw new BirthError(`${basename(root)} já é um projeto Mabel; use \`mabel add\` ou \`mabel refinar\`.`);
+    if (readConfig(root)) throw new BirthError(`${basename(root)} já é um projeto Mabel; use \`mabel adicionar\` ou \`mabel refinar\`.`);
     return { root, git: true, hasCode: !isEmptyProject(root), claudeMd: existsSync(join(root, 'CLAUDE.md')) };
   }
   const entries = readdirSync(cwd).filter((name) => !IGNORED_ENTRIES.has(name));
   if (entries.length > 0) {
-    throw new BirthError('Diretório com arquivos e sem git. Rode `git init` aqui e depois `mabel nascer`.');
+    throw new BirthError('Diretório com arquivos e sem git. Rode `git init` aqui e depois `mabel criar`.');
   }
   return { root: realpathSync(cwd), git: false, hasCode: false, claudeMd: false };
 }
@@ -803,12 +803,12 @@ export interface BirthSaved {
   /** Números dos itens com regra crítica. */
   criticalItems: number[];
   rules: { paths: number; concepts: number };
-  /** Branch do commit "mabel nascer", ou o motivo de ele não ter saído. */
+  /** Branch do commit "mabel criar", ou o motivo de ele não ter saído. */
   commit: { branch: string } | { error: string };
   costUsd: number;
 }
 
-export const BIRTH_COMMIT = 'mabel nascer';
+export const BIRTH_COMMIT = 'mabel criar';
 
 /**
  * Grava a proposta aceita pelo caminho do `init` (com a stack aceita), o `CLAUDE.md` só se
@@ -827,7 +827,7 @@ export function saveBirth(db: DatabaseSync, birth: Birth, proposal: BirthProposa
   if (repo !== root) {
     if (repo) throw new BirthError(`${root} passou a ficar dentro do repositório ${repo}; nada foi gravado.`);
     if (readdirSync(root).some((name) => !IGNORED_ENTRIES.has(name))) {
-      throw new BirthError(`${root} ganhou arquivos e continua sem git; rode \`git init\` e depois \`mabel nascer\`.`);
+      throw new BirthError(`${root} ganhou arquivos e continua sem git; rode \`git init\` e depois \`mabel criar\`.`);
     }
     git(root, 'init', '-q', '-b', 'main');
     gitInit = true;
@@ -885,14 +885,14 @@ export function savedLines(saved: BirthSaved): string[] {
   if ('branch' in saved.commit) lines.push(`${INDENT}commit "${BIRTH_COMMIT}" na branch ${saved.commit.branch}`);
   else {
     lines.push(`${INDENT}aviso: o commit não saiu (${saved.commit.error})`);
-    lines.push(`${INDENT}commite com \`git add .mabel CLAUDE.md && git commit -m "${BIRTH_COMMIT}" -- .mabel CLAUDE.md\` antes do \`mabel run\``);
+    lines.push(`${INDENT}commite com \`git add .mabel CLAUDE.md && git commit -m "${BIRTH_COMMIT}" -- .mabel CLAUDE.md\` antes do \`mabel rodar\``);
   }
   lines.push(`${INDENT}custo das rodadas: ${formatCost(saved.costUsd)}`);
   lines.push('');
   lines.push(
     saved.criticalItems.length > 0
-      ? `Próximo passo: \`mabel refinar\` nos itens com regra crítica (${saved.criticalItems.map((n) => `#${n}`).join(', ')}), depois \`mabel run\`.`
-      : 'Próximo passo: `mabel refinar` nos itens que pedirem detalhe, depois `mabel run`.',
+      ? `Próximo passo: \`mabel refinar\` nos itens com regra crítica (${saved.criticalItems.map((n) => `#${n}`).join(', ')}), depois \`mabel rodar\`.`
+      : 'Próximo passo: `mabel refinar` nos itens que pedirem detalhe, depois `mabel rodar`.',
   );
   return lines;
 }
@@ -976,14 +976,14 @@ export async function converse(env: BirthEnv, io: BirthIO, start: Birth): Promis
     } catch (error) {
       if (!(error instanceof Interrupted)) throw error;
       io.write('');
-      io.write(style.dim(`interrompido: o nascimento ${shortId(birth.id)} continua em aberto (mabel nascer --lista)`));
+      io.write(style.dim(`interrompido: o nascimento ${shortId(birth.id)} continua em aberto (mabel criar --lista)`));
       return 130;
     }
     io.write('');
     const result = await answerBirth(env, birth, pairs);
     if ('error' in result) {
       process.stderr.write(`${result.error}\n`);
-      if (result.code !== 130) io.write(style.dim(`As perguntas continuam em aberto: rode \`mabel nascer\` de novo aqui.`));
+      if (result.code !== 130) io.write(style.dim(`As perguntas continuam em aberto: rode \`mabel criar\` de novo aqui.`));
       return result.code;
     }
     birth = result.birth;
@@ -996,7 +996,7 @@ export async function converse(env: BirthEnv, io: BirthIO, start: Birth): Promis
   } catch (error) {
     if (!(error instanceof Interrupted)) throw error;
     io.write('');
-    io.write(style.dim(`interrompido: a proposta ${shortId(birth.id)} continua pendente (mabel nascer --lista)`));
+    io.write(style.dim(`interrompido: a proposta ${shortId(birth.id)} continua pendente (mabel criar --lista)`));
     return 130;
   }
   if (review.kind === 'keep') {
@@ -1109,11 +1109,11 @@ function printStep(env: BirthEnv, birth: Birth): void {
   out('');
   out(style.dim(`Nascimento ${birth.id} · custo ${formatCost(birthCost(env.db, birth))}`));
   if (birth.status === 'asking') {
-    out(style.dim('Responda com `mabel nascer --responder <id> --respostas <arquivo.json>` (lista na ordem das perguntas; null aceita a sugestão)'));
-    out(style.dim('ou, no terminal, rode `mabel nascer` na raiz.'));
+    out(style.dim('Responda com `mabel criar --responder <id> --respostas <arquivo.json>` (lista na ordem das perguntas; null aceita a sugestão)'));
+    out(style.dim('ou, no terminal, rode `mabel criar` na raiz.'));
   } else {
-    out(style.dim('Revise no terminal com `mabel nascer` na raiz, grave como está com `mabel nascer --aceitar <id>`'));
-    out(style.dim('ou descarte com `mabel nascer --descartar <id>`.'));
+    out(style.dim('Revise no terminal com `mabel criar` na raiz, grave como está com `mabel criar --aceitar <id>`'));
+    out(style.dim('ou descarte com `mabel criar --descartar <id>`.'));
   }
 }
 
@@ -1156,10 +1156,10 @@ export function parseAnswers(value: unknown, questions: Question[]): (string | n
 
 export const birthUsageFull = [
   birthUsage,
-  'mabel nascer --responder <id> --respostas <arquivo.json> [--json]',
-  'mabel nascer --aceitar <id> [--proposta <arquivo.json>] [--json]',
-  'mabel nascer --descartar <id> [--json]',
-  'mabel nascer --lista [--json]',
+  'mabel criar --responder <id> --respostas <arquivo.json> [--json]',
+  'mabel criar --aceitar <id> [--proposta <arquivo.json>] [--json]',
+  'mabel criar --descartar <id> [--json]',
+  'mabel criar --lista [--json]',
 ].join('\n       ');
 
 type Values = {
@@ -1305,7 +1305,7 @@ export async function birthCommand(args: string[]): Promise<number> {
       const placeholder = site.hasCode ? 'deixe vazio para partir do código' : 'o que o projeto vai ser, em poucas frases';
       description = (await io.text('O que é o projeto', { placeholder })) ?? '';
     }
-    if (!description && !site.hasCode) return usage('Diga o que é o projeto: mabel nascer "<descrição>".', 'argumento_faltando');
+    if (!description && !site.hasCode) return usage('Diga o que é o projeto: mabel criar "<descrição>".', 'argumento_faltando');
 
     if (!values.json) {
       out(style.bold(`Nascimento de ${basename(site.root)}`) + style.dim(` · ${site.hasCode ? 'repositório com código' : 'diretório vazio'}`));

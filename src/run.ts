@@ -35,13 +35,13 @@ import { checkDeliveries } from './delivery.ts';
 import { deleteBranch, isMerged, removeOrphanWorktrees, removeWorktree } from './worktree.ts';
 import { type OptionSpecs, jsonOption } from './options.ts';
 
-export const runUsage = 'mabel run [--item <n>] [--uma] [--sem-lote] [--fundo [--json]]';
+export const runUsage = 'mabel rodar [--item <n>] [--uma] [--sem-lote] [--fundo [--json]]';
 
 export const runOptions = {
   item: { type: 'string', value: '<n>', values: 'item', description: 'Processa só este item, do planejamento ao fim' },
   uma: { type: 'boolean', description: 'Processa um item só, item a item, e para' },
   'sem-lote': { type: 'boolean', description: 'Item a item: cada um vai do planejamento ao fim antes do próximo' },
-  fundo: { type: 'boolean', description: 'Entrega a fila ao supervisor e volta na hora; acompanhe com `mabel anexar`' },
+  fundo: { type: 'boolean', description: 'Entrega a fila ao supervisor e volta na hora; acompanhe com `mabel acompanhar`' },
   json: { ...jsonOption, description: 'Com --fundo: a confirmação da entrega em JSON' },
 } satisfies OptionSpecs;
 
@@ -586,7 +586,7 @@ export async function run(args: string[]): Promise<number> {
     if (!mabelCommitted(project.root, base)) {
       process.stderr.write(
         `O .mabel/ não está commitado na branch ${base}; os worktrees dos itens nasceriam sem ele.\n` +
-          `Rode o \`mabel run\` com a raiz na ${base}, ou commite o .mabel/ nela.\n`,
+          `Rode o \`mabel rodar\` com a raiz na ${base}, ou commite o .mabel/ nela.\n`,
       );
       return 1;
     }
@@ -666,7 +666,7 @@ export async function run(args: string[]): Promise<number> {
   }
 }
 
-/** `mabel run --fundo`: entrega a fila ao supervisor e volta na hora. */
+/** `mabel rodar --fundo`: entrega a fila ao supervisor e volta na hora. */
 async function background(home: string, args: string[], json: boolean): Promise<number> {
   const db = openDb(home);
   let project: Project;
@@ -688,7 +688,7 @@ async function background(home: string, args: string[], json: boolean): Promise<
     }
     process.stdout.write(
       `Fila de ${project.name} em segundo plano (pid ${response.pid}).\n` +
-        style.dim('Acompanhe com `mabel anexar`; pare depois da etapa com `mabel parar`.\n'),
+        style.dim('Acompanhe com `mabel acompanhar`; pare depois da etapa com `mabel parar`.\n'),
     );
     return 0;
   } catch (error) {

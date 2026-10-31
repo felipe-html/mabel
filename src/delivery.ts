@@ -13,6 +13,7 @@ import { deliveryDocPath, renderDeliveryDoc } from './deliverydoc.ts';
 import { checkedOutAt, isAncestor, unitOf } from './integration.ts';
 import { type Item, listItems } from './items.ts';
 import { type Project, ProjectError, resolveProject } from './project.ts';
+import { unitContext, unitSections } from './runreport.ts';
 import { CURRENT_RULES_FILE, type RuleChange, SPECS_DIR, applyRuleChanges, parseChange, parseSpec } from './specs.ts';
 import { style } from './style.ts';
 import type { ArgSpec, OptionSpecs } from './options.ts';
@@ -352,9 +353,8 @@ export interface DeliverResult {
 export function deliver(db: DatabaseSync, home: string, project: Project, options: DeliverOptions = {}): DeliverResult {
   const notes = project.config.integracao ? checkDeliveries(db, project) : [];
   if (project.config.integracao && !options.unit) {
-    const units = openUnits(db, project);
-    if (units.length === 0) return { code: 0, lines: [...notes, 'Nada a entregar: nenhuma unidade com tarefa concluída fora da base.'] };
-    return { code: 0, lines: [...notes, 'Prontas para entregar:', ...units.map((unit) => `  ${unitLabel(unit)} · mabel entregar ${unitArg(unit.name)}`)] };
+    if (openUnits(db, project).length > 0) return { code: 0, lines: [...notes, ...unitSections(db, home, project)] };
+    return { code: 0, lines: [...notes, 'Nada a entregar: nenhuma unidade com tarefa concluída fora da base.', '', ...unitContext(db, home, project)] };
   }
   const result = deliverChecked(db, home, project, options);
   return { ...result, lines: [...notes, ...result.lines] };
@@ -691,6 +691,7 @@ export async function deliverCommand(args: string[]): Promise<number> {
       return 1;
     }
     if (!unit && interactive() && project.config.integracao) {
+      process.stdout.write(`${unitContext(db, home, project).join('\n')}\n\n`);
       const units = openUnits(db, project);
       if (units.length === 0) {
         process.stdout.write('Nada a entregar: nenhuma unidade com tarefa concluída fora da base.\n');

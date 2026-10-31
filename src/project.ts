@@ -224,9 +224,9 @@ export function registerProject(db: DatabaseSync, root: string, projectId: strin
  */
 export function resolveProject(db: DatabaseSync, cwd: string = process.cwd()): Project {
   const root = gitRoot(cwd);
-  if (!root) throw new ProjectError('Não é um repositório git. Rode `git init` e depois `mabel init`.');
+  if (!root) throw new ProjectError('Não é um repositório git. Rode `git init` e depois `mabel preparar`.');
   const config = readConfig(root);
-  if (!config) throw new ProjectError(`${root} não é um projeto Mabel. Rode \`mabel init\`.`);
+  if (!config) throw new ProjectError(`${root} não é um projeto Mabel. Rode \`mabel preparar\`.`);
   registerProject(db, root, config.projectId);
   return { id: config.projectId, root, name: basename(root), config };
 }

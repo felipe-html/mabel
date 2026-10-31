@@ -14,7 +14,7 @@ import { type FormConfig, type FormField, type FormValues, shellLine } from './s
 import { style } from './style.ts';
 
 export const addUsage =
-  'mabel add "<título>" [--intencao <texto>] [--criterio <texto>]... [--fora-do-escopo <texto>]... [--referencia <entrada>]... [--depende <n>]... [--restricoes <texto>]';
+  'mabel adicionar "<título>" [--intencao <texto>] [--criterio <texto>]... [--fora-do-escopo <texto>]... [--referencia <entrada>]... [--depende <n>]... [--restricoes <texto>]';
 
 export const addOptions = {
   intencao: { type: 'string', value: '<texto>', description: 'O que você quer e por quê; sem ela, no terminal, o Mabel abre o formulário' },
@@ -25,7 +25,7 @@ export const addOptions = {
     multiple: true,
     value: '<entrada>',
     values: 'referencia',
-    description: 'Tela, operação de API ou arquivo de .mabel/referencias/ (veja `mabel referencia`)',
+    description: 'Tela, operação de API ou arquivo de .mabel/referencias/ (veja `mabel capturar`)',
   },
   depende: { type: 'string', multiple: true, value: '<n>', values: 'item', description: 'Item que precisa ser entregue antes deste' },
   restricoes: { type: 'string', value: '<texto>', description: 'Limites de implementação (bibliotecas, arquivos, padrões)' },
@@ -78,7 +78,7 @@ const list = (values: FormValues, key: string) => (Array.isArray(values[key]) ? 
 
 /** O comando de shell que faz o mesmo que o formulário. */
 export function addShell(values: FormValues): string {
-  const words = ['mabel', 'add', text(values, 'title') || '<título>'];
+  const words = ['mabel', 'adicionar', text(values, 'title') || '<título>'];
   if (text(values, 'intent')) words.push('--intencao', text(values, 'intent'));
   for (const entry of list(values, 'criteria')) words.push('--criterio', entry);
   for (const entry of list(values, 'outOfScope')) words.push('--fora-do-escopo', entry);
@@ -107,7 +107,7 @@ export function addForm(catalog: CatalogEntry[], items: Item[]): FormConfig {
   return {
     title: 'Adicionar um item',
     description: 'Cria um item no backlog do projeto.',
-    command: 'add',
+    command: 'adicionar',
     fields: [
       { type: 'text', key: 'title', label: 'Título', required: true, placeholder: 'nome curto do item' },
       { type: 'text', key: 'intent', label: 'Intenção', required: true, placeholder: 'o que você quer e por quê' },
@@ -211,7 +211,7 @@ export async function add(args: string[]): Promise<number> {
     for (const warning of [...before.warnings, ...after.warnings]) process.stdout.write(style.dim(`${warning}\n`));
     if (item?.status === 'blocked') process.stdout.write(`Bloqueado: ${item.statusReason}\n`);
     const problem = referenceProblem(project.root, fields.references ?? []);
-    if (problem) process.stdout.write(`Fica no backlog até corrigir: ${problem}. Veja as referências com \`mabel referencia\`.\n`);
+    if (problem) process.stdout.write(`Fica no backlog até corrigir: ${problem}. Veja as referências com \`mabel capturar\`.\n`);
     if (!interactive()) return 0;
   } catch (error) {
     if (error instanceof ProjectError) {

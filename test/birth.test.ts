@@ -128,7 +128,7 @@ test('birthSite: diretório vazio sem git, repositório com código, recusas', (
   assert.deepEqual({ ...birthSite(repo), root: '' }, { root: '', git: true, hasCode: true, claudeMd: true });
 
   const { root } = setupProject();
-  assert.throws(() => birthSite(root), /já é um projeto Mabel; use `mabel add` ou `mabel refinar`/);
+  assert.throws(() => birthSite(root), /já é um projeto Mabel; use `mabel adicionar` ou `mabel refinar`/);
 });
 
 test('rodadas: etapa birth hermética e só leitura; a segunda retoma a sessão com as respostas', async () => {
@@ -323,7 +323,7 @@ test('cli sem TTY: diretório vazio sem descrição sai com 1; com descrição, 
   const scenario = join(root, '..', `cenario-${Math.random().toString(36).slice(2)}.json`);
   writeFileSync(scenario, JSON.stringify({ responses: [{ structured_output: QUESTIONS }] }));
   const env = { ...process.env, MABEL_HOME: home, NO_COLOR: '1', MABEL_CLAUDE_BIN: join(import.meta.dirname, 'fixtures', 'fake-claude.mjs'), FAKE_CLAUDE_SCENARIO: scenario };
-  const cli = (...args: string[]) => spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'nascer', ...args], { cwd: root, encoding: 'utf8', env });
+  const cli = (...args: string[]) => spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'criar', ...args], { cwd: root, encoding: 'utf8', env });
 
   const missing = cli();
   assert.equal(missing.status, 1);
@@ -383,7 +383,7 @@ test('revisão aceita tudo: git init, .mabel/ pelo init, base de testes como ite
   assert.deepEqual(items[2]?.outOfScope, ['Aprovação pelo gestor']);
 
   // Só o `.mabel/` e o `CLAUDE.md` no commit.
-  assert.equal(git(root, 'log', '--format=%s'), 'mabel nascer');
+  assert.equal(git(root, 'log', '--format=%s'), 'mabel criar');
   assert.deepEqual(git(root, 'show', '--name-only', '--format=', 'HEAD').split('\n').sort(), [
     '.mabel/.gitignore',
     '.mabel/backlog.md',
@@ -402,8 +402,8 @@ test('revisão aceita tudo: git init, .mabel/ pelo init, base de testes como ite
   assert.match(summary, /git init -b main: o diretório era vazio/);
   assert.match(summary, /backlog: 3 itens \(o 1 é "Estabelecer base de testes"\)/);
   assert.match(summary, /regras críticas: 1 caminho · 1 conceito/);
-  assert.match(summary, /commit "mabel nascer" na branch main/);
-  assert.match(summary, /mabel refinar` nos itens com regra crítica \(#3\), depois `mabel run`/);
+  assert.match(summary, /commit "mabel criar" na branch main/);
+  assert.match(summary, /mabel refinar` nos itens com regra crítica \(#3\), depois `mabel rodar`/);
   // "Ver o detalhe" mostrou o bloco de cada item como ele vai para o backlog.
   assert.match(io.lines.join('\n'), /## Pedido de férias\n {2}id: 3[\s\S]*Depende de: 2/);
 });
@@ -522,7 +522,7 @@ function birthCli(responses: unknown[]) {
     FAKE_CLAUDE_LOG: join(dir, 'log.jsonl'),
   };
   const run = (cwd: string, ...args: string[]) =>
-    spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'nascer', ...args], { cwd, encoding: 'utf8', env, input: '', timeout: 20_000 });
+    spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'criar', ...args], { cwd, encoding: 'utf8', env, input: '', timeout: 20_000 });
   const file = (name: string, content: unknown) => {
     const path = join(dir, name);
     writeFileSync(path, JSON.stringify(content));
@@ -622,5 +622,5 @@ test('sem TTY, repositório com código: roda sem descrição e o texto diz o pa
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Nascimento de .* · repositório com código/);
   assert.match(result.stdout, /Proposta para/);
-  assert.match(result.stdout, /mabel nascer --aceitar <id>/);
+  assert.match(result.stdout, /mabel criar --aceitar <id>/);
 });

@@ -90,7 +90,7 @@ const rootSwaps = (root: string, to: string): Record<string, string> => ({ [real
 
 test('exemplos: projetos, status, inbox, projeto e saldo --json', () => {
   const ctx = setupProject('\n## Carrinho\nadicionar produtos ao carrinho\n\n## Frete\ncalcular o frete pelo CEP\n');
-  assert.equal(ctx.cli('status').status, 0);
+  assert.equal(ctx.cli('conferir').status, 0);
   const t0 = Date.now();
   const at = (steps: number) => new Date(t0 + steps * STEP).toISOString();
   const fix = normalizer(t0, { ...rootSwaps(ctx.root, PROJECT_ROOT), [ctx.project.id]: PROJECT_ID });
@@ -131,10 +131,10 @@ test('exemplos: projetos, status, inbox, projeto e saldo --json', () => {
   mkdirSync(join(ctx.home, 'locks'), { recursive: true });
   writeFileSync(lockPath(ctx.home, ctx.project.id), `${process.pid}\n`);
 
-  example('projetos.json', pretty(json('projetos')));
-  example('status.json', pretty(json('status')));
-  example('inbox.json', pretty(json('inbox')));
-  example('projeto.json', pretty(json('projeto', ctx.project.name)));
+  example('projetos.json', pretty(json('listar')));
+  example('status.json', pretty(json('conferir')));
+  example('inbox.json', pretty(json('decidir')));
+  example('projeto.json', pretty(json('auditar', ctx.project.name)));
 
   // Espera por saldo gravada pelo `run` que segura a trava: aparece no `saldo`.
   recordQueueEvent(ctx.db, ctx.project.id, {
@@ -163,7 +163,7 @@ test('exemplos: um evento de cada tipo do mabel eventos', () => {
     .prepare("INSERT INTO rate_limits (observed_at, window, utilization, resets_at) VALUES (?, 'five_hour', 0.22, ?)")
     .run(new Date(t0).toISOString(), new Date(t0 + 12 * STEP).toISOString());
 
-  const run = ctx.cli('run');
+  const run = ctx.cli('rodar');
   assert.equal(run.status, 0, run.stderr);
 
   // Um item novo para esperando o humano: a inbox do projeto muda.
@@ -214,7 +214,7 @@ const QUESTIONS: BirthOutput = {
 
 const PROPOSED: BirthOutput = { ...QUESTIONS, perguntas: [], proposta: PROPOSAL };
 
-test('exemplos: os passos do mabel nascer --json', () => {
+test('exemplos: os passos do mabel criar --json', () => {
   const root = mkdtempSync(join(tmpdir(), 'mabel-nascer-'));
   const other = mkdtempSync(join(tmpdir(), 'mabel-nascer-'));
   const home = mkdtempSync(join(tmpdir(), 'mabel-home-'));
@@ -236,7 +236,7 @@ test('exemplos: os passos do mabel nascer --json', () => {
     swaps[key] = value;
   };
   const step = (cwd: string, ...args: string[]) => {
-    const result = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'nascer', ...args, '--json'], {
+    const result = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'criar', ...args, '--json'], {
       cwd,
       encoding: 'utf8',
       env,

@@ -282,7 +282,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
   <div class="section-head">
     <span class="eyebrow">1 · Visão geral</span>
     <h2>A jornada em cinco blocos</h2>
-    <p>Você prepara o backlog, o <code>run</code> consome a fila com três agentes, para quando precisa de você e deixa cada tarefa pronta na branch da sua unidade (spec ou avulso). A <code>mabel/integracao</code>, refeita a cada <code>run</code>, só serve para teste. Só você leva a unidade à base.</p>
+    <p>Você prepara o backlog, o <code>rodar</code> consome a fila com três agentes, para quando precisa de você e deixa cada tarefa pronta na branch da sua unidade (spec ou avulso). A <code>mabel/integracao</code>, refeita a cada <code>rodar</code>, só serve para teste. Só você leva a unidade à base.</p>
   </div>
   <figure>
     <div class="scroll">
@@ -357,14 +357,14 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
         <text class="lbl back" x="593" y="268">resposta → retoma</text>
       </svg>
     </div>
-    <figcaption>Os pontos azuis são agentes. Fora o <code>nascer</code>, o <code>especificar</code> e o <code>refinar</code>, todos rodam dentro do <code>mabel run</code>. As setas laranja são as voltas que dependem de você.</figcaption>
+    <figcaption>Os pontos azuis são agentes. Fora o <code>criar</code>, o <code>especificar</code> e o <code>refinar</code>, todos rodam dentro do <code>mabel rodar</code>. As setas laranja são as voltas que dependem de você.</figcaption>
   </figure>
 </section>
 
 <!-- 2. A esteira do item -->
 <section>
   <div class="section-head">
-    <span class="eyebrow">2 · <code>mabel run</code></span>
+    <span class="eyebrow">2 · <code>mabel rodar</code></span>
     <h2>A esteira de um item</h2>
     <p>Um item por vez, uma etapa por vez. Cada etapa com agente é uma run <code>claude -p</code> com saída estruturada (<code>--json-schema</code>). Entre elas, o código do Mabel decide se o item avança. Nada é declarado pelo agente: o “done” é calculado.</p>
   </div>
@@ -385,7 +385,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
 
       <!-- 1 -->
       <div class="phase"><span class="st">abertura</span></div>
-      <div class="phase-note">uma vez por <code>mabel run</code></div>
+      <div class="phase-note">uma vez por <code>mabel rodar</code></div>
       <!-- 2 -->
       <div class="node">
         <span class="kicker">Mabel</span>
@@ -439,7 +439,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       <div class="node">
         <span class="kicker">Mabel · autonomia</span>
         <h4>Responde pela sugestão</h4>
-        <p>Pergunta que não toca regra crítica e traz sugestão vira suposição registrada, salvo <code>autonomia: "perguntar"</code>. Aparece no fim do <code>run</code> em “Decididas pela sugestão”.</p>
+        <p>Pergunta que não toca regra crítica e traz sugestão vira suposição registrada, salvo <code>autonomia: "perguntar"</code>. Aparece no fim do <code>rodar</code> em “Decididas pela sugestão”.</p>
       </div>
       <!-- 8 -->
       <div class="node gate">
@@ -456,7 +456,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
 
       <!-- 9 -->
       <div class="phase"><span class="st">planned</span></div>
-      <div class="phase-note">fim do lote de planejamento: o <code>run</code> oferece a inbox se houver pendências</div>
+      <div class="phase-note">fim do lote de planejamento: o <code>rodar</code> oferece a inbox se houver pendências</div>
       <!-- 10 -->
       <div class="phase"><span class="st">executing</span></div>
       <div class="phase-note"></div>
@@ -583,7 +583,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       <div class="node human">
         <span class="kicker">Você</span>
         <h4>Entrega ou rejeita</h4>
-        <p><code>mabel entregar &lt;unidade&gt;</code> prova base + unidade e abre o PR para a base, com o documento e as regras vigentes alteradas; o merge é seu. No próximo <code>run</code>, o item vira <code>done</code>. <code>mabel rejeitar</code> reverte a tarefa na branch da spec (no avulso, a branch volta à base) e a devolve a <code>planning</code> (ou <code>cancelled</code>); a integração é refeita no próximo <code>run</code>.</p>
+        <p><code>mabel entregar &lt;unidade&gt;</code> prova base + unidade e abre o PR para a base, com o documento e as regras vigentes alteradas; o merge é seu. No próximo <code>rodar</code>, o item vira <code>done</code>. <code>mabel rejeitar</code> reverte a tarefa na branch da spec (no avulso, a branch volta à base) e a devolve a <code>planning</code> (ou <code>cancelled</code>); a integração é refeita no próximo <code>rodar</code>.</p>
       </div>
     </div>
     <figcaption>A linha tracejada à esquerda é o ciclo de tentativas: toda reprovação (↺) volta ao executor. As caixas laranja à direita param o item em <code>needs_human</code> até você responder pela inbox.</figcaption>
@@ -606,13 +606,13 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
   </div>
   <div class="agents">
     <article class="agent-card">
-      <header><h3>Nascer</h3><span class="where">mabel nascer · prompts/nascer.md</span></header>
+      <header><h3>Nascer</h3><span class="where">mabel criar · prompts/nascer.md</span></header>
       <dl>
-        <dt>Quando</dt><dd>Projeto novo ou repositório sem <code>.mabel/</code>, antes do <code>init</code>.</dd>
+        <dt>Quando</dt><dd>Projeto novo ou repositório sem <code>.mabel/</code>, antes do <code>preparar</code>.</dd>
         <dt>Run</dt><dd><code>sonnet</code> · Read Glob Grep · 40 turnos · US$ 2 · até 3 rodadas na mesma sessão</dd>
         <dt>Recebe</dt><dd>Sua descrição em texto livre e o código existente.</dd>
         <dt>Devolve</dt><dd><code>entendimento</code>, <code>perguntas</code> (≤ 5 por rodada, com sugestão), <code>suposicoes</code> e <code>proposta</code>: stack, <code>CLAUDE.md</code>, regras críticas, backlog de 3 a 10 itens.</dd>
-        <dt>Depois</dt><dd>Você revisa; o Mabel grava pelo caminho do <code>init</code> e commita <code>.mabel/</code> e <code>CLAUDE.md</code>.</dd>
+        <dt>Depois</dt><dd>Você revisa; o Mabel grava pelo caminho do <code>preparar</code> e commita <code>.mabel/</code> e <code>CLAUDE.md</code>.</dd>
       </dl>
     </article>
     <article class="agent-card">
@@ -629,7 +629,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
     <article class="agent-card">
       <header><h3>Planejador</h3><span class="where">etapa plan · prompts/planejar.md</span></header>
       <dl>
-        <dt>Quando</dt><dd>Item em <code>planning</code>, dentro do <code>run</code>.</dd>
+        <dt>Quando</dt><dd>Item em <code>planning</code>, dentro do <code>rodar</code>.</dd>
         <dt>Run</dt><dd><code>opus</code> · Read Glob Grep · 40 turnos · US$ 3 · no worktree do item</dd>
         <dt>Recebe</dt><dd>Item (tarefa de spec: história, seções próprias, regras citadas, decisões e fora do escopo da spec), regras críticas, referências congeladas (as do item e as herdadas da spec); num replanejamento, o plano anterior e o resumo das tentativas.</dd>
         <dt>Devolve</dt><dd><code>plano.json</code>: critérios com <code>verificacao</code> e <code>comportamento</code>, <code>escopo</code> em globs, <code>passos</code>, <code>suposicoes</code>, <code>conceitosCriticos</code>, <code>perguntas</code>.</dd>
@@ -673,8 +673,21 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       <h3>Preparar <small>dar forma ao projeto e ao backlog</small></h3>
       <div class="cmds">
         <article class="cmd">
-          <header><span class="name">nascer</span><span class="badge agent">agente nascer</span></header>
-          <p class="usage">mabel nascer ["descrição"] [--stack id] [--json] · --responder · --aceitar · --descartar · --lista</p>
+          <header><span class="name">mabel</span><span class="badge none">tela inicial</span></header>
+          <p class="usage">mabel (sem argumentos, no terminal)</p>
+          <p>Tela cheia, no buffer alternativo do terminal: o projeto, o que espera por você (prontos, pendências, unidades prontas), o filtro “o que você quer fazer?” e os comandos agrupados (Começar, Planejar, Rodar, Decidir, Entregar, Acompanhar, Avulso). Decidir sobe com pendência e Rodar com itens prontos; Começar só onde o Mabel não foi preparado. O comando escolhido roda no terminal comum, e o resultado fica na rolagem; depois, “Voltar ao menu” ou “Sair do Mabel”. Fora do terminal, a lista de comandos em texto.</p>
+          <p class="writes"><b>Grava:</b> só a sincronização do <code>backlog.md</code> no SQLite, a mesma do <code>conferir</code>, para as contagens.</p>
+<pre class="term">  <b>mabel</b>  loja-api <span class="d">· ~/Pessoal/loja-api</span>
+  2 prontos <span class="d">·</span> <span class="y">2 esperando você</span> <span class="d">·</span> <span class="g">1 unidade pronta</span>
+
+<span class="a">  › ▏</span><span class="d">o que você quer fazer?</span>
+
+<span class="d">  DECIDIR</span>
+<span class="a">  › </span><b>Decidir as pendências</b>          <span class="y">2 esperando</span>   <span class="d">mabel decidir</span></pre>
+        </article>
+        <article class="cmd">
+          <header><span class="name">criar</span><span class="badge agent">agente nascer</span></header>
+          <p class="usage">mabel criar ["descrição"] [--stack id] [--json] · --responder · --aceitar · --descartar · --lista</p>
           <p>Conversa curta que termina numa proposta revisável. Fora de TTY roda em passos, para o <code>mabel-ui</code>.</p>
           <p class="writes"><b>Grava:</b> <code>.mabel/config.json</code>, <code>regras-criticas.md</code>, <code>backlog.md</code>, <code>CLAUDE.md</code> (se não existia) e o commit deles. <code>git init -b main</code> num diretório vazio.</p>
 <pre class="term"><span class="d">Rodada 1 de 3</span>
@@ -687,8 +700,8 @@ stack node · 6 itens · 1 regra crítica
     Descartar a proposta</pre>
         </article>
         <article class="cmd">
-          <header><span class="name">init</span><span class="badge none">sem agente</span></header>
-          <p class="usage">mabel init [--stack node|python|go|rust]</p>
+          <header><span class="name">preparar</span><span class="badge none">sem agente</span></header>
+          <p class="usage">mabel preparar [--stack node|python|go|rust]</p>
           <p>Detecta stack e comandos de <code>setup</code> e <code>verify</code>, ou pergunta num menu. Já sendo projeto, só registra no banco.</p>
           <p class="writes"><b>Grava:</b> <code>.mabel/config.json</code> (base, modelos, limites, <code>autonomia</code>, integração, sandbox, rede), <code>regras-criticas.md</code>, <code>backlog.md</code>, <code>.gitignore</code>. Sem testes, o item 1 é “Estabelecer base de testes”.</p>
 <pre class="term">Stack: node · setup: npm ci · verify: npm test
@@ -699,8 +712,8 @@ stack node · 6 itens · 1 regra crítica
     Não commitar</pre>
         </article>
         <article class="cmd">
-          <header><span class="name">add</span><span class="badge none">sem agente</span></header>
-          <p class="usage">mabel add "título" [--intencao] [--criterio]… [--fora-do-escopo]… [--referencia]… [--depende n]… [--restricoes]</p>
+          <header><span class="name">adicionar</span><span class="badge none">sem agente</span></header>
+          <p class="usage">mabel adicionar "título" [--intencao] [--criterio]… [--fora-do-escopo]… [--referencia]… [--depende n]… [--restricoes]</p>
           <p>Acrescenta um bloco ao fim do backlog e sincroniza com o banco. No TTY, sem <code>--intencao</code>, abre o formulário “Adicionar um item” (um campo por opção, com a linha de shell equivalente); as referências e as dependências são escolhidas em listas.</p>
           <p class="writes"><b>Grava:</b> o item em <code>.mabel/backlog.md</code>; estado <code>ready</code>, ou <code>backlog</code> se depende de item não concluído.</p>
 <pre class="term">Item #4 adicionado: Desconto por volume · ready
@@ -732,14 +745,14 @@ Tamanho: 3 regras · 3 exemplos · 2 rodadas · 2 perguntas · 2 tarefas
     Deixar para o planejamento</pre>
         </article>
         <article class="cmd">
-          <header><span class="name">referencia</span><span class="badge none">sem agente</span></header>
-          <p class="usage">mabel referencia [--json] · api nome url · tela nome url-figma · tela nome --png arquivo</p>
+          <header><span class="name">capturar</span><span class="badge none">sem agente</span></header>
+          <p class="usage">mabel capturar [--json] · api nome url · tela nome url-figma · tela nome --png arquivo</p>
           <p>Guarda cópias de APIs e telas para os itens citarem em <code>Referências:</code>. Os agentes leem a cópia congelada, nunca o link.</p>
           <p class="writes"><b>Grava:</b> <code>.mabel/referencias/api/nome.openapi.json</code> + <code>.md</code>; <code>telas/nome/tela.png</code> + <code>tela.md</code>.</p>
         </article>
         <article class="cmd">
-          <header><span class="name">credencial</span><span class="badge none">sem agente</span></header>
-          <p class="usage">mabel credencial · credencial figma --expira AAAA-MM-DD</p>
+          <header><span class="name">credenciar</span><span class="badge none">sem agente</span></header>
+          <p class="usage">mabel credenciar · credencial figma --expira AAAA-MM-DD</p>
           <p>Acompanha o vencimento do <code>FIGMA_TOKEN</code>; avisa a partir de 14 dias do fim.</p>
           <p class="writes"><b>Grava:</b> a data em <code>~/.mabel/credenciais.json</code>, nunca o token.</p>
         </article>
@@ -750,10 +763,10 @@ Tamanho: 3 regras · 3 exemplos · 2 rodadas · 2 perguntas · 2 tarefas
       <h3>Rodar <small>a esteira da seção 2</small></h3>
       <div class="cmds">
         <article class="cmd">
-          <header><span class="name">run</span><span class="badge agent">planejador · executor · revisor</span></header>
-          <p class="usage">mabel run [--item n] [--uma] [--sem-lote] [--fundo [--json]]</p>
+          <header><span class="name">rodar</span><span class="badge agent">planejador · executor · revisor</span></header>
+          <p class="usage">mabel rodar [--item n] [--uma] [--sem-lote] [--fundo [--json]]</p>
           <p>Em lote: planeja todos os <code>ready</code>, oferece a inbox, depois executa os <code>planned</code> um a um até a fila acabar. <code>--sem-lote</code> leva cada item até o fim antes do próximo.</p>
-          <p class="writes"><b>Grava:</b> estados e gates no SQLite; artefatos em <code>~/.mabel/items/&lt;id&gt;/</code>; runs em <code>~/.mabel/runs/</code>; commits na branch do item; merge na branch da unidade e dela em <code>mabel/integracao</code> (refeita a cada <code>run</code>); estado da integração (incluídas, conflitos, pausadas, verificação) no SQLite; <code>quadro.md</code> e <code>run.md</code> (reescrito ao fim de cada tarefa e no fim do <code>run</code>).</p>
+          <p class="writes"><b>Grava:</b> estados e gates no SQLite; artefatos em <code>~/.mabel/items/&lt;id&gt;/</code>; runs em <code>~/.mabel/runs/</code>; commits na branch do item; merge na branch da unidade e dela em <code>mabel/integracao</code> (refeita a cada <code>rodar</code>); estado da integração (incluídas, conflitos, pausadas, verificação) no SQLite; <code>quadro.md</code> e <code>run.md</code> (reescrito ao fim de cada tarefa e no fim do <code>rodar</code>).</p>
 <pre class="term"><span class="a">  ▸ planejar · opus</span>
 <span class="d">    → Read src/pedidos.ts ✓</span>
 #4 Desconto por volume: planning → planned
@@ -771,10 +784,10 @@ Decididas pela sugestão (revise no merge):
     Agora não</pre>
         </article>
         <article class="cmd">
-          <header><span class="name">supervisor · anexar · parar</span><span class="badge none">sem agente</span></header>
-          <p class="usage">mabel run --fundo · mabel anexar · mabel parar · mabel supervisor [instalar|remover|estado]</p>
+          <header><span class="name">supervisor · acompanhar · parar</span><span class="badge none">sem agente</span></header>
+          <p class="usage">mabel rodar --fundo · mabel acompanhar · mabel parar · mabel supervisor [instalar|remover|estado]</p>
           <p>A fila roda em segundo plano, sem depender do terminal. O supervisor (no launchd) retoma as filas depois de reiniciar.</p>
-          <p class="writes"><b>Devolve:</b> <code>anexar</code> segue o log da fila ao vivo (Ctrl+C solta sem parar); <code>parar</code> encerra depois da etapa em andamento.</p>
+          <p class="writes"><b>Devolve:</b> <code>acompanhar</code> segue o log da fila ao vivo (Ctrl+C solta sem parar); <code>parar</code> encerra depois da etapa em andamento.</p>
         </article>
       </div>
     </div>
@@ -783,8 +796,8 @@ Decididas pela sugestão (revise no merge):
       <h3>Decidir <small>o que só você resolve</small></h3>
       <div class="cmds">
         <article class="cmd">
-          <header><span class="name">inbox</span><span class="badge human">você decide</span></header>
-          <p class="usage">mabel inbox</p>
+          <header><span class="name">decidir</span><span class="badge human">você decide</span></header>
+          <p class="usage">mabel decidir</p>
           <p>Uma pendência por vez, em ordem de número, cada uma com o menu das opções dela: aceitar a sugestão do agente, responder com outro texto, deixar o agente decidir (fora de regra crítica), aprovar ou ajustar os critérios, replanejar, cancelar o item (em vermelho, confirmado com “Voltar” selecionado) ou pular por agora.</p>
           <p class="writes"><b>Grava:</b> a decisão no item e o leva ao estado certo (tabela abaixo).</p>
 <pre class="term"><span class="h">#2 Exportar relatório · perguntas da execução</span>
@@ -798,15 +811,15 @@ Respostas registradas em 2 itens · 1 pulado.
     Agora não</pre>
         </article>
         <article class="cmd">
-          <header><span class="name">item</span><span class="badge none">leitura</span></header>
-          <p class="usage">mabel item n</p>
+          <header><span class="name">detalhar</span><span class="badge none">leitura</span></header>
+          <p class="usage">mabel detalhar n</p>
           <p>Tudo sobre um item: estado, pendência e comandos que a resolvem, plano, escopo, tentativas, custo, últimas runs, negações do hook e transições.</p>
         </article>
         <article class="cmd">
           <header><span class="name">aprovar · responder · cancelar</span><span class="badge human">você decide</span></header>
           <p class="usage">mabel aprovar n · responder n "texto" | --respostas arquivo.json [--replanejar] · cancelar n</p>
-          <p>No modo Mabel, sem argumentos, cada um abre um formulário com a lista só dos itens no estado em que ele faz sentido; cancelar e rejeitar têm o botão em vermelho.</p>
-          <p>Os mesmos efeitos da inbox, avulsos. <code>aprovar</code> leva um item crítico a <code>planned</code>; <code>responder</code> retoma a sessão certa ou replaneja; <code>cancelar</code> tira o item da fila.</p>
+          <p>Pela tela inicial, o cancelar abre um formulário com a lista só dos itens no estado em que ele faz sentido, com o botão em vermelho (o rejeitar também); aprovar e responder ficam só no shell, e a tela inicial decide pelo “Decidir as pendências”.</p>
+          <p>Os mesmos efeitos do <code>decidir</code>, avulsos. <code>aprovar</code> leva um item crítico a <code>planned</code>; <code>responder</code> retoma a sessão certa ou replaneja; <code>cancelar</code> tira o item da fila.</p>
         </article>
       </div>
 
@@ -830,15 +843,9 @@ Respostas registradas em 2 itens · 1 pulado.
       <h3>Integrar e entregar <small>da integração para a base</small></h3>
       <div class="cmds">
         <article class="cmd">
-          <header><span class="name">integracao</span><span class="badge none">leitura</span></header>
-          <p class="usage">mabel integracao</p>
-          <p>As unidades do relatório de run: prontas para entregar (spec com tarefas concluídas, avulso), em andamento e a integração (base + unidades incluídas, as de fora, a verificação), com o que olhar primeiro.</p>
-          <p class="writes"><b>Grava:</b> <code>.mabel/run.md</code>: precisa de você, prontas para entregar, em andamento, integração (por item: plano, arquivos, prova, devoluções, custo) e as tarefas do run.</p>
-        </article>
-        <article class="cmd">
           <header><span class="name">entregar</span><span class="badge human">você pede</span></header>
           <p class="usage">mabel entregar [slug | #n] [--com unidade] [--parcial] [--substituir] [--rascunho]</p>
-          <p>Entrega uma unidade (spec ou avulso). Parcial pede confirmação (TTY) ou <code>--parcial</code>; dependência fora da base recusa, com a sugestão <code>--com</code>. Antes de criar qualquer branch, a <b>prova</b>: base + merge do snapshot da unidade num worktree temporário, e a verificação do projeto; conflito ou vermelho recusam. Depois, o documento de entrega e o PR para a base. O merge é seu; no próximo <code>run</code> as tarefas viram <code>done</code>, a spec vira <code>entregue</code>, e o documento e as regras vigentes ficam na base junto do código.</p>
+          <p>Sem unidade, mostra as unidades do relatório de run: prontas para entregar (spec com tarefas concluídas, avulso), em andamento e a integração (base + unidades incluídas, as de fora, a verificação); no terminal, escolhe uma das prontas. Entrega uma unidade (spec ou avulso). Parcial pede confirmação (TTY) ou <code>--parcial</code>; dependência fora da base recusa, com a sugestão <code>--com</code>. Antes de criar qualquer branch, a <b>prova</b>: base + merge do snapshot da unidade num worktree temporário, e a verificação do projeto; conflito ou vermelho recusam. Depois, o documento de entrega e o PR para a base. O merge é seu; no próximo <code>run</code> as tarefas viram <code>done</code>, a spec vira <code>entregue</code>, e o documento e as regras vigentes ficam na base junto do código.</p>
           <p class="writes"><b>Grava:</b> branch <code>mabel/entrega/&lt;unidade&gt;</code> = snapshot da branch da unidade + commit <code>mabel: entrega &lt;unidade&gt;</code> só com <code>.mabel/entregas/&lt;data&gt;-&lt;unidade&gt;.md</code> e o <code>.mabel/regras.md</code> com as alterações da unidade (trailer <code>Mabel-Entrega</code>; a base não recebe commit), push no remoto, PR pelo <code>gh</code>; a entrega no SQLite, uma aberta por unidade. Sem <code>gh</code>: o endereço e o arquivo do corpo.</p>
 <pre class="term">Entrega mabel/entrega/exportar-csv · exportar-csv · 3 tarefas desde a main
 <span class="g">PR aberto: https://github.com/…/pull/31</span></pre>
@@ -848,7 +855,7 @@ Respostas registradas em 2 itens · 1 pulado.
           <p class="usage">mabel rejeitar n "motivo" [--cancelar]</p>
           <p>Tarefa de spec: reverte o merge dela na branch da spec, num worktree temporário. Avulso: a branch dele volta ao commit da base. Avisa as tarefas concluídas que dependem dela.</p>
 <pre class="term">#4 revertido na mabel/spec/exportar-csv: volta ao planejamento
-com o motivo no próximo `mabel run`.</pre>
+com o motivo no próximo `mabel rodar`.</pre>
         </article>
       </div>
     </div>
@@ -857,24 +864,24 @@ com o motivo no próximo `mabel run`.</pre>
       <h3>Auditar e avulsos <small>sem efeito na fila</small></h3>
       <div class="cmds">
         <article class="cmd">
-          <header><span class="name">status · saldo</span><span class="badge none">leitura</span></header>
-          <p class="usage">mabel status [--atualizar] · mabel saldo</p>
+          <header><span class="name">conferir · saldo</span><span class="badge none">leitura</span></header>
+          <p class="usage">mabel conferir [--atualizar] · mabel saldo</p>
           <p>Barras das janelas de 5 h e 7 dias com reset e ritmo; resumo do quadro do projeto (“Aguardando você”, “Em andamento”); runs recentes; pausa por saldo, se houver.</p>
         </article>
         <article class="cmd">
-          <header><span class="name">runs</span><span class="badge none">leitura</span></header>
-          <p class="usage">mabel runs [--limite n] · mabel runs id</p>
+          <header><span class="name">consultar</span><span class="badge none">leitura</span></header>
+          <p class="usage">mabel consultar [--limite n] · mabel consultar id</p>
           <p>Toda run auditada: tipo (<code>plan #3</code>, <code>exec</code>, <code>probe</code>), modelo, turnos, duração, custo. O detalhe traz a linha do tempo das ferramentas e o caminho do transcript.</p>
         </article>
         <article class="cmd">
-          <header><span class="name">projetos · projeto · eventos</span><span class="badge none">leitura</span></header>
-          <p class="usage">mabel projetos [--removidos] · projeto nome · projeto remover nome · eventos</p>
-          <p>Auditoria por projeto: custo por etapa e modelo, gates reprovados, escalonamentos, decisões autônomas, pausas. <code>eventos</code> emite uma linha JSON por evento, para o <code>mabel-ui</code>. <code>projeto remover</code> no TTY confirma no formulário “Confirme o nome”, com o botão vermelho; fora dele, <code>--confirmar nome</code>.</p>
+          <header><span class="name">listar · auditar · eventos</span><span class="badge none">leitura</span></header>
+          <p class="usage">mabel listar [--removidos] · projeto nome · projeto remover nome · eventos</p>
+          <p>Auditoria por projeto: custo por etapa e modelo, gates reprovados, escalonamentos, decisões autônomas, pausas. <code>eventos</code> emite uma linha JSON por evento, para o <code>mabel-ui</code>. <code>auditar remover</code> no TTY confirma no formulário “Confirme o nome”, com o botão vermelho; fora dele, <code>--confirmar nome</code>.</p>
         </article>
         <article class="cmd">
-          <header><span class="name">exec · comandos · completion</span><span class="badge none">avulso</span></header>
-          <p class="usage">mabel exec "prompt" [--model] [--max-turns] [--max-budget-usd] · comandos [--json] · completion zsh</p>
-          <p><code>exec</code> abre uma conversa no Claude Code, com a mesma auditoria e fora de qualquer item: cada mensagem é uma run que retoma a sessão, até o esc no campo da mensagem. <code>comandos</code> lista cada comando com as opções explicadas (em JSON, para outros programas). <code>completion</code> imprime o autocompletar do zsh.</p>
+          <header><span class="name">pedir · comandos · completion</span><span class="badge none">avulso</span></header>
+          <p class="usage">mabel pedir "prompt" [--model] [--max-turns] [--max-budget-usd] · comandos [--json] · completion zsh</p>
+          <p><code>pedir</code> abre uma conversa no Claude Code, com a mesma auditoria e fora de qualquer item: cada mensagem é uma run que retoma a sessão, até o esc no campo da mensagem. <code>comandos</code> lista cada comando com as opções explicadas (em JSON, para outros programas). <code>completion</code> imprime o autocompletar do zsh.</p>
         </article>
       </div>
     </div>

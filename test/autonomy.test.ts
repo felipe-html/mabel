@@ -131,7 +131,7 @@ test('config sem autonomia vale "sugestoes"; init grava o campo', () => {
   assert.equal(readConfig(ctx.root)?.autonomia, 'perguntar');
 });
 
-test('resumo do run e mabel item listam as decisões autônomas', () => {
+test('resumo do run e mabel detalhar listam as decisões autônomas', () => {
   const ctx = setupProject('\n## Casa\nplanta\n\n## Botão\nbotão\n');
   ctx.project.config.setup = null;
   ctx.project.config.verify = [{ name: 'existe', command: 'test -f src/soma.js' }];
@@ -144,15 +144,15 @@ test('resumo do run e mabel item listam as decisões autônomas', () => {
     { structured_output: { ...EXECUTION, perguntas: [COLOR] }, files: EXECUTION_FILES },
     REVIEW,
   ]);
-  const run = ctx.cli('run');
+  const run = ctx.cli('rodar');
   assert.equal(run.status, 0, run.stderr);
   assert.match(
     run.stdout,
     /■ fila vazia[^\n]*\n\nDecididas pela sugestão \(revise no merge\):\n {2}#1 Quais cômodos aparecem\? → Sala, Cozinha, Quarto, Banheiro\n {2}#2 Qual cor do botão\? → Azul\n/,
   );
-  const item = ctx.cli('item', '2');
+  const item = ctx.cli('detalhar', '2');
   assert.match(item.stdout, /Decididas pela sugestão\n {2}Qual cor do botão\? → Azul/);
-  assert.doesNotMatch(ctx.cli('item', '1').stdout, /Qual cor/);
+  assert.doesNotMatch(ctx.cli('detalhar', '1').stdout, /Qual cor/);
 });
 
 test('item crítico mostra na inbox as suposições autônomas junto dos critérios', async () => {

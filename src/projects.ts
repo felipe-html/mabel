@@ -157,7 +157,7 @@ export function findProject(db: DatabaseSync, query: string): ProjectRow {
   const matches = byName.length > 0 ? byName : projects.filter((project) => project.id.startsWith(query));
   if (matches.length === 1) return matches[0] as ProjectRow;
   if (matches.length === 0) {
-    throw new ProjectError(`Projeto não encontrado: ${query}. Veja a lista com \`mabel projetos\`.`, 'nao_encontrado');
+    throw new ProjectError(`Projeto não encontrado: ${query}. Veja a lista com \`mabel listar\`.`, 'nao_encontrado');
   }
   const what = byName.length > 0 ? `Há ${matches.length} projetos com o nome ${query}` : `O prefixo ${query} é ambíguo`;
   throw new ProjectError(
@@ -184,7 +184,7 @@ export function table(header: string[], rows: string[][]): string[] {
 }
 
 export function renderProjects(projects: ProjectRow[]): string[] {
-  if (projects.length === 0) return ['Nenhum projeto registrado. Rode `mabel init` num repositório.'];
+  if (projects.length === 0) return ['Nenhum projeto registrado. Rode `mabel preparar` num repositório.'];
   return [
     style.bold('Projetos'),
     ...table(
@@ -392,7 +392,7 @@ function projectEscalations(db: DatabaseSync, projectId: string): string[] {
 
 // Saídas --json --------------------------------------------------------------------------
 
-/** Um projeto em `mabel projetos --json`. */
+/** Um projeto em `mabel listar --json`. */
 export function projectJson(db: DatabaseSync, home: string, project: ProjectRow, now: Date): Record<string, unknown> {
   const { fila, pausa } = queueState(db, home, project.id, now);
   const stage = fila === 'rodando' || fila === 'pausada_por_saldo' ? stageInProgress(db, project.id) : null;
@@ -422,7 +422,7 @@ const RUN_USAGE = `
   HAVING count(DISTINCT r.resets_at) = 1`;
 
 /**
- * Diagnóstico de consumo (`mabel projeto <nome> --json`): custo, tokens e uso das janelas,
+ * Diagnóstico de consumo (`mabel auditar <nome> --json`): custo, tokens e uso das janelas,
  * no total e por etapa, por modelo e por item.
  */
 export function projectDetailJson(db: DatabaseSync, project: ProjectRow): Record<string, unknown> {
@@ -573,7 +573,7 @@ export function planRemoval(db: DatabaseSync, home: string, project: ProjectRow)
     refusals.push(`Run ${run.id.slice(0, 8)} do item #${run.number} em andamento. Espere terminar ou interrompa-a.`);
   }
   const pid = lockHolder(home, project.id);
-  if (pid !== undefined) refusals.push(`Há um \`mabel run\` ativo neste projeto (pid ${pid}).`);
+  if (pid !== undefined) refusals.push(`Há um \`mabel rodar\` ativo neste projeto (pid ${pid}).`);
   const dirty = dirtyWorktrees(home, project.id);
   if (dirty.length > 0) {
     refusals.push(['Worktrees com alterações sem commit:', ...dirty.map((path) => `  ${path}`)].join('\n'));
@@ -644,7 +644,7 @@ function shellQuote(text: string): string {
 
 // Comandos -------------------------------------------------------------------------------
 
-export const projectsUsage = 'mabel projetos [--removidos] [--json]';
+export const projectsUsage = 'mabel listar [--removidos] [--json]';
 
 export const projectsOptions = {
   removidos: { type: 'boolean', description: 'Lista as remoções feitas, com o que foi apagado' },
@@ -664,7 +664,7 @@ export const projectArgs: ArgSpec[] = [
   },
   { name: '<nome>', description: 'Com remover: o projeto', values: 'projeto' },
 ];
-export const projectUsage = 'mabel projeto <nome> [--json] | mabel projeto remover <nome> [--confirmar <nome>] [--json]';
+export const projectUsage = 'mabel auditar <nome> [--json] | mabel auditar remover <nome> [--confirmar <nome>] [--json]';
 
 function withDb(action: (db: DatabaseSync, home: string) => number | Promise<number>): Promise<number> {
   const home = dataDir();
@@ -759,12 +759,12 @@ export function removalForm(name: string, query = name): FormConfig {
   return {
     title: 'Remover os dados do Mabel',
     description: `Apaga do Mabel os dados de ${name}; o repositório do projeto não é tocado.`,
-    command: 'projeto remover',
+    command: 'auditar remover',
     fields: [{ type: 'text', key: 'confirma', label: 'Confirme o nome', required: true, placeholder: 'digite o nome do projeto' }],
     action: 'Remover os dados',
     danger: true,
     check: (values) => (values.confirma !== name ? 'O nome digitado não confere com o projeto escolhido.' : null),
-    shell: (values) => shellLine(['mabel', 'projeto', 'remover', query, '--confirmar', String(values.confirma || '<nome>')]),
+    shell: (values) => shellLine(['mabel', 'auditar', 'remover', query, '--confirmar', String(values.confirma || '<nome>')]),
   };
 }
 
@@ -786,7 +786,7 @@ async function removeCommand(
   if (plan.refusals.length > 0) return fail('estado_invalido', `\n${plan.refusals.join('\n')}\nNada foi removido.`);
   if (confirmation === undefined) {
     if (json || !interactive()) {
-      return fail('argumento_faltando', `\nPara remover, confirme com: mabel projeto remover ${query} --confirmar ${project.name}`);
+      return fail('argumento_faltando', `\nPara remover, confirme com: mabel auditar remover ${query} --confirmar ${project.name}`);
     }
     process.stdout.write('\n');
     const values = await fillForm(removalForm(project.name, query));
@@ -798,7 +798,7 @@ async function removeCommand(
   }
   if (confirmation !== project.name) return fail('argumento_invalido', 'O nome não confere. Nada foi removido.');
 
-  // A trava impede que um `mabel run` comece no meio da remoção; é apagada junto com `locks/`.
+  // A trava impede que um `mabel rodar` comece no meio da remoção; é apagada junto com `locks/`.
   const release = acquireLock(home, project.id);
   let warnings: string[];
   try {

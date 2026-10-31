@@ -84,7 +84,7 @@ export function renderBoard(projectName: string, items: BoardItem[], readings: B
   return `${lines.join('\n')}\n`;
 }
 
-/** Resumo do quadro para o `mabel status`: contagem por seção e os itens que pedem atenção. */
+/** Resumo do quadro para o `mabel conferir`: contagem por seção e os itens que pedem atenção. */
 export function renderBoardSummary(projectName: string, items: BoardItem[]): string[] {
   const counts: string[] = [];
   const detail: string[] = [];

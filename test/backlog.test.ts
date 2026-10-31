@@ -127,12 +127,12 @@ test('renderItemBlock gera um bloco que o parser lê de volta', () => {
 
 test('add não interativo gera um bloco que o parser lê de volta com os mesmos campos', () => {
   const { cli, path, db, project } = setupProject();
-  const result = cli('add', 'Exportar CSV', '--intencao', 'Abrir no Excel.', '--criterio', 'Uma linha por pedido',
+  const result = cli('adicionar', 'Exportar CSV', '--intencao', 'Abrir no Excel.', '--criterio', 'Uma linha por pedido',
     '--criterio', 'Vírgula decimal', '--fora-do-escopo', 'Itens do pedido', '--restricoes', 'sem bibliotecas');
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Item #1 adicionado: Exportar CSV · ready/);
 
-  const second = cli('add', 'Filtro', '--intencao', 'Por data.', '--depende', '1');
+  const second = cli('adicionar', 'Filtro', '--intencao', 'Por data.', '--depende', '1');
   assert.match(second.stdout, /Item #2 adicionado: Filtro · backlog/);
 
   assert.deepEqual(fields(readFileSync(path, 'utf8')), [
@@ -144,7 +144,7 @@ test('add não interativo gera um bloco que o parser lê de volta com os mesmos 
   ]);
   assert.deepEqual(listItems(db, project.id).map((item) => [item.number, item.status]), [[1, 'ready'], [2, 'backlog']]);
 
-  assert.equal(cli('add', 'Sem intenção').status, 1);
+  assert.equal(cli('adicionar', 'Sem intenção').status, 1);
 });
 
 test('sincronização: ids novos, mudança de conteúdo antes e depois do início e remoção', () => {

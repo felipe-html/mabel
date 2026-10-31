@@ -132,7 +132,7 @@ test('item da base de testes por stack', () => {
 
 test('init com --stack em projeto sem código grava setup e verify vazios', () => {
   const root = makeRepo();
-  const result = mabel(root, 'init', '--stack', 'rust');
+  const result = mabel(root, 'preparar', '--stack', 'rust');
   assert.equal(result.status, 0, result.stderr);
   const config = JSON.parse(readFileSync(join(root, '.mabel', 'config.json'), 'utf8'));
   assert.equal(config.setup, null);
@@ -148,12 +148,12 @@ test('init com --stack em projeto sem código grava setup e verify vazios', () =
 test('init depois de apagar o .mabel/ reaproveita o id registrado', () => {
   const home = mkdtempSync(join(tmpdir(), 'mabel-home-'));
   const root = makeRepo({ 'package.json': PKG({ test: 'node --test' }) });
-  assert.equal(mabelIn(home, root, 'init').status, 0);
+  assert.equal(mabelIn(home, root, 'preparar').status, 0);
   const configPath = join(root, '.mabel', 'config.json');
   const { projectId } = JSON.parse(readFileSync(configPath, 'utf8'));
 
   rmSync(join(root, '.mabel'), { recursive: true });
-  const again = mabelIn(home, root, 'init');
+  const again = mabelIn(home, root, 'preparar');
   assert.equal(again.status, 0, again.stderr);
   assert.match(again.stdout, /histórico anterior foi mantido/);
   assert.equal(JSON.parse(readFileSync(configPath, 'utf8')).projectId, projectId);
@@ -184,19 +184,19 @@ test('init que falha ao gravar pode ser repetido', () => {
   const root = makeRepo({ 'package.json': PKG({ test: 'node --test' }) });
   mkdirSync(join(root, '.mabel'));
   chmodSync(join(root, '.mabel'), 0o555);
-  const failed = mabelIn(home, root, 'init');
+  const failed = mabelIn(home, root, 'preparar');
   chmodSync(join(root, '.mabel'), 0o755);
   assert.equal(failed.status, 1);
   assert.match(failed.stderr, /Não foi possível criar o \.mabel\/.*\nNenhum arquivo foi criado/);
   assert.equal(existsSync(join(root, '.mabel', 'config.json')), false);
 
-  const again = mabelIn(home, root, 'init');
+  const again = mabelIn(home, root, 'preparar');
   assert.equal(again.status, 0, again.stderr);
   assert.match(again.stdout, /histórico anterior foi mantido/);
 });
 
 test('init com --stack inválido lista as stacks e falha', () => {
-  const result = mabel(makeRepo(), 'init', '--stack', 'cobol');
+  const result = mabel(makeRepo(), 'preparar', '--stack', 'cobol');
   assert.equal(result.status, 1);
   assert.match(result.stderr, /Stack desconhecida: cobol\. Use uma destas: node, python, go, rust\./);
 });
@@ -207,14 +207,14 @@ test('projeto vazio: só configuração e documentação', () => {
 });
 
 test('init fora de repositório git falha com dica', () => {
-  const result = mabel(mkdtempSync(join(tmpdir(), 'mabel-nogit-')), 'init');
+  const result = mabel(mkdtempSync(join(tmpdir(), 'mabel-nogit-')), 'preparar');
   assert.equal(result.status, 1);
   assert.match(result.stderr, /git init/);
 });
 
 test('init em repositório sem commits explica como commitar o .mabel/', () => {
   const root = makeRepo({ 'src/app.py': '' }, { commit: false });
-  const result = mabel(root, 'init');
+  const result = mabel(root, 'preparar');
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /fora do git/);
   assert.match(result.stdout, /git add \.mabel && git commit/);
@@ -228,8 +228,8 @@ test('init em repositório sem commits explica como commitar o .mabel/', () => {
 
 test('commit do .mabel/ não leva o que o usuário deixou no índice; init repetido avisa enquanto falta commitar', () => {
   const root = makeRepo({ 'src/app.py': '' });
-  assert.match(mabel(root, 'init').stdout, /fora do git/);
-  assert.match(mabel(root, 'init').stdout, /fora do git/);
+  assert.match(mabel(root, 'preparar').stdout, /fora do git/);
+  assert.match(mabel(root, 'preparar').stdout, /fora do git/);
   writeFileSync(join(root, 'src', 'app.py'), 'print(1)\n');
   spawnSync('git', ['add', 'src/app.py'], { cwd: root });
 
@@ -238,12 +238,12 @@ test('commit do .mabel/ não leva o que o usuário deixou no índice; init repet
   assert.doesNotMatch(files, /app\.py/);
   const staged = spawnSync('git', ['diff', '--cached', '--name-only'], { cwd: root, encoding: 'utf8' }).stdout.trim();
   assert.equal(staged, 'src/app.py');
-  assert.doesNotMatch(mabel(root, 'init').stdout, /fora do git/);
+  assert.doesNotMatch(mabel(root, 'preparar').stdout, /fora do git/);
 });
 
 test('init cria os arquivos, ignora o quadro e não altera nada quando repetido', () => {
   const root = makeRepo({ 'package.json': PKG({ test: 'node --test' }), 'package-lock.json': '{}' });
-  const first = mabel(root, 'init');
+  const first = mabel(root, 'preparar');
   assert.equal(first.status, 0, first.stderr);
 
   const dir = join(root, '.mabel');
@@ -261,7 +261,7 @@ test('init cria os arquivos, ignora o quadro e não altera nada quando repetido'
   assert.equal(ignored.status, 0);
 
   const before = snapshot(dir);
-  const second = mabel(root, 'init');
+  const second = mabel(root, 'preparar');
   assert.equal(second.status, 0);
   assert.match(second.stdout, /já é um projeto Mabel/);
   assert.deepEqual(snapshot(dir), before);
@@ -269,13 +269,13 @@ test('init cria os arquivos, ignora o quadro e não altera nada quando repetido'
 
 test('projeto sem testes recebe "Estabelecer base de testes" como primeiro item', () => {
   const withCode = makeRepo({ 'src/index.js': '' });
-  assert.equal(mabel(withCode, 'init').status, 0);
+  assert.equal(mabel(withCode, 'preparar').status, 0);
   const backlog = readFileSync(join(withCode, '.mabel', 'backlog.md'), 'utf8');
   assert.match(backlog, /-->\n\n## Estabelecer base de testes\nid: 1\n/);
   assert.doesNotMatch(backlog, /Stack:/);
 
   const empty = makeRepo();
-  const result = mabel(empty, 'init');
+  const result = mabel(empty, 'preparar');
   assert.match(result.stdout, /Aviso: nenhum comando em `verify`/);
   assert.match(readFileSync(join(empty, '.mabel', 'backlog.md'), 'utf8'), /\nStack: a definir\n/);
 });

@@ -14,6 +14,10 @@ formato; lá ele é consumido. O lado consumidor está em `../mabel-ui/docs/INTE
 Os exemplos gerados por teste em `docs/specs/exemplos/` completam o contrato, para o
 consumidor conferir de forma mecânica ([felipe-html/mabel#28](https://github.com/felipe-html/mabel/issues/28)).
 
+Os nomes dos comandos mudaram em 2026-10-31, sem apelidos para os antigos (`run` virou
+`rodar`, `projetos` virou `listar`…); a tabela da troca está em
+`docs/specs/integracao-externa.md`, e o catálogo atual sai em `mabel comandos --json`.
+
 ## Pedidos
 
 - **Rótulos:** `integracao` em todo pedido; `proposta` enquanto aguarda o usuário;

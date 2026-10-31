@@ -53,22 +53,22 @@ test('catálogo: telas com arquivos, cada operação dos snapshots e arquivos av
 
 test('referencia --json: o catálogo para outros programas', () => {
   const { cli } = withReferences();
-  const result = cli('referencia', '--json');
+  const result = cli('capturar', '--json');
   assert.equal(result.status, 0, result.stderr);
   const json = JSON.parse(result.stdout);
   assert.equal(json.versao, 1);
   assert.deepEqual(json.referencias[0], { entrada: 'tela: cadastro', tipo: 'tela', nome: 'cadastro', detalhe: 'tela.md, tela.png', itens: [1] });
-  assert.equal(cli('referencia', 'tela', 'x', '--png', 'a.png', '--json').status, 1);
+  assert.equal(cli('capturar', 'tela', 'x', '--png', 'a.png', '--json').status, 1);
 });
 
 test('add --referencia grava o campo; referência que não existe avisa que o item fica no backlog', () => {
   const { cli, path, db, project } = withReferences();
-  const ok = cli('add', 'Editar acesso', '--intencao', 'Editar.', '--referencia', 'tela: cadastro', '--referencia', 'docs/regras-de-cpf.md');
+  const ok = cli('adicionar', 'Editar acesso', '--intencao', 'Editar.', '--referencia', 'tela: cadastro', '--referencia', 'docs/regras-de-cpf.md');
   assert.equal(ok.status, 0, ok.stderr);
   assert.match(readFileSync(path, 'utf8'), /## Editar acesso\nid: 3\nEditar\.\n\nReferências:\n- tela: cadastro\n- docs\/regras-de-cpf\.md\n/);
   assert.equal(getItem(db, project.id, 3)?.status, 'ready');
 
-  const typo = cli('add', 'Remover acesso', '--intencao', 'Remover.', '--referencia', 'tela: cadastr');
+  const typo = cli('adicionar', 'Remover acesso', '--intencao', 'Remover.', '--referencia', 'tela: cadastr');
   assert.equal(typo.status, 0, typo.stderr);
   assert.match(typo.stdout, /Fica no backlog até corrigir: referência inválida: tela: cadastr/);
 });

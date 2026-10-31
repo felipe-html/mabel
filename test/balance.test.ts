@@ -149,7 +149,7 @@ test('rodapé de saldo cabe na largura e perde detalhes quando falta espaço', (
   for (const width of [20, 40, 60, 80, 100]) assert.ok(renderBalanceFooter(readings, NOW, width).length <= width);
   const expired = [reading('five_hour', 0.5, new Date(2026, 9, 14, 9, 0)), reading('seven_day', 0.1)];
   assert.match(renderBalanceFooter(expired, NOW, 120), /5h █████░░░░░ 50% · hoje 09:00 \(vencida\)/);
-  assert.equal(renderBalanceFooter([], NOW, 80), ' saldo desconhecido · /status --atualizar');
+  assert.equal(renderBalanceFooter([], NOW, 80), ' saldo desconhecido · mabel conferir --atualizar');
 });
 
 test('cabeçalho de saldo renderizado sem cores', () => {
@@ -167,7 +167,7 @@ test('cabeçalho de saldo renderizado sem cores', () => {
 });
 
 test('cabeçalho sem leitura e com leitura vencida', () => {
-  assert.deepEqual(renderBalanceHeader([], NOW), [' saldo desconhecido · mabel status --atualizar']);
+  assert.deepEqual(renderBalanceHeader([], NOW), [' saldo desconhecido · mabel conferir --atualizar']);
   const lines = renderBalanceHeader(
     [reading('five_hour', 0.5, new Date(2026, 9, 14, 9, 0)), reading('seven_day', 0.5)],
     NOW,
@@ -203,7 +203,7 @@ test('status --atualizar roda o probe auditado e mostra saldo e runs sem cores',
   };
   delete env.NO_COLOR;
   const mabel = (...args: string[]) =>
-    spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'status', ...args], {
+    spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'conferir', ...args], {
       encoding: 'utf8',
       env,
     });

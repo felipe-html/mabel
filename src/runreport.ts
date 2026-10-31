@@ -115,7 +115,7 @@ function needsYou(db: DatabaseSync, project: Project, items: Item[], session: Se
       kinds.set(kind, [...(kinds.get(kind) ?? []), item.number]);
     }
     const parts = [...kinds].map(([kind, numbers]) => `${kind}: ${numbers.map((n) => `#${n}`).join(', ')}`);
-    lines.push(`- Inbox (mabel inbox): ${parts.join('; ')}`);
+    lines.push(`- Inbox (mabel decidir): ${parts.join('; ')}`);
   }
   for (const item of items) {
     const reason = item.statusReason ? `: ${item.statusReason}` : '';
@@ -197,18 +197,14 @@ function tasksTable(tasks: TaskRow[]): string[] {
   ];
 }
 
-/** Seções de unidade (o que o `mabel integracao` mostra): prontas, em andamento e integração. */
+/** Seções de unidade (o que o `mabel entregar` sem unidade mostra): prontas, em andamento e integração. */
 export function unitSections(db: DatabaseSync, home: string, project: Project, items = listItems(db, project.id)): string[] {
-  return [
-    '## Prontas para entregar',
-    ...readyToDeliver(db, project, items),
-    '',
-    '## Em andamento',
-    ...inProgress(items),
-    '',
-    '## Integração',
-    ...integrationSection(db, home, project),
-  ];
+  return ['## Prontas para entregar', ...readyToDeliver(db, project, items), '', ...unitContext(db, home, project, items)];
+}
+
+/** As seções de unidade além das prontas: em andamento e integração. */
+export function unitContext(db: DatabaseSync, home: string, project: Project, items = listItems(db, project.id)): string[] {
+  return ['## Em andamento', ...inProgress(items), '', '## Integração', ...integrationSection(db, home, project)];
 }
 
 export function renderRunReport(db: DatabaseSync, home: string, project: Project, now = new Date()): string {

@@ -10,7 +10,7 @@ import type { ArgSpec, OptionSpecs } from './options.ts';
  * o token, só a data de vencimento informada pelo humano, em `~/.mabel/credenciais.json`.
  */
 
-export const credentialUsage = ['mabel credencial', 'mabel credencial figma --expira <AAAA-MM-DD>'].join('\n       ');
+export const credentialUsage = ['mabel credenciar', 'mabel credenciar figma --expira <AAAA-MM-DD>'].join('\n       ');
 
 export const credentialOptions = {
   expira: { type: 'string', value: '<AAAA-MM-DD>', description: 'Data em que o token vence; o Mabel avisa antes' },
@@ -81,7 +81,7 @@ export function expiryWarning(home: string, name: string, now = new Date()): str
   if (!stored || !known) return null;
   const days = daysUntil(stored.expira, now);
   if (days > WARN_DAYS) return null;
-  const renew = `crie outro em ${known.renew}, troque o ${known.env} e rode \`mabel credencial ${name} --expira <data>\``;
+  const renew = `crie outro em ${known.renew}, troque o ${known.env} e rode \`mabel credenciar ${name} --expira <data>\``;
   if (days < 0) return `${known.env} venceu em ${formatDate(stored.expira)}: ${renew}.`;
   const when = days === 0 ? 'vence hoje' : days === 1 ? 'vence amanhã' : `vence em ${days} dias`;
   return `${known.env} ${when} (${formatDate(stored.expira)}): ${renew}.`;
@@ -102,7 +102,7 @@ export function renderCredentials(home: string, env: NodeJS.ProcessEnv, now = ne
   return Object.entries(CREDENTIALS).map(([name, { env: variable }]) => {
     const defined = env[variable] ? `${variable} definido` : `${variable} ausente`;
     const entry = stored[name];
-    if (!entry) return `${name} · ${defined} · validade não registrada (mabel credencial ${name} --expira <AAAA-MM-DD>)`;
+    if (!entry) return `${name} · ${defined} · validade não registrada (mabel credenciar ${name} --expira <AAAA-MM-DD>)`;
     const days = daysUntil(entry.expira, now);
     const left = days < 0 ? paint.bad('vencido') : days <= WARN_DAYS ? paint.warn(`${days} dias`) : `${days} dias`;
     return `${name} · ${defined} · vence em ${formatDate(entry.expira)} (${left})`;

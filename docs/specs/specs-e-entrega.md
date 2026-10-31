@@ -39,13 +39,13 @@ a rastreabilidade? Dá para manter a integração para o teste conjunto e separa
 |---|---|---|
 | S1 | Modelo de branches | O do git: unidades de entrega nascem da base; a integração é descartável e só para teste. |
 | S2 | Base | Tudo começa da `develop` (esteira de DevOps). Já é configurável: `baseBranch` no `.mabel/config.json`. O Mabel passa a dizer "base" onde hoje diz "branch principal". |
-| S3 | Integração | Refeita na abertura de cada `run` a partir da base. Cada tarefa concluída entra nela em seguida, o que dá a prévia de conflito no momento em que ele nasce. |
+| S3 | Integração | Refeita na abertura de cada `rodar` a partir da base. Cada tarefa concluída entra nela em seguida, o que dá a prévia de conflito no momento em que ele nasce. |
 | S4 | Conflito ou teste vermelho na integração | Aviso, sem bloquear o item. Vai para o relatório de run e para o "olhe primeiro" de quem entregar por último. |
 | S5 | Avulsos | Cada avulso tem a própria branch e o próprio PR, para manter o rastreio (principalmente de bugs). |
 | S6 | Gate do `ready` | Tarefa de spec só fica `ready` com a spec aceita. |
 | S7 | Tamanho da spec | O agente sugere fracionar quando a spec parecer grande. Sem limite fixo por ora; os dados são analisados em 2026-11-05. |
-| S8 | Refinar | Produz uma tarefa que cai na esteira do `run` do mesmo jeito que as do `especificar`. |
-| S9 | Relatório de run | `.mabel/run.md`, não versionado, sobrescrito a cada `run`. |
+| S8 | Refinar | Produz uma tarefa que cai na esteira do `rodar` do mesmo jeito que as do `especificar`. |
+| S9 | Relatório de run | `.mabel/run.md`, não versionado, sobrescrito a cada `rodar`. |
 | S10 | Épicos e vínculos entre tarefas | Fora desta spec; registrado no `BACKLOG.md`. |
 
 ### Recomendações confirmadas pelo usuário (2026-10-29)
@@ -164,7 +164,7 @@ Um motor, dois comandos (R3):
 | Comando | Escopo | Saída |
 |---|---|---|
 | `mabel especificar <slug> [--refazer] [--aceitar \| --descartar]` | A spec em `.mabel/specs/<slug>.md` (rascunho livre, pode ser só a história) | Spec completa + tarefas propostas para o quadro |
-| `mabel refinar <n> [--refazer] [--aceitar \| --descartar]` | Um avulso do backlog | O avulso completo, no backlog, pronto para o `run` |
+| `mabel refinar <n> [--refazer] [--aceitar \| --descartar]` | Um avulso do backlog | O avulso completo, no backlog, pronto para o `rodar` |
 
 ### Rodadas
 
@@ -180,10 +180,10 @@ Um motor, dois comandos (R3):
    próxima.
 5. Você responde no TTY como na inbox (enter aceita a sugestão, texto responde, `p` deixa
    para o planejamento). Cada resposta vira decisão e, quando muda um resultado, exemplo.
-6. A rodada seguinte, na mesma sessão (`--resume`, como no `nascer`), retrabalha só as
+6. A rodada seguinte, na mesma sessão (`--resume`, como no `criar`), retrabalha só as
    regras que as respostas mexeram.
 7. Termina quando a proposta forma uma spec válida e não sobra pergunta (fora as marcadas
-   `p`). Saída inválida pede correção na mesma sessão, como no `nascer`.
+   `p`). Saída inválida pede correção na mesma sessão, como no `criar`.
 
 Tamanho (S7): o agente devolve `sugestaoQuebra` quando a spec parecer grande demais, com as
 specs menores que proporia. O Mabel só mostra; não há limite fixo. Grava por spec o número
@@ -205,7 +205,7 @@ interface SpecifyOutput {
 }
 ```
 
-`dependeDe` usa a posição na lista de tarefas, como no `nascer`.
+`dependeDe` usa a posição na lista de tarefas, como no `criar`.
 
 ### Revisão e gravação
 
@@ -225,7 +225,7 @@ regras vigentes e tarefas. `Gravar? [S/n/d]`.
   esperado e resultado obtido. O exemplo de reprodução é o primeiro critério, e a prova
   mecânica exige o teste vermelho na base.
 
-O avulso aceito vai a `ready` pelo gate de sempre; a tarefa de spec, pelo S6. O `run` não
+O avulso aceito vai a `ready` pelo gate de sempre; a tarefa de spec, pelo S6. O `rodar` não
 distingue as duas origens além da branch.
 
 ### Respostas da inbox
@@ -263,7 +263,7 @@ develop ─┬─ mabel/spec/exportar-csv ─┬─ tarefa #5 ┐
 | Spec | `mabel/spec/<slug>` | Base, quando a primeira tarefa começa | Merge de cada tarefa depois do G3 e da revisão (o `integrateItem` de hoje, com outro destino) |
 | Tarefa de spec | `mabel/item/<n>-…` (worktree, como hoje) | Branch da spec | — (apagada depois do merge na spec) |
 | Avulso | `mabel/avulso/<n>-<slug>` | Base | Os commits do próprio avulso; fica até a entrega (S5) |
-| Integração | `mabel/integracao` | Base, a cada `run` | Merge de cada unidade aberta; nunca é origem nem entrega |
+| Integração | `mabel/integracao` | Base, a cada `rodar` | Merge de cada unidade aberta; nunca é origem nem entrega |
 
 Dependência entre unidades: a tarefa que depende de outra unidade não entregue faz, antes
 de começar, o merge daquela unidade na sua (spec ou avulso). A entrega fica presa à da
@@ -273,7 +273,7 @@ Os merges do Mabel rodam com `-c rerere.enabled=true -c rerere.autoUpdate=true`:
 resolução que você fizer num conflito da base com uma unidade é reaplicada quando ele
 voltar.
 
-### Abertura do `run`
+### Abertura do `rodar`
 
 1. O que já existe: commit do `.mabel/` pendente na base, conferência das entregas.
 2. Unidade cuja branch está na base → entregue: tarefas a `done`, spec `entregue`, branch
@@ -299,7 +299,7 @@ voltar.
 
 `mabel rejeitar <n>` reverte a tarefa na branch da spec (dentro da spec, as tarefas se
 acumulam). No avulso, a branch volta ao commit da base e o item replaneja. A integração não
-precisa de revert: o próximo `run` a refaz.
+precisa de revert: o próximo `rodar` a refaz.
 
 ## Entrega
 
@@ -376,7 +376,7 @@ Todo commit de merge do Mabel leva `Mabel-Item: #5` e `Mabel-Unidade: exportar-c
 
 ## Relatório de run
 
-`.mabel/run.md` (S9), reescrito ao fim de cada tarefa e no fim do `run`: se o processo
+`.mabel/run.md` (S9), reescrito ao fim de cada tarefa e no fim do `rodar`: se o processo
 cair, o relatório mostra até onde foi. A notificação de fim de fila aponta para ele.
 
 ```markdown
@@ -407,12 +407,12 @@ develop (a1b2c3d) + 3 unidades · 1 de fora (login) · verificação: verde
 ```
 
 O `run.md` substitui o `integracao.md` (R1): a seção "Integração" e as unidades prontas
-cobrem o que ele mostra hoje, e o `mabel integracao` passa a mostrar as seções de unidade
+cobrem o que ele mostra hoje, e o `mabel entregar` passa a mostrar as seções de unidade
 do `run.md`.
 
 ## Migração
 
-Projeto com itens em `awaiting_merge` na `mabel/integracao` antiga: no primeiro `run` com
+Projeto com itens em `awaiting_merge` na `mabel/integracao` antiga: no primeiro `rodar` com
 este modelo, a branch vira a unidade `mabel/spec/legado` (spec sem arquivo, só para
 entrega), e esses itens passam a pertencer a ela. `mabel entregar legado` funciona como a
 entrega de hoje. Depois, a integração é refeita normalmente.
@@ -432,7 +432,7 @@ descrever garantia que o código ainda não impõe.
   ou da base (avulso, que mantém a branch até a entrega).
 - **G10**: "A unidade só recebe tarefa com done calculado." A integração é derivada:
   refeita pelo Mabel a partir da base, só para teste, nunca origem nem entrega. A base só
-  recebe o merge feito pelo humano, os commits do `.mabel/` que já existem e o do `nascer`.
+  recebe o merge feito pelo humano, os commits do `.mabel/` que já existem e o do `criar`.
   Na entrega, o Mabel commita na branch de entrega (nunca na base) o documento e as
   alterações no `regras.md`.
 - **Backlog e quadro**: linhas para `specs/`, `regras.md`, `entregas/` e `run.md`; o
@@ -451,7 +451,7 @@ Cada um termina com `npm run check` verde, critérios atendidos, `docs/PLANO.md`
 | S.2 | Documento de entrega versionado e trailers, ainda com a integração única. | G10 (commit na branch de entrega) |
 | S.3 | Specs: formato, parser, validação, `Spec:` e `Regras:` no backlog, contexto nos prompts, hash, gate do `ready`, respostas da inbox nas decisões da spec. | Vocabulário, tabela de arquivos, decisões do humano |
 | S.4 | Motor de especificação: `especificar` com Example Mapping, rodadas, `regras.md`, métricas de tamanho; `refinar` migrado para o motor (avulso e bug). | — |
-| S.5 | Branches por unidade, integração refeita no `run`, aviso de conflito, rerere, rejeição por unidade, migração do legado. | G5, G10, ciclo de vida |
+| S.5 | Branches por unidade, integração refeita no `rodar`, aviso de conflito, rerere, rejeição por unidade, migração do legado. | G5, G10, ciclo de vida |
 | S.6 | `entregar <unidade>`: prova da entrega, `--com`, `--parcial`, regras vigentes aplicadas, depois do merge por unidade. | G10 |
 
 S.1 e S.2 já valem com o modelo de hoje. S.3 e S.4 valem com a integração única (todas as
@@ -463,9 +463,9 @@ Com o `claude` falso, um remoto local (`git init --bare`) e o `gh` falso, como n
 anteriores.
 
 **S.1**
-1. Um `run` com três tarefas (uma concluída, uma em `needs_human`, uma com falha) grava o
+1. Um `rodar` com três tarefas (uma concluída, uma em `needs_human`, uma com falha) grava o
    `run.md` com as seções na ordem, e o arquivo existe depois da primeira tarefa.
-2. Um segundo `run` sobrescreve o arquivo; `run.md` está no `.gitignore` de projeto novo.
+2. Um segundo `rodar` sobrescreve o arquivo; `run.md` está no `.gitignore` de projeto novo.
 
 **S.2**
 3. `mabel entregar` grava o documento na branch de entrega, com decisões, suposições,
@@ -490,7 +490,7 @@ anteriores.
 
 **S.5**
 13. Duas specs: as tarefas de cada uma nascem da sua branch; a integração é refeita no
-    `run` com as duas.
+    `rodar` com as duas.
 14. Conflito entre as specs: aviso no `run.md` com a tarefa que o causou; as duas specs
     seguem.
 15. Conflito da `develop` com uma spec: a spec fica pausada, a outra segue.
@@ -502,13 +502,13 @@ anteriores.
     branch.
 19. Spec que depende de outra não entregue: recusa; `--com` entrega as duas.
 20. Entrega parcial pede confirmação (TTY) ou `--parcial`.
-21. Merge da entrega na base: o próximo `run` leva as tarefas a `done`, a spec a
+21. Merge da entrega na base: o próximo `rodar` leva as tarefas a `done`, a spec a
     `entregue`, e o `regras.md` da base tem as alterações.
 
 ## Fora desta entrega (vai para o `BACKLOG.md`)
 
 - Épicos e vínculos entre tarefas, quadro funcional (S10, já registrado).
-- `--json` e passos sem TTY do `especificar` para clientes, no desenho do `nascer`.
+- `--json` e passos sem TTY do `especificar` para clientes, no desenho do `criar`.
 - Limite de tamanho da spec, depois da análise de 2026-11-05.
 - Spec que enxerga o que outras specs abertas vão mudar nas regras vigentes.
 - Resolução de conflito pelo agente (hoje: aviso e humano).

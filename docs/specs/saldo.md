@@ -21,7 +21,7 @@ Termina com `npm run check` verde, critérios atendidos, `docs/CONTRATO.md` e
 | Ritmo da janela de 7 dias | O uso esperado é a fração da janela já decorrida. **Acima do ritmo** quando o uso depois da etapa passa do esperado em mais de **10 pontos**. Isso aparece no rodapé e é critério da política. |
 | Ritmo como critério | A fila pergunta. A autorização vale até o reset da janela de 5h em curso. Sem autorização, aguarda até o ritmo alcançar o uso e retoma sozinha. |
 | Precedência | 7 dias abaixo do piso → ritmo → 5h abaixo do piso. |
-| Visibilidade | Rodapé fixo na última linha do terminal, no modo Mabel e no `mabel run` com TTY. Fora de TTY ou com menos de 10 linhas, não há rodapé. |
+| Visibilidade | Rodapé fixo na última linha do terminal, no modo Mabel e no `mabel rodar` com TTY. Fora de TTY ou com menos de 10 linhas, não há rodapé. |
 
 ## Ritmo
 
@@ -78,7 +78,7 @@ onBalanceChange(listener): () => void      // o runner avisa a cada leitura grav
 5. Uso de 7 dias acima do ritmo pergunta pelo ritmo; fora de TTY, a fila espera até o
    ritmo alcançar e retoma (teste com relógio injetado).
 6. `renderBalanceFooter` cabe em `width` e marca leitura vencida.
-7. O rodapé fica ativo no modo Mabel e no `mabel run` com TTY; verificado num
+7. O rodapé fica ativo no modo Mabel e no `mabel rodar` com TTY; verificado num
    pseudo-terminal.
 8. `docs/CONTRATO.md` com a política nova.
 

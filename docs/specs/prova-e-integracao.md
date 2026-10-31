@@ -53,7 +53,7 @@ Decididas pelo usuário em 2026-10-13.
 | D7 | Contrato | Mudanças abaixo autorizadas. |
 | D8 | Ordem | Depois do passo 5. |
 | D9 | Teste único em Node | Vitest detectado pelo `package.json`; senão, node:test. Jest fica para quando um projeto real pedir. |
-| D10 | Relatório | `.mabel/integracao.md`, não versionado, e `mabel integracao` (`/integracao`). |
+| D10 | Relatório | `.mabel/integracao.md`, não versionado, e `mabel integracao` (hoje no `mabel entregar` sem unidade). |
 
 ## Mudanças no contrato
 
@@ -141,17 +141,17 @@ Plano antigo sem o campo: o critério fica **sem prova** (D4), com o motivo
 ### Configuração
 
 Dois campos novos no `config.json`, com valores padrão por stack no catálogo
-(`src/stacks.ts`) e gravados pelo `init`:
+(`src/stacks.ts`) e gravados pelo `preparar`:
 
 | Campo | Para quê | Node (node:test) | Node (Vitest) | Python | Go | Rust |
 |---|---|---|---|---|---|---|
 | `testeUnico` | Rodar um teste só. `{arquivo}`, `{pasta}` e `{nome}` são substituídos já com aspas de shell. | `node --test --test-name-pattern={nome} {arquivo}` | `npx vitest run {arquivo} -t {nome}` | `pytest {arquivo} -k {nome}` | `go test -run {nome} ./{pasta}` | `cargo test {nome}` |
 | `arquivosDeTeste` | Globs dos arquivos que são só de teste (testes, fixtures, helpers). | `**/*.test.*`, `**/*.spec.*`, `**/__tests__/**`, `test/**`, `tests/**` | igual | `tests/**`, `**/test_*.py`, `**/*_test.py`, `**/conftest.py` | `**/*_test.go`, `**/testdata/**` | `tests/**` |
 
-`init` detecta Vitest pelo `package.json` para escolher o `testeUnico`. Config sem
+`preparar` detecta Vitest pelo `package.json` para escolher o `testeUnico`. Config sem
 `testeUnico`: a prova cai para o **modo por item** (abaixo).
 
-Desde 2026-10-22: quando o `testeUnico` é o padrão do `node --test` gravado pelo `init` e o
+Desde 2026-10-22: quando o `testeUnico` é o padrão do `node --test` gravado pelo `preparar` e o
 `package.json` do item passa a usar Vitest (o item que estabelece a base de testes), a
 prova roda com `npx vitest run {arquivo} -t {padrao}` e o detalhe do gate registra o
 comando usado. O config é do humano e o agente não o altera; sem o ajuste, a prova rodaria
@@ -224,7 +224,7 @@ devolve o item."
 5. Worktree restaurado depois da prova, inclusive quando um comando lança erro; status
    sujo leva a `failed`.
 6. Modo por item sem `testeUnico`.
-7. Catálogo com `testeUnico` e `arquivosDeTeste` por stack; `init` grava os campos.
+7. Catálogo com `testeUnico` e `arquivosDeTeste` por stack; `preparar` grava os campos.
 8. Testado em repositório git temporário com um projeto Node mínimo (node:test).
 
 ## P.3 — Limpeza de worktrees e branches
@@ -235,14 +235,14 @@ Vale com e sem integração.
   retrabalho recria o worktree pela branch, como na retomada). Branch apagada
   (`git branch -D`) ao passar a `done`, depois de confirmar que está contida na base.
 - Com integração: worktree e branch apagados logo depois do merge na integração (P.4).
-- `run`, ao abrir: remove worktrees órfãos em `<dados>/worktrees/<projeto>/` de itens em
+- `rodar`, ao abrir: remove worktrees órfãos em `<dados>/worktrees/<projeto>/` de itens em
   `awaiting_merge`, `done` ou `cancelled` (`git worktree prune` em seguida).
 
 ### Critérios de aceite
 
 1. `awaiting_merge` sem worktree; retrabalho recria a partir da branch.
 2. `done` apaga a branch; branch não contida na base não é apagada (aviso no log).
-3. Órfãos removidos na abertura do `run`.
+3. Órfãos removidos na abertura do `rodar`.
 
 ## P.4 — Branch de integração
 
@@ -251,7 +251,7 @@ Vale com e sem integração.
 `integracao: string | null` no `config.json` (D1). Com integração, a branch de origem dos
 itens (`origem`) é a integração; sem ela, a base.
 
-### Abertura do `run`
+### Abertura do `rodar`
 
 Antes da fila, com a trava do projeto:
 
@@ -306,7 +306,7 @@ Com integração, a dependência é satisfeita por `done` ou por `awaiting_merge
 2. Item dependente de outro integrado inicia sem merge do humano.
 3. Integração que andou durante o item: merge limpo antes da verificação; conflito leva a
    `integration_conflict`.
-4. Merge da integração na base pelo humano: próximo `run` leva os itens a `done` e avança a
+4. Merge da integração na base pelo humano: próximo `rodar` leva os itens a `done` e avança a
    integração.
 5. Base e integração divergentes: merge limpo segue; conflito pausa com os arquivos.
 6. Integração aberta no checkout do humano: pausa com o motivo, nada é escrito.
@@ -316,8 +316,8 @@ Com integração, a dependência é satisfeita por `done` ou por `awaiting_merge
 
 ### Relatório
 
-`.mabel/integracao.md`, gerado a cada integração e na abertura do `run` (não versionado,
-como o `quadro.md`; entra no `.gitignore` criado pelo `init`). `mabel integracao` mostra o
+`.mabel/integracao.md`, gerado a cada integração e na abertura do `rodar` (não versionado,
+como o `quadro.md`; entra no `.gitignore` criado pelo `preparar`). `mabel entregar` mostra o
 mesmo conteúdo no terminal. Em português, decidível sem abrir o código.
 
 ```
@@ -453,6 +453,6 @@ por tentativa, mais as execuções dos testes.
 
 - Implementação da fase 2 (prova com agente), registrada no `BACKLOG.md`.
 - Métricas da auditoria: taxa de devolução pela prova e pela revisão, e casos em que o
-  revisor aprovou e o gate recusou. Entram com o `mabel runs` (2.3).
+  revisor aprovou e o gate recusou. Entram com o `mabel consultar` (2.3).
 - Merge automático na branch principal.
 - Reinstalar dependências para rodar a base quando o lockfile muda.

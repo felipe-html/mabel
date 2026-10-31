@@ -11,7 +11,7 @@ function inboxProject(backlog: string, responses: unknown[]) {
   ctx.project.config.verify = [{ name: 'existe', command: 'test -f src/soma.js' }];
   writeConfig(ctx.root, ctx.project.config);
   useScenario(ctx.root, responses);
-  const run = ctx.cli('run');
+  const run = ctx.cli('rodar');
   assert.equal(run.status, 0, run.stderr);
   const item = (number: number) => getItem(ctx.db, ctx.project.id, number)!;
   const reasons = (number: number) =>
@@ -79,7 +79,7 @@ test('item crítico: sem "deixar o agente decidir"; aprovar leva o item a planne
 
 test('pergunta de regra crítica: sem "deixar o agente decidir" na inbox (G7)', async () => {
   const p = setupProject('\n## Desconto\naplica desconto\n');
-  assert.equal(p.cli('status').status, 0);
+  assert.equal(p.cli('conferir').status, 0);
   const item = getItem(p.db, p.project.id, 1)!;
   const pending = { questions: [{ texto: 'Desconto máximo?', sugestao: '10%', regraCritica: true }] };
   p.db.prepare("UPDATE items SET status = 'needs_human', pending_kind = 'question_plan', pending = ? WHERE id = ?").run(JSON.stringify(pending), item.id);
@@ -179,12 +179,12 @@ test('pendência antiga com perguntas em texto continua legível', () => {
   assert.deepEqual(p.item(1).pending?.questions, [{ texto: 'Qual banco?', sugestao: '', regraCritica: false }]);
 });
 
-test('fora do TTY, mabel inbox só lista as pendências', () => {
+test('fora do TTY, mabel decidir só lista as pendências', () => {
   const p = inboxProject('\n## A\nprimeiro\n', [QUESTIONS]);
-  const result = p.cli('inbox');
+  const result = p.cli('decidir');
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /#1 A — needs_human/);
   assert.match(result.stdout, /\? Quais cômodos aparecem\?\n {4}sugestão: Sala e Cozinha/);
-  assert.match(result.stdout, /mabel inbox/);
+  assert.match(result.stdout, /mabel decidir/);
   assert.equal(p.item(1).status, 'needs_human');
 });

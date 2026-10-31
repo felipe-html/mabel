@@ -672,7 +672,7 @@ async function editReferences(db: DatabaseSync, project: Project, item: Item): P
   }
   const catalog = referenceCatalog(project.root, listItems(db, project.id));
   if (catalog.length === 0) {
-    process.stderr.write('Nenhuma referência capturada. Capture com `mabel referencia api` ou `mabel referencia tela`.\n');
+    process.stderr.write('Nenhuma referência capturada. Capture com `mabel capturar api` ou `mabel capturar tela`.\n');
     return 1;
   }
   process.stdout.write(`${style.bold(`#${item.number} ${item.title}`)}${style.dim(' · referências')}\n`);

@@ -9,7 +9,7 @@ export function lockPath(home: string, projectId: string): string {
 }
 
 /**
- * Trava de um `mabel run` por projeto: arquivo com o pid. Lock de processo morto é
+ * Trava de um `mabel rodar` por projeto: arquivo com o pid. Lock de processo morto é
  * descartado. Devolve a função que libera a trava.
  */
 export function acquireLock(home: string, projectId: string): () => void {
@@ -29,7 +29,7 @@ export function acquireLock(home: string, projectId: string): () => void {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
       const pid = Number(readFileSync(path, 'utf8').trim());
       if (Number.isInteger(pid) && pid > 0 && processAlive(pid)) {
-        throw new LockError(`Já há um \`mabel run\` neste projeto (pid ${pid}). Espere terminar ou interrompa-o.`);
+        throw new LockError(`Já há um \`mabel rodar\` neste projeto (pid ${pid}). Espere terminar ou interrompa-o.`);
       }
       rmSync(path, { force: true });
     }
@@ -37,7 +37,7 @@ export function acquireLock(home: string, projectId: string): () => void {
   throw new LockError(`Não foi possível obter a trava ${path}.`);
 }
 
-/** Pid do `mabel run` que segura a trava do projeto, se ele ainda estiver vivo. */
+/** Pid do `mabel rodar` que segura a trava do projeto, se ele ainda estiver vivo. */
 export function lockHolder(home: string, projectId: string): number | undefined {
   let pid: number;
   try {

@@ -41,7 +41,7 @@ function queue(responses: unknown[], backlog = THREE) {
 
 test('lote: os três planejamentos antes da primeira execução; a pergunta não segura os outros', () => {
   const q = queue([PLAN_OK, PLAN_Q, PLAN_OK, EXEC, REVIEW, EXEC, REVIEW]);
-  const run = q.cli('run');
+  const run = q.cli('rodar');
   assert.equal(run.status, 0, run.stderr);
   assert.deepEqual(q.stages(), ['plan#1', 'plan#2', 'plan#3', 'execute#1', 'review#1', 'execute#3', 'review#3']);
   assert.deepEqual(q.states(), [[1, 'awaiting_merge'], [2, 'needs_human'], [3, 'awaiting_merge']]);
@@ -106,7 +106,7 @@ test('oferta recusada: a fila segue sem esperar e não pergunta de novo; fora do
 
 test('--sem-lote, --item e --uma mantêm o item a item', async () => {
   const noBatch = queue([PLAN_OK, EXEC, REVIEW, PLAN_Q, PLAN_OK, EXEC, REVIEW]);
-  const run = noBatch.cli('run', '--sem-lote');
+  const run = noBatch.cli('rodar', '--sem-lote');
   assert.equal(run.status, 0, run.stderr);
   assert.deepEqual(noBatch.stages(), ['plan#1', 'execute#1', 'review#1', 'plan#2', 'plan#3', 'execute#3', 'review#3']);
   assert.doesNotMatch(run.stdout, /── planejamento/);
@@ -131,12 +131,12 @@ test('item aprovado em planned executa no próximo run, também item a item', as
   assert.deepEqual(q.states(), [[1, 'awaiting_merge']]);
 });
 
-test('quadro e mabel status mostram planned', () => {
+test('quadro e mabel conferir mostram planned', () => {
   const q = queue([]);
   q.db.prepare("UPDATE items SET status = 'planned' WHERE number = 2").run();
   const items = boardItems(q.db, q.project);
   const board = renderBoard('app', items, [], new Date(2026, 9, 12, 9, 0));
   assert.match(board, /## Na fila\n- #1 A — ready\n- #2 B — planned\n- #3 C — ready/);
   assert.match(renderBoardSummary('app', items)[0] ?? '', /na fila 3 \(planned 1\)/);
-  assert.match(q.cli('status').stdout, /na fila 3 \(planned 1\)/);
+  assert.match(q.cli('conferir').stdout, /na fila 3 \(planned 1\)/);
 });

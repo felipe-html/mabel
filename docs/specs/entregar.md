@@ -15,7 +15,7 @@ commit.
 
 | # | Tema | Decisão |
 |---|---|---|
-| E1 | O que é entregue | Um **snapshot** da integração: a branch `mabel/entrega/<AAAA-MM-DD>` (sufixo `-2`, `-3` se já existir) criada no commit atual da integração. O PR é dela, não da `mabel/integracao`: o `run` pode seguir integrando sem mudar o que está em revisão. |
+| E1 | O que é entregue | Um **snapshot** da integração: a branch `mabel/entrega/<AAAA-MM-DD>` (sufixo `-2`, `-3` se já existir) criada no commit atual da integração. O PR é dela, não da `mabel/integracao`: o `rodar` pode seguir integrando sem mudar o que está em revisão. |
 | E2 | Commit | Nenhum. Cada item já entra na integração por um commit de merge do Mabel, e o relatório não é versionado (D10). O "o que foi feito" vai no corpo do PR. |
 | E3 | Merge do PR | Só merge commit. Squash e rebase tiram os `integrated_commit` da história da base, e os itens nunca chegam a `done`. O comando recusa abrir o PR num repositório que não permite merge commit, e o corpo do PR avisa. |
 | E4 | Checkout | Troca para a base só o checkout da raiz do projeto, só se ele estiver na integração ou numa entrega, e só se não houver alteração em arquivo versionado. Fora disso, não mexe e diz por quê. |
@@ -47,12 +47,12 @@ mabel entregar
 1. Projeto com `integracao` ligada; sem ela, erro explicando que cada item fica na própria
    branch.
 2. Snapshot: `rev-parse` da integração uma vez; tudo daqui em diante usa esse commit, não a
-   branch (um `run` em andamento pode integrar outro item no meio). Não precisa da trava do
+   branch (um `rodar` em andamento pode integrar outro item no meio). Não precisa da trava do
    projeto.
 3. Itens: os de `integratedItems` calculados contra o snapshot (`<base>..<snapshot>`). Lista
    vazia → `Nada a entregar: a <integracao> não tem itens fora da <base>.` e sai sem criar
    nada.
-4. Entrega aberta (E6): antes, a mesma conferência da abertura do `run` ("Depois do
+4. Entrega aberta (E6): antes, a mesma conferência da abertura do `rodar` ("Depois do
    merge"); a que já está na base vira `merged` e não conta. Ainda aberta: mostra branch, itens e PR e sai com erro. Com `--substituir`, fecha
    o PR anterior (`gh pr close --comment "Substituído por <url nova>"`, depois de abrir o
    novo) e marca a entrega como `replaced`. Se o snapshot for igual ao da entrega aberta,
@@ -72,7 +72,7 @@ mabel entregar
    - no lugar de `Para levar à <base>: git merge --no-ff …`, o aviso
      `Faça o merge com "Create a merge commit": squash e rebase impedem o Mabel de dar os itens como concluídos.`;
    - acima de 60.000 caracteres (o limite do GitHub é 65.536), as seções dos itens são
-     cortadas do fim para o começo, com `… <n> itens sem detalhe aqui; rode mabel integracao.`
+     cortadas do fim para o começo, com `… <n> itens sem detalhe aqui; rode mabel entregar.`
      O "Olhe primeiro" nunca é cortado.
 10. PR: `gh pr create --base <base> --head mabel/entrega/<data> --title "<título>" --body-file <arquivo>`
     (`--draft` com `--rascunho`). Título: `Mabel: <n> itens (#3, #5, #7, #9)`, com os
@@ -96,7 +96,7 @@ mabel entregar
 
 ## Depois do merge
 
-Na abertura do `run`, depois do `openIntegration` e antes do `finishIntegrated`:
+Na abertura do `rodar`, depois do `openIntegration` e antes do `finishIntegrated`:
 
 1. Entrega `open` cujo commit está contido na base local → `merged`; a branch local da
    entrega é apagada (já está na base). A branch remota fica: o GitHub pode apagá-la
@@ -110,7 +110,7 @@ Na abertura do `run`, depois do `openIntegration` e antes do `finishIntegrated`:
    aconteceu e o conserto: `git merge --no-ff mabel/entrega/<data>` na base (traz os commits
    do Mabel para a história; o conteúdo já está lá). A entrega continua `open`.
 
-O passo 3 é o único que chama o `gh` no `run`, e só quando há entrega aberta e fora da base.
+O passo 3 é o único que chama o `gh` no `rodar`, e só quando há entrega aberta e fora da base.
 
 ## Rejeição com entrega aberta
 
@@ -120,7 +120,7 @@ O Mabel não mexe no PR sozinho.
 
 ## Relatório
 
-O `.mabel/integracao.md` e o `mabel integracao` ganham, abaixo do `git merge --no-ff`,
+O `.mabel/integracao.md` e o `mabel entregar` ganham, abaixo do `git merge --no-ff`,
 `ou: mabel entregar`, e, com entrega aberta, `Entrega aberta: <branch> · <url ou "sem PR">`.
 
 ## Banco
@@ -141,7 +141,7 @@ CREATE TABLE deliveries (
 ```
 
 Classificada como `project` em `src/projects.ts` (sai com o projeto). O diretório
-`<dados>/entregas/<projeto>` também entra na remoção. `mabel projeto <nome>` lista as
+`<dados>/entregas/<projeto>` também entra na remoção. `mabel auditar <nome>` lista as
 entregas (branch, itens, PR, estado).
 
 ## Contrato
@@ -169,10 +169,10 @@ Com um remoto local (`git init --bare`) e um `gh` falso no `PATH`, como o `claud
    o anterior.
 6. Checkout da raiz na integração e limpo → base; com alteração versionada → fica, com o
    aviso; em outra branch → fica, sem aviso.
-7. Merge da entrega na base: o próximo `run` marca `merged`, apaga a branch local e leva os
+7. Merge da entrega na base: o próximo `rodar` marca `merged`, apaga a branch local e leva os
    itens a `done`.
-8. PR integrado só no remoto: o `run` avisa para atualizar a base local.
-9. PR com squash (`gh` falso responde `MERGED`, commit fora da base): o `run` explica e
+8. PR integrado só no remoto: o `rodar` avisa para atualizar a base local.
+9. PR com squash (`gh` falso responde `MERGED`, commit fora da base): o `rodar` explica e
    mostra o conserto; a entrega segue `open`.
 10. `rejeitar` de item numa entrega aberta avisa sobre o `--substituir`.
 11. Remoção do projeto apaga `deliveries` e `<dados>/entregas/<projeto>`.

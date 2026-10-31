@@ -21,7 +21,7 @@ planejamento, como o resto do conteúdo do item.
 | Lugar | `.mabel/referencias/`, junto ao backlog, versionado. |
 | Snapshot mudou | Item não iniciado é tratado como alterado (o hash inclui os arquivos). Item iniciado segue com a cópia do início. |
 | Rede na execução | O backend dev não entra em `rede`. Os testes usam dados do snapshot; teste contra o dev é validação humana. |
-| Ordem | Campo `Referências:` e gate do `ready`; depois `mabel referencia api`; por último `mabel referencia tela` (Figma), num commit separado para desfazer fácil. |
+| Ordem | Campo `Referências:` e gate do `ready`; depois `mabel capturar api`; por último `mabel capturar tela` (Figma), num commit separado para desfazer fácil. |
 
 ## Arquivos
 
@@ -96,13 +96,13 @@ início. A cópia é do item, entra na remoção do projeto com o resto de `item
 - Refinamento: o cwd é a raiz do projeto; o prompt lista os caminhos em
   `.mabel/referencias/`, sem cópia.
 
-## `mabel referencia`
+## `mabel capturar`
 
 ```
-mabel referencia                       lista as referências e os itens que as citam
-mabel referencia api <nome> <url>      baixa o OpenAPI e grava o snapshot
-mabel referencia tela <nome> <url-figma> [--escala <n>]   exporta o frame do Figma
-mabel referencia tela <nome> --png <arquivo>              grava um PNG exportado à mão
+mabel capturar                       lista as referências e os itens que as citam
+mabel capturar api <nome> <url>      baixa o OpenAPI e grava o snapshot
+mabel capturar tela <nome> <url-figma> [--escala <n>]   exporta o frame do Figma
+mabel capturar tela <nome> --png <arquivo>              grava um PNG exportado à mão
 ```
 
 ### `api`
@@ -135,16 +135,16 @@ mabel referencia tela <nome> --png <arquivo>              grava um PNG exportado
   token de quem tem acesso de leitura; PNG de 2880×2124 e `tela.md` com 70 textos e 17
   cores. O nome da tela é do humano e descreve a tela (`home-operador`), não o item.
 
-### Validade do token (`mabel credencial`)
+### Validade do token (`mabel credenciar`)
 
 Decisão do usuário (2026-10-23): a data fica num comando do Mabel, não no arquivo do token.
 
-- `mabel credencial figma --expira <AAAA-MM-DD>` grava `{ expira, registradoEm }` em
+- `mabel credenciar figma --expira <AAAA-MM-DD>` grava `{ expira, registradoEm }` em
   `~/.mabel/credenciais.json` (global, fora da remoção de projeto). O token não é gravado.
-- `mabel credencial` lista cada credencial conhecida: variável definida ou ausente, data e
+- `mabel credenciar` lista cada credencial conhecida: variável definida ou ausente, data e
   dias que faltam (ou "validade não registrada").
-- Aviso a partir de 14 dias do fim (dias de calendário no fuso local): no `status` e antes
-  da captura pelo Figma no `referencia tela`. Vencido pela data registrada, o 403 do Figma
+- Aviso a partir de 14 dias do fim (dias de calendário no fuso local): no `conferir` e antes
+  da captura pelo Figma no `capturar tela`. Vencido pela data registrada, o 403 do Figma
   vem acompanhado do aviso de vencimento.
 
 ## Critérios de aceite
@@ -158,18 +158,18 @@ Decisão do usuário (2026-10-23): a data fica num comando do Mabel, não no arq
    `$ref` alcançados); a segunda entrada não a altera.
 5. As runs de planejamento, execução e revisão recebem `--add-dir` e a seção
    "Referências"; o refinamento recebe os caminhos da raiz.
-6. `referencia api` grava o snapshot, converte a URL do swagger-ui do Quarkus, recusa
+6. `capturar api` grava o snapshot, converte a URL do swagger-ui do Quarkus, recusa
    resposta que não é OpenAPI JSON e relata operações novas e removidas.
-7. `referencia tela` com `FIGMA_TOKEN` grava `tela.png` e `tela.md`; sem token, erro com a
+7. `capturar tela` com `FIGMA_TOKEN` grava `tela.png` e `tela.md`; sem token, erro com a
    alternativa; `--png` funciona sem rede.
-8. `referencia` sem argumentos lista as referências e os itens que as citam.
-9. `credencial figma --expira` registra a data; `status` e `referencia tela` avisam a 14
+8. `capturar` sem argumentos lista as referências e os itens que as citam.
+9. `credenciar figma --expira` registra a data; `conferir` e `capturar tela` avisam a 14
    dias do fim e depois do vencimento.
 
 ## Fora desta entrega (vai para o `BACKLOG.md`)
 
 - Refinamento propondo referências.
-- `add` com `--referencia`.
+- `adicionar` com `--referencia`.
 - Validação visual na inbox: captura do Playwright ao lado do PNG da tela.
 - Mocks gerados do snapshot (MSW ou fixtures) como passo do `setup`.
 - Telas com vários frames num comando só.

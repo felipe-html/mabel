@@ -18,6 +18,12 @@ aceite atendidos, `docs/PLANO.md` atualizado e um commit.
 
 ## Incremento 2.4 — Modo Mabel
 
+> **Substituído pelo novo terminal** (`docs/specs/terminal.md`, incremento T.2, em
+> 2026-10-31): `mabel` sem argumentos no TTY abre a tela inicial com a lista de comandos
+> navegável e o filtro; o modo com `/`, o autocompletar abaixo do prompt e o histórico
+> saíram, e os comandos ganharam nomes novos (`init` virou `preparar`, `add` virou
+> `adicionar`…). O texto abaixo fica como registro do que foi feito.
+
 `mabel` sem argumentos, em TTY, entra no modo Mabel: um laço de prompt que executa
 comandos sem o prefixo `mabel`. Fora de TTY, imprime a lista de comandos (como hoje).
 `mabel <comando> [args]` continua funcionando para scripts e para o autocompletar do zsh.

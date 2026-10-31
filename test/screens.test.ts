@@ -154,7 +154,7 @@ test('lista repetível na revisão: enter abre Manter, Editar, Remover; Editar a
 const FORM: FormConfig = {
   title: 'Rodar a fila',
   description: 'Planeja os itens prontos e depois executa um por um.',
-  command: 'run',
+  command: 'rodar',
   fields: [
     { type: 'choice', key: 'modo', label: 'Modo', options: [['', 'fila inteira'], ['item', 'só um item']] },
     { type: 'text', key: 'limite', label: 'Quantos itens', placeholder: 'todos os prontos', when: (v) => v.modo !== 'item' },
@@ -169,7 +169,7 @@ const FORM: FormConfig = {
     { type: 'bool', key: 'fundo', label: 'Em segundo plano' },
   ],
   action: 'Rodar',
-  shell: (v) => shellLine(['mabel', 'run', ...(v.item ? ['--item', String(v.item)] : []), ...(v.fundo ? ['--fundo'] : [])]),
+  shell: (v) => shellLine(['mabel', 'rodar', ...(v.item ? ['--item', String(v.item)] : []), ...(v.fundo ? ['--fundo'] : [])]),
 };
 
 function formRun(config: FormConfig, keyList: Key[], start: FormState = formState(config)) {
@@ -186,12 +186,12 @@ test('formulário: ← → trocam a escolha, campo condicional aparece, espaço 
   const state = formRun(FORM, [{ name: 'right' }, { name: 'down' }, { name: 'return' }, { name: 'return' }, { name: 'down' }, { name: 'space' }]) as FormState;
   assert.deepEqual(state.values, { modo: 'item', fundo: true, item: '14' });
   const text = renderForm(FORM, state, plainStyle, 88).join('\n');
-  assert.match(text, /‹ Rodar a fila +mabel run/);
+  assert.match(text, /‹ Rodar a fila +mabel rodar/);
   assert.match(text, /Modo +◂ só um item ▸/);
   assert.doesNotMatch(text, /Quantos itens/);
   assert.match(text, /Item +#14 {2}Histórico +▸/);
   assert.match(text, /› Em segundo plano +\[x\] sim/);
-  assert.match(text, /\$ mabel run --item 14 --fundo/);
+  assert.match(text, /\$ mabel rodar --item 14 --fundo/);
   assert.match(text, / ↑↓ campos {2}enter editar {2}←→ opções {2}espaço marca {2}esc volta $/);
 });
 
@@ -234,7 +234,7 @@ test('Adicionar um item: campos do protótipo, linha de shell e os campos do bac
     ['Título', 'Intenção', 'Critérios de aceite', 'Fora do escopo', 'Depende de', 'Restrições'],
   );
   const values = { title: 'Exportar pedidos', intent: 'Abrir no Excel', criteria: ['Uma linha por pedido'], dependsOn: ['2'], restrictions: '' };
-  assert.equal(addShell(values), 'mabel add "Exportar pedidos" --intencao "Abrir no Excel" --criterio "Uma linha por pedido" --depende 2');
+  assert.equal(addShell(values), 'mabel adicionar "Exportar pedidos" --intencao "Abrir no Excel" --criterio "Uma linha por pedido" --depende 2');
   assert.deepEqual(fieldsFromForm(values), {
     title: 'Exportar pedidos',
     intent: 'Abrir no Excel',
@@ -257,7 +257,7 @@ test('ações que apagam: botão vermelho em cancelar e rejeitar; remover projet
   const wrong = formRun(removal, [{ name: 'return' }, ...typing('loja'), { name: 'return' }, { name: 'down' }, { name: 'return' }]) as FormState;
   assert.equal(wrong.message, 'O nome digitado não confere com o projeto escolhido.');
   assert.deepEqual(formRun(removal, [...typing('-api'), { name: 'return' }, { name: 'down' }, { name: 'return' }], { ...wrong, cursor: 0 }), { submit: { confirma: 'loja-api' } });
-  assert.match(renderForm(removal, wrong, plainStyle).join('\n'), /\$ mabel projeto remover loja-api --confirmar loja/);
+  assert.match(renderForm(removal, wrong, plainStyle).join('\n'), /\$ mabel auditar remover loja-api --confirmar loja/);
 });
 
 // Vista e rodapé -------------------------------------------------------------------------
@@ -266,8 +266,8 @@ test('vista: só leitura, enter ou esc voltam', () => {
   assert.deepEqual(viewStep({ name: 'return' }), { done: true });
   assert.deepEqual(viewStep({ name: 'escape' }), { done: true });
   assert.deepEqual(viewStep({ sequence: 'q' }), { state: null });
-  const lines = renderView('Conferir o estado', ['  Fila    parada'], plainStyle, 60, 'status');
-  assert.match(lines[0] ?? '', /^ {2}‹ Conferir o estado +mabel status {2}$/);
+  const lines = renderView('Conferir o estado', ['  Fila    parada'], plainStyle, 60, 'conferir');
+  assert.match(lines[0] ?? '', /^ {2}‹ Conferir o estado +mabel conferir {2}$/);
   assert.equal(lines.at(-1), ' enter volta  esc volta ');
 });
 

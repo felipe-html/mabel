@@ -1,7 +1,7 @@
 # Especificação — Inbox
 
 Achado do teste com o `ferias-planner`: os 3 itens pararam em `needs_human` no
-planejamento, e a única forma de responder era `mabel item <n>` seguido de
+planejamento, e a única forma de responder era `mabel detalhar <n>` seguido de
 `mabel responder <n> "..."`, um item por vez. A inbox junta as pendências de todos os
 itens num só fluxo, pergunta por pergunta, e devolve a esteira para a fila.
 
@@ -20,7 +20,7 @@ commit.
 | "Decide você" | Devolve a pergunta ao agente, que decide e registra como suposição. Indisponível em `critical_approval`, porque G2 e G7 exigem decisão humana ali. |
 | Motivos cobertos | Todos os `pending_kind`, cada um com as opções que lhe cabem (tabela abaixo). |
 | Fim da inbox | Pergunta "Retomar a esteira agora? [S/n]". |
-| Fim do `run` | Se a fila terminar com itens em `needs_human` num TTY, oferece abrir a inbox. Fluxo: run → inbox → run. |
+| Fim do `rodar` | Se a fila terminar com itens em `needs_human` num TTY, oferece abrir a inbox. Fluxo: run → inbox → run. |
 
 ## Esquema
 
@@ -34,7 +34,7 @@ O prompt continua pedindo no máximo 3 perguntas de uma linha (pedido, não gara
 ## Fluxo
 
 ```
-/inbox
+`mabel decidir`
   3 itens aguardando você
 
   #2 Template genérico inicial · perguntas do planejamento
@@ -53,7 +53,7 @@ O prompt continua pedindo no máximo 3 perguntas de uma linha (pedido, não gara
 
 - Itens em ordem de número. Item pulado continua em `needs_human`.
 - Ctrl+C sai sem gravar o item em andamento; os itens já concluídos ficam gravados.
-- Fora do TTY, `mabel inbox` só lista as pendências (o mesmo conteúdo de `mabel item`) e
+- Fora do TTY, `mabel decidir` só lista as pendências (o mesmo conteúdo de `mabel detalhar`) e
   sai com código 0.
 
 ## Opções por motivo
@@ -74,7 +74,7 @@ etapas trata essa frase como delegação explícita. Pergunta de regra crítica 
 ## Sem TTY: `mabel responder <n> --respostas <arquivo.json>`
 
 Para um cliente responder item a item sem montar o texto `P1/R1`. O arquivo é uma lista,
-uma resposta por pergunta na ordem do `inbox --json`, ou o objeto
+uma resposta por pergunta na ordem do `decidir --json`, ou o objeto
 `{"perguntas": [...], "suposicoes_criticas": null | "<correção>"}`, exigido quando o item
 tem suposições críticas.
 
@@ -82,7 +82,7 @@ tem suposições críticas.
 |---|---|---|
 | texto | responde | corrige as suposições |
 | `null` ou vazio | aceita a sugestão (recusado sem sugestão) | confirma as suposições |
-| `resposta_decidir` do `inbox --json` | "decide você" (recusado em regra crítica) | recusado |
+| `resposta_decidir` do `decidir --json` | "decide você" (recusado em regra crítica) | recusado |
 
 A CLI monta o mesmo texto da inbox do TTY; `--replanejar` vale como na forma em texto.
 Com `--json`, devolve `{"item": {"numero", "titulo", "estado"}}` com o estado depois da
@@ -90,12 +90,12 @@ resposta.
 
 ## Critérios de aceite
 
-1. `/inbox` percorre todos os itens em `needs_human`, na ordem, com as opções da tabela.
+1. ``mabel decidir`` percorre todos os itens em `needs_human`, na ordem, com as opções da tabela.
 2. Respostas de um item viram uma única chamada a `respond`, com o texto `P/R`; a
    transição grava `humano: inbox …`.
 3. `d` não aparece em `critical_approval`.
-4. Ao final, `[S/n]` com S inicia a fila como `/run`; n volta ao prompt.
-5. `/run` que termina com itens em `needs_human` num TTY oferece abrir a inbox.
+4. Ao final, `[S/n]` com S inicia a fila como o `rodar`; n volta ao prompt.
+5. O `rodar` que termina com itens em `needs_human` num TTY oferece abrir a inbox.
 6. Esquema novo validado com o `claude` falso; pendência antiga em string continua legível.
 7. Testes num pseudo-terminal ou com entrada simulada cobrindo enter, texto, `d`, `p` e
    Ctrl+C.

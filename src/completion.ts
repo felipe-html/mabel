@@ -137,7 +137,7 @@ export function commandsJson(commands: Command[]): Record<string, unknown> {
       nome: command.name,
       descricao: command.description,
       uso: command.usage,
-      soNoShell: command.shellOnly ?? false,
+      soNoShell: !command.menu,
       argumentos: (command.args ?? []).map((arg) => ({
         nome: arg.name,
         descricao: arg.description,
