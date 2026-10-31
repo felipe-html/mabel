@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { git } from '../src/git.ts';
 import { getItem, syncBacklog } from '../src/items.ts';
-import { type PipelineEnv, advanceItem } from '../src/pipeline.ts';
+import { type PipelineEnv, advanceItem, hostEnvironmentSign } from '../src/pipeline.ts';
 import { DEFAULT_TEST_GLOBS, readConfig } from '../src/project.ts';
 import { type ProofInput, proofDetail, runProof, singleTestCommand, testRan, withBaseCode } from '../src/proof.ts';
 import type { ExecuteOutput, PlanOutput } from '../src/schemas/stages.ts';
@@ -254,6 +254,35 @@ test('teste que não roda no item volta ao executor com o log; na segunda vez se
   const retry = p.log()[2]?.argv.at(-1) ?? '';
   assert.match(retry, /A prova não conseguiu rodar o teste `soma\(2, 3\) devolve 5` \(C1\) no item\. Últimas linhas:\nKeycloak não respondeu/);
   assert.deepEqual(p.gates('environment').map((g) => ({ ...g, detail: undefined })), [{ attempt: 2, passed: 0, detail: undefined }]);
+});
+
+const DOCKER_DOWN = 'Cannot connect to the Docker daemon at unix:///docker.sock. Is the docker daemon running?';
+
+test('hostEnvironmentSign: só a máquina que falhou antes do código, não a conexão recusada', () => {
+  assert.equal(hostEnvironmentSign(`pull keycloak\n${DOCKER_DOWN}\nError: Command failed`), DOCKER_DOWN);
+  assert.equal(hostEnvironmentSign('getaddrinfo EAI_AGAIN registry.npmjs.org'), 'getaddrinfo EAI_AGAIN registry.npmjs.org');
+  assert.equal(hostEnvironmentSign('connect ECONNREFUSED 127.0.0.1:3000\nnot ok 1'), undefined);
+});
+
+test('verify que não roda por ambiente da máquina: a tentativa conta e, na segunda seguida, para no humano', async () => {
+  const verify = [{ name: 'test', command: `echo '${DOCKER_DOWN}'; exit 1` }];
+  const p = proofPipeline([PLAN_NOVO, executeWith(STRONG_TEST), executeWith(STRONG_TEST)], NODE_TEST, verify);
+  assert.deepEqual(await p.advance(), { kind: 'stopped', status: 'needs_human' });
+  assert.equal(p.item().pendingKind, 'environment_block');
+  assert.equal(p.item().attempts, 2);
+  assert.match(p.item().pending?.reason ?? '', /^duas tentativas seguidas em que os testes não chegaram a rodar; a última na verificação do Mabel, fora do sandbox: Cannot connect to the Docker daemon/);
+  const retry = p.log()[2]?.argv.at(-1) ?? '';
+  assert.match(retry, /A verificação do Mabel, fora do sandbox, não chegou a rodar o código: `echo .*` falhou no ambiente da máquina/);
+  assert.equal(p.log().length, 3, 'nenhuma execução com o modelo escalonado');
+  assert.deepEqual(p.gates('environment').map((g) => ({ ...g, detail: undefined })), [{ attempt: 2, passed: 0, detail: undefined }]);
+});
+
+test('verify que não roda por ambiente uma vez e depois passa segue o item', async () => {
+  const flag = join(mkdtempSync(join(tmpdir(), 'mabel-docker-')), 'subiu');
+  const verify = [{ name: 'test', command: `if [ -f '${flag}' ]; then node --test; else touch '${flag}'; echo '${DOCKER_DOWN}'; exit 1; fi` }];
+  const p = proofPipeline([PLAN_NOVO, executeWith(STRONG_TEST), executeWith(STRONG_TEST), { structured_output: REVIEW_OK }], NODE_TEST, verify);
+  assert.deepEqual(await p.advance(), { kind: 'stopped', status: 'awaiting_merge' });
+  assert.deepEqual(p.gates('environment'), []);
 });
 
 test('impedimento com verify vazio: a prova confere fora do sandbox', async () => {

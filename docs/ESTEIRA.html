@@ -514,10 +514,11 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
         <i class="arm" aria-hidden="true"></i>
         <span class="kicker">Gate de verificação · G3</span>
         <h4>Comandos <code>verify</code> do projeto</h4>
-        <p>Cada comando roda no worktree; o log vai para <code>verificacao-N/</code>.</p>
+        <p>Cada comando roda no worktree; o log vai para <code>verificacao-N/</code>. Falha com sinal de ambiente da máquina no log grava <code>verificacao-N.json</code> com <code>naoRodou</code>: a tentativa conta, e o executor recebe que não é falha do código.</p>
       </div>
       <div class="exits">
         <div class="exit retry"><span class="k">↺ reprova</span><span>comando saiu com código ≠ 0; com impedimento declarado, o executor recebe o log de fora do sandbox</span></div>
+        <div class="exit human"><span class="k">needs_human · environment_block</span><span>log com sinal de ambiente da máquina (Docker parado, DNS): o teste não chegou a rodar; na segunda tentativa seguida em que os testes não rodaram (aqui ou na prova)</span></div>
       </div>
       <!-- 17 -->
       <div class="node gate">
