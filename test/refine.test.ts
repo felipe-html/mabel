@@ -3,7 +3,6 @@ import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { test } from 'node:test';
 import type { DatabaseSync } from 'node:sqlite';
-import { Interrupted } from '../src/ask.ts';
 import { BACKLOG_TEMPLATE, parseBacklog, renderItemBlock, replaceItemBlock } from '../src/backlog.ts';
 import { contentHash, getItem, syncBacklog, transition } from '../src/items.ts';
 import { startGate } from '../src/pipeline.ts';
@@ -20,7 +19,7 @@ import {
 } from '../src/refine.ts';
 import type { PlanOutput, SpecifyOutput } from '../src/schemas/stages.ts';
 import { executePrompt, planPrompt, reviewPrompt } from '../src/stages.ts';
-import { EXECUTION, PLAN as PLAN_FIXTURE, setupProject, useScenario } from './helpers.ts';
+import { EXECUTION, type GuidedAnswer, PLAN as PLAN_FIXTURE, scriptedGuided, setupProject, useScenario } from './helpers.ts';
 
 const PLAN = PLAN_FIXTURE as PlanOutput;
 
@@ -80,22 +79,9 @@ function seedBalance(db: DatabaseSync) {
   insert.run(new Date(now).toISOString(), 'seven_day', 0.1, new Date(now + 6 * 86400_000).toISOString(), 'allowed');
 }
 
-/** Respostas roteirizadas, na ordem; `null` simula ctrl+c. */
-function scriptedIO(answers: (string | null)[]): ReviewIO & { lines: string[]; prompts: string[] } {
-  const lines: string[] = [];
-  const prompts: string[] = [];
-  return {
-    lines,
-    prompts,
-    write: (line) => lines.push(line),
-    ask: async (prompt) => {
-      prompts.push(prompt);
-      if (answers.length === 0) throw new Error(`pergunta sem resposta roteirizada: ${prompt}`);
-      const answer = answers.shift() as string | null;
-      if (answer === null) throw new Interrupted();
-      return answer;
-    },
-  };
+/** Respostas roteirizadas da interface guiada; sem respostas, simula o ctrl+c. */
+function scriptedIO(answers: GuidedAnswer[]): ReviewIO & { lines: string[]; prompts: string[] } {
+  return scriptedGuided(answers);
 }
 
 function setup() {
@@ -240,13 +226,14 @@ test('S.4 critério 11: refinar responde em rodadas, grava critérios e decisõe
   const item = getItem(db, project.id, 1);
   assert.ok(item);
   const io = scriptedIO([
-    '', // pergunta 1: aceita a sugestão
-    'Ponto e vírgula', // pergunta 2: responde
-    '', // história
-    '', // regras
-    '', // decisões
-    '-', // fora do escopo: descarta
-    '', // grava
+    'Aceitar a sugestão', // pergunta 1
+    'Responder', // pergunta 2
+    'Ponto e vírgula',
+    'Aceitar', // história
+    'Aceitar tudo', // regras
+    'Aceitar tudo', // decisões
+    'Descartar', // fora do escopo
+    'Gravar',
   ]);
   assert.equal(await refineItem(db, home, project, item, {}, io), 0);
 
@@ -264,7 +251,7 @@ test('S.4 critério 11: refinar responde em rodadas, grava critérios e decisõe
   assert.equal(updated?.status, 'ready');
   assert.equal(updated && situation(db, updated), 'refinado');
   // Já refinado: no terminal, pergunta antes de gastar outra run.
-  assert.equal(await refineItem(db, home, project, updated as NonNullable<typeof updated>, {}, scriptedIO(['n'])), 0);
+  assert.equal(await refineItem(db, home, project, updated as NonNullable<typeof updated>, {}, scriptedIO(['Voltar'])), 0);
   assert.equal(db.prepare("SELECT count(*) AS n FROM runs WHERE stage = 'specify'").get()?.n, 2);
   assert.match(io.lines.join('\n'), /✓ #1 refinado: 3 critérios · 2 decisões · ready/);
 });
@@ -292,18 +279,18 @@ test('S.4 critério 11: bug exige o critério de reprodução, pedido na mesma s
   assert.equal(item?.kind, 'bug');
 });
 
-test('refinar: n mantém a proposta, d descarta, ctrl+c a deixa pendente', async () => {
+test('refinar: deixar pendente mantém a proposta, descartar a descarta, ctrl+c a deixa pendente', async () => {
   const { db, home, project, root, path } = setup();
   useScenario(root, [{ structured_output: FINAL }]);
   const before = readFileSync(path, 'utf8');
   const item = getItem(db, project.id, 1);
   assert.ok(item);
 
-  assert.equal(await refineItem(db, home, project, item, {}, scriptedIO(['', '', '', '', 'n'])), 0);
+  assert.equal(await refineItem(db, home, project, item, {}, scriptedIO(['Aceitar', 'Aceitar tudo', 'Aceitar tudo', 'Aceitar tudo', 'Deixar a proposta pendente'])), 0);
   assert.equal(situation(db, item), 'proposta pendente');
-  assert.equal(await refineItem(db, home, project, item, {}, scriptedIO(['', null])), 130);
+  assert.equal(await refineItem(db, home, project, item, {}, scriptedIO(['Aceitar'])), 130);
   assert.equal(situation(db, item), 'proposta pendente');
-  assert.equal(await refineItem(db, home, project, item, {}, scriptedIO(['', '', '', '', 'd'])), 0);
+  assert.equal(await refineItem(db, home, project, item, {}, scriptedIO(['Aceitar', 'Aceitar tudo', 'Aceitar tudo', 'Aceitar tudo', 'Descartar a proposta'])), 0);
   assert.equal(situation(db, item), 'descartado');
   assert.equal(readFileSync(path, 'utf8'), before);
 });

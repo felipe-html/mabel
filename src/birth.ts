@@ -13,6 +13,8 @@ import { formatCost, formatWhen, truncate } from './format.ts';
 import { projectContext } from './hermetic.ts';
 import { type ItemFields, renderItemBlock } from './backlog.ts';
 import { git } from './git.ts';
+import { SAVE_KINDS, SAVE_OPTIONS } from './engine.ts';
+import { answerQuestion, confirmAction, reviewEntries } from './guided.ts';
 import { DELEGATE } from './inbox.ts';
 import { TEST_BASE_TITLE, createProject } from './init.ts';
 import { isoLocal, writeJson } from './json.ts';
@@ -523,8 +525,8 @@ export function proposalLines(name: string, output: BirthOutput, site: Pick<Birt
 // Perguntas no terminal ------------------------------------------------------------------
 
 /**
- * Perguntas uma a uma: enter aceita a sugestão, texto responde, `d` deixa a decisão ao
- * agente (salvo em regra crítica, que é decisão humana). Ctrl+C lança `Interrupted`.
+ * Perguntas uma a uma: aceitar a sugestão, responder ou deixar o agente decidir (salvo em
+ * regra crítica, que é decisão humana). Ctrl+C lança `Interrupted`.
  */
 export async function askQuestions(io: ReviewIO, output: BirthOutput): Promise<AnswerPair[]> {
   for (const line of understandingLines(output)) io.write(line);
@@ -534,20 +536,8 @@ export async function askQuestions(io: ReviewIO, output: BirthOutput): Promise<A
   for (const [i, q] of output.perguntas.entries()) {
     io.write(`${INDENT}${i + 1}/${output.perguntas.length} ${q.texto}${q.regraCritica ? style.dim(' (regra crítica)') : ''}`);
     if (q.sugestao) io.write(`${INDENT}    sugestão: ${q.sugestao}`);
-    const hint = [q.sugestao ? 'enter aceita a sugestão' : '', 'texto responde', q.regraCritica ? '' : 'd decide você'].filter(Boolean).join(' · ');
-    for (;;) {
-      const answer = (await io.ask(`${INDENT}    › ${style.dim(hint)}: `)).trim();
-      if (answer.toLowerCase() === 'd' && !q.regraCritica) {
-        pairs.push({ question: q.texto, answer: DELEGATE });
-        break;
-      }
-      const chosen = answer || q.sugestao;
-      if (chosen && !(answer.toLowerCase() === 'd')) {
-        pairs.push({ question: q.texto, answer: chosen });
-        break;
-      }
-      io.write(style.dim(`${INDENT}    ${q.regraCritica ? 'regra crítica: a resposta é sua' : 'sem sugestão: digite a resposta ou d'}`));
-    }
+    const result = await answerQuestion(io, { sugestao: q.sugestao, delegate: !q.regraCritica });
+    pairs.push({ question: q.texto, answer: 'answer' in result ? result.answer : DELEGATE });
   }
   return pairs;
 }
@@ -585,27 +575,14 @@ export function missingTests(root: string): boolean {
 
 const PREVIEW_LINES = 12;
 
-async function choice(io: ReviewIO, prompt: string, valid: string[]): Promise<string> {
-  for (;;) {
-    const answer = (await io.ask(`${INDENT}› ${prompt}: `)).trim().toLowerCase();
-    if (valid.includes(answer)) return answer;
-    io.write(style.dim(`${INDENT}responda ${valid.map((entry) => entry || 'enter').join(', ')}`));
-  }
-}
-
 async function reviewStack(io: ReviewIO, proposal: BirthProposal, fixed: boolean): Promise<Pick<BirthProposal, 'stack' | 'stackMotivo'>> {
   io.write('');
   io.write(`${style.bold('Stack:')} ${stackText(proposal.stack)}${proposal.stackMotivo ? ` — ${proposal.stackMotivo}` : ''}`);
   if (fixed) return proposal;
-  if ((await choice(io, 'enter aceita · s escolhe outra', ['', 's'])) === '') return proposal;
-  const options = [...STACKS.map((stack) => `${stack.id} — ${stack.label}`), `${OTHER_STACK} — fora do catálogo`];
-  options.forEach((option, i) => io.write(`${INDENT}${i + 1}. ${option}`));
-  for (;;) {
-    const answer = Number((await io.ask(`${INDENT}número: `)).trim());
-    const stack = Number.isInteger(answer) ? (STACKS[answer - 1]?.id ?? (answer === options.length ? OTHER_STACK : undefined)) : undefined;
-    if (stack) return { stack, stackMotivo: 'escolhida na revisão' };
-    io.write(style.dim(`${INDENT}escolha de 1 a ${options.length}`));
-  }
+  if ((await io.choose(['Aceitar a stack', 'Escolher outra'])) === 0) return proposal;
+  const options = [...STACKS.map((stack) => ({ label: stack.label, hint: stack.id })), { label: 'Outra', hint: `${OTHER_STACK}, fora do catálogo` }];
+  const chosen = await io.choose(options);
+  return { stack: STACKS[chosen]?.id ?? OTHER_STACK, stackMotivo: 'escolhida na revisão' };
 }
 
 async function reviewClaudeMd(io: BirthIO, proposal: BirthProposal, existing: boolean): Promise<string> {
@@ -624,18 +601,23 @@ async function reviewClaudeMd(io: BirthIO, proposal: BirthProposal, existing: bo
     io.write(style.bold('CLAUDE.md: nenhum proposto'));
     return '';
   }
-  const actions = io.edit ? 'enter aceita · v mostra tudo · e edita no $EDITOR · - não cria' : 'enter aceita · v mostra tudo · - não cria';
   for (let full = false; ; ) {
     const lines = text.trimEnd().split('\n');
     io.write(style.bold(`CLAUDE.md (novo, ${lines.length} linhas)`));
     const shown = full ? lines : lines.slice(0, PREVIEW_LINES);
     for (const line of shown) io.write(`${INDENT}${line}`);
     if (shown.length < lines.length) io.write(style.dim(`${INDENT}… mais ${lines.length - shown.length} linhas`));
-    const answer = await choice(io, actions, ['', 'v', '-', ...(io.edit ? ['e'] : [])]);
-    if (answer === '') return text;
-    if (answer === '-') return '';
-    if (answer === 'v') full = true;
-    if (answer === 'e' && io.edit) {
+    const actions = [
+      { label: 'Aceitar', act: 'accept' },
+      ...(shown.length < lines.length ? [{ label: 'Mostrar tudo', act: 'full' }] : []),
+      ...(io.edit ? [{ label: 'Editar no editor', act: 'edit' }] : []),
+      { label: 'Não criar', act: 'drop', danger: true },
+    ];
+    const answer = actions[await io.choose(actions)]?.act;
+    if (answer === 'accept') return text;
+    if (answer === 'drop') return '';
+    if (answer === 'full') full = true;
+    if (answer === 'edit' && io.edit) {
       try {
         text = await io.edit(text);
       } catch (error) {
@@ -649,22 +631,8 @@ async function reviewClaudeMd(io: BirthIO, proposal: BirthProposal, existing: bo
 
 /** Edição um a um que lembra o que foi trocado: os itens seguem o conceito renomeado. */
 async function editTracked(io: ReviewIO, entries: string[]): Promise<{ kept: string[]; renamed: Map<string, string> }> {
-  const renamed = new Map<string, string>();
-  io.write(style.dim(`${INDENT}enter mantém · - remove · texto novo substitui`));
-  const kept: string[] = [];
-  for (const [i, entry] of entries.entries()) {
-    io.write(`${INDENT}${i + 1}. ${entry}`);
-    const answer = (await io.ask(`${INDENT}   › `)).trim();
-    if (answer === '-') continue;
-    if (answer && answer !== entry) renamed.set(normalize(entry), answer);
-    kept.push(answer || entry);
-  }
-  io.write(style.dim(`${INDENT}acrescente outros, um por linha (linha vazia encerra)`));
-  for (;;) {
-    const extra = (await io.ask(`${INDENT}+ `)).trim();
-    if (!extra) return { kept, renamed };
-    kept.push(extra);
-  }
+  const { kept, renamed } = await reviewEntries(io, entries);
+  return { kept, renamed: new Map([...renamed].map(([before, after]) => [normalize(before), after])) };
 }
 
 async function reviewRules(io: ReviewIO, proposal: BirthProposal): Promise<{ rules: BirthProposal['regrasCriticas']; renamed: Map<string, string> }> {
@@ -677,9 +645,9 @@ async function reviewRules(io: ReviewIO, proposal: BirthProposal): Promise<{ rul
   }
   io.write(`${INDENT}Caminhos: ${rules.caminhos.length > 0 ? rules.caminhos.join(', ') : 'nenhum'}`);
   io.write(`${INDENT}Conceitos: ${rules.conceitos.length > 0 ? rules.conceitos.join('; ') : 'nenhum'}`);
-  const answer = await choice(io, 'enter aceita · e edita um a um · - descarta', ['', 'e', '-']);
-  if (answer === '') return { rules, renamed: new Map() };
-  if (answer === '-') return { rules: { caminhos: [], conceitos: [] }, renamed: new Map() };
+  const answer = await io.choose(['Aceitar tudo', 'Revisar um a um', { label: 'Descartar', danger: true }]);
+  if (answer === 0) return { rules, renamed: new Map() };
+  if (answer === 2) return { rules: { caminhos: [], conceitos: [] }, renamed: new Map() };
   io.write(style.bold(`${INDENT}Caminhos`));
   const caminhos = await editList(io, rules.caminhos);
   io.write(style.bold(`${INDENT}Conceitos`));
@@ -718,8 +686,8 @@ export function itemFields(item: BirthItem): ItemFields {
 }
 
 async function editItem(io: ReviewIO, item: BirthItem): Promise<BirthItem> {
-  const title = (await io.ask(`${INDENT}   título [${item.titulo}]: `)).trim();
-  const intent = (await io.ask(`${INDENT}   intenção [${truncate(item.intencao.replace(/\s+/g, ' '), 60)}]: `)).trim();
+  const title = await io.text('Título', { initial: item.titulo });
+  const intent = await io.text('Intenção', { initial: item.intencao.replace(/\s+/g, ' ').trim() });
   io.write(`${INDENT}   critérios`);
   const criterios = await editList(io, item.criterios);
   return { ...item, titulo: title || item.titulo, intencao: intent || item.intencao, criterios };
@@ -755,11 +723,12 @@ async function reviewBacklog(io: ReviewIO, backlog: BirthItem[], offset: number)
   const head = `Backlog (${backlog.length} ${backlog.length === 1 ? 'item' : 'itens'}${offset > 0 ? `; "${TEST_BASE_TITLE}" entra antes, como item 1` : ''})`;
   io.write(style.bold(head));
   for (const [i, item] of backlog.entries()) for (const line of itemLines(item, i + 1, offset)) io.write(line);
+  const options = ['Aceitar tudo', 'Ver o detalhe', 'Revisar um a um', { label: 'Descartar', danger: true }];
   for (;;) {
-    const answer = await choice(io, 'enter aceita · v detalha · e edita · - descarta', ['', 'v', 'e', '-']);
-    if (answer === '') return backlog;
-    if (answer === '-') return [];
-    if (answer === 'v') {
+    const answer = await io.choose(options);
+    if (answer === 0) return backlog;
+    if (answer === 3) return [];
+    if (answer === 1) {
       for (const [i, item] of backlog.entries()) {
         const fields = itemFields(item);
         const deps = fields.dependsOn.map((dep) => itemNumber(dep, offset));
@@ -774,9 +743,9 @@ async function reviewBacklog(io: ReviewIO, backlog: BirthItem[], offset: number)
     const keep: boolean[] = [];
     for (const [i, item] of backlog.entries()) {
       io.write(`${INDENT}${itemNumber(i + 1, offset)}. ${item.titulo}`);
-      const action = await choice(io, 'enter mantém · - descarta · e edita', ['', '-', 'e']);
-      keep.push(action !== '-');
-      edited.push(action === 'e' ? await editItem(io, item) : item);
+      const action = await io.choose(['Manter', 'Editar', { label: 'Remover', danger: true }]);
+      keep.push(action !== 2);
+      edited.push(action === 1 ? await editItem(io, item) : item);
     }
     const { backlog: kept, warnings } = dropItems(edited, keep);
     for (const warning of warnings) io.write(style.dim(`${INDENT}aviso: ${warning}`));
@@ -800,7 +769,7 @@ function relinkConcepts(backlog: BirthItem[], concepts: string[], renamed: Map<s
 
 /**
  * Revisão no terminal, parte a parte: stack, `CLAUDE.md`, regras críticas e backlog, e a
- * gravação. `n` deixa a proposta pendente; `d` a descarta.
+ * gravação, que também pode deixar a proposta pendente ou descartá-la.
  */
 export async function reviewBirth(io: BirthIO, birth: Birth, site: BirthSite): Promise<BirthReview> {
   const output = birth.output as BirthOutput;
@@ -817,14 +786,9 @@ export async function reviewBirth(io: BirthIO, birth: Birth, site: BirthSite): P
   backlog = await reviewBacklog(io, backlog, offset);
 
   io.write('');
-  for (;;) {
-    const answer = (await io.ask('Gravar? [S/n/d] (n deixa a proposta pendente · d descarta) ')).trim().toLowerCase();
-    if (!answer || answer.startsWith('s') || answer.startsWith('y')) {
-      return { kind: 'accept', proposal: { ...proposal, ...stack, claudeMd, regrasCriticas: rules, backlog } };
-    }
-    if (answer.startsWith('n')) return { kind: 'keep' };
-    if (answer.startsWith('d')) return { kind: 'discard' };
-  }
+  const kind = SAVE_KINDS[await io.choose(SAVE_OPTIONS)];
+  if (kind === 'accept') return { kind, proposal: { ...proposal, ...stack, claudeMd, regrasCriticas: rules, backlog } };
+  return { kind: kind ?? 'keep' };
 }
 
 // Gravação -------------------------------------------------------------------------------
@@ -950,8 +914,8 @@ async function balanceBlock(env: BirthEnv): Promise<string | undefined> {
   const { io } = env;
   const confirmLow = io
     ? async (notice: string) => {
-        const answer = (await io.ask(`  ${notice}. Rodar mesmo assim? [s/N] `)).trim().toLowerCase();
-        return answer.startsWith('s') || answer.startsWith('y');
+        io.write(`  ${notice}.`);
+        return confirmAction(io, 'Rodar mesmo assim');
       }
     : undefined;
   return ensureRefineBalance(env.db, env.home, 'birth', confirmLow, env.view.log ? undefined : process.stderr);
@@ -1329,15 +1293,17 @@ export async function birthCommand(args: string[]): Promise<number> {
     if (io) {
       const pending = openBirths(db, site.root)[0];
       if (pending) {
-        const answer = (await io.ask(`Há um nascimento em aberto aqui, de ${formatWhen(pending.createdAt)}. Retomar? [S/n] `)).trim().toLowerCase();
-        if (!answer || answer.startsWith('s') || answer.startsWith('y')) return await converse(env, io, pending);
+        io.write(`Há um nascimento em aberto aqui, de ${formatWhen(pending.createdAt)}.`);
+        const resume = await io.choose(['Retomar o nascimento', { label: 'Começar um novo', hint: 'descarta o anterior', danger: true }]);
+        if (resume === 0) return await converse(env, io, pending);
         decideBirth(db, pending.id, 'discarded', { motivo: 'substituído por um novo' });
       }
     }
 
     let description = positionals.join(' ').trim();
     if (!description && io) {
-      description = (await io.ask(`O que é o projeto?${site.hasCode ? ' (enter parte do código)' : ''} `)).trim();
+      const placeholder = site.hasCode ? 'deixe vazio para partir do código' : 'o que o projeto vai ser, em poucas frases';
+      description = (await io.text('O que é o projeto', { placeholder })) ?? '';
     }
     if (!description && !site.hasCode) return usage('Diga o que é o projeto: mabel nascer "<descrição>".', 'argumento_faltando');
 

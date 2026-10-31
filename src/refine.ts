@@ -27,6 +27,7 @@ import {
   terminalReviewIO as engineTerminalIO,
 } from './engine.ts';
 import { formatWhen, truncate } from './format.ts';
+import { confirmAction } from './guided.ts';
 import { type Item, REPRODUCTION, backlogPath, getItem, isStarted, listItems, syncBacklog } from './items.ts';
 import { select } from './menu.ts';
 import type { ArgSpec, OptionSpecs } from './options.ts';
@@ -226,8 +227,8 @@ export async function ensureRefineBalance(
 export function lowBalancePrompt(io: ReviewIO | undefined, what: string): ((notice: string) => Promise<boolean>) | undefined {
   if (!io) return undefined;
   return async (notice: string) => {
-    const answer = (await io.ask(`  ${notice}. ${what} mesmo assim? [s/N] `)).trim().toLowerCase();
-    return answer.startsWith('s') || answer.startsWith('y');
+    io.write(`  ${notice}.`);
+    return confirmAction(io, `${what} mesmo assim`);
   };
 }
 
@@ -513,8 +514,8 @@ export async function refineItem(
   let refinement = usable ? pendingProposal : undefined;
   if (!refinement && !pendingProposal && !flags.redo && io && wasRefined(db, item.id)) {
     try {
-      const answer = (await io.ask(`#${item.number} já foi refinado. Pedir outra proposta ao agente? [s/N] `)).trim().toLowerCase();
-      if (!answer.startsWith('s') && !answer.startsWith('y')) return 0;
+      io.write(`#${item.number} já foi refinado.`);
+      if (!(await confirmAction(io, 'Pedir outra proposta ao agente'))) return 0;
     } catch (error) {
       if (error instanceof Interrupted) return 130;
       throw error;
@@ -638,7 +639,7 @@ function renderRefinable(db: DatabaseSync, items: Item[]): string[] {
   return [line(header), ...rows.map(line)];
 }
 
-/** Menu dos itens refináveis; o escolhido é refinado e o menu volta até `q`. */
+/** Menu dos itens refináveis; o escolhido é refinado e o menu volta até o esc. */
 async function chooseLoop(db: DatabaseSync, home: string, project: Project): Promise<number> {
   for (;;) {
     const items = refinableItems(db, project);

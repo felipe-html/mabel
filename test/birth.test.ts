@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import type { DatabaseSync } from 'node:sqlite';
-import { Interrupted } from '../src/ask.ts';
 import {
   type BirthEnv,
   BirthError,
@@ -32,7 +31,7 @@ import type { ReviewIO } from '../src/refine.ts';
 import type { BirthOutput, BirthProposal } from '../src/schemas/stages.ts';
 import { parseBacklog } from '../src/backlog.ts';
 import { readConfig, readCriticalRules } from '../src/project.ts';
-import { CLI, makeRepo, setupProject, useScenario } from './helpers.ts';
+import { CLI, type GuidedAnswer, guidedProblems, makeRepo, scriptedGuided, setupProject, useScenario } from './helpers.ts';
 
 // O commit do `nascer` num repositório recém-criado precisa de autor.
 Object.assign(process.env, {
@@ -96,22 +95,9 @@ function seedBalance(db: DatabaseSync) {
   insert.run(new Date(now).toISOString(), 'seven_day', 0.1, new Date(now + 6 * 86400_000).toISOString(), 'allowed');
 }
 
-/** Respostas roteirizadas, na ordem; `null` simula ctrl+c. */
-function scriptedIO(answers: (string | null)[]): ReviewIO & { lines: string[]; prompts: string[] } {
-  const lines: string[] = [];
-  const prompts: string[] = [];
-  return {
-    lines,
-    prompts,
-    write: (line) => lines.push(line),
-    ask: async (prompt) => {
-      prompts.push(prompt);
-      if (answers.length === 0) throw new Error(`pergunta sem resposta roteirizada: ${prompt}`);
-      const answer = answers.shift() as string | null;
-      if (answer === null) throw new Interrupted();
-      return answer;
-    },
-  };
+/** Respostas roteirizadas da interface guiada, na ordem; sem respostas, simula o ctrl+c. */
+function scriptedIO(answers: GuidedAnswer[]): ReviewIO & { lines: string[]; prompts: string[] } {
+  return scriptedGuided(answers);
 }
 
 /** Diretório vazio, sem git, com `MABEL_HOME` próprio e o banco aberto. */
@@ -295,18 +281,29 @@ test('terminal: perguntas uma a uma, rodada seguinte e a proposta mostrada sem g
   const first = await startBirth(env, birthSite(root), 'férias', {});
   assert.ok('birth' in first);
 
-  // `d` em regra crítica não vale: a resposta é do humano.
-  const interrupted = scriptedIO(['', 'd', null]);
+  // Em regra crítica, o menu não oferece deixar o agente decidir: a resposta é do humano.
+  const interrupted = scriptedIO(['Aceitar a sugestão']);
   assert.equal(await converse({ ...env, io: interrupted }, interrupted, first.birth), 130);
-  assert.ok(interrupted.lines.some((line) => /regra crítica: a resposta é sua/.test(line)));
+  assert.equal(interrupted.prompts[1], 'Aceitar a sugestão | Responder com outro texto');
   assert.ok(interrupted.lines.some((line) => /continua em aberto/.test(line)));
   assert.equal(scenario.log().length, 1);
 
-  // Depois das perguntas, a revisão: enter em cada parte e `n` deixa a proposta pendente.
-  const io = scriptedIO(['', 'Nunca', 'd', '', '', '', '', 'n']);
+  // Depois das perguntas, a revisão: aceitar cada parte e deixar a proposta pendente.
+  const io = scriptedIO([
+    'Aceitar a sugestão',
+    'Responder',
+    'Nunca',
+    'Deixar o agente decidir',
+    'Aceitar a stack',
+    'Aceitar',
+    'Aceitar tudo',
+    'Aceitar tudo',
+    'Deixar a proposta pendente',
+  ]);
   assert.equal(await converse({ ...env, io }, io, first.birth), 0);
   assert.match(scenario.log()[1]?.argv.at(-1) ?? '', /R: O gestor direto\n\nP: Pode tirar férias com saldo negativo\?\nR: Nunca\n\nP: Qual o login\?\nR: decida e registre como suposição\./);
   const text = io.lines.join('\n');
+  assert.deepEqual([...io.lines, ...io.prompts].flatMap(guidedProblems), []);
   assert.match(text, /Proposta para/);
   assert.match(text, /Login pelo Google Workspace/);
   assert.match(text, /Stack:.*node \(Node\/TypeScript\) — o time já usa TypeScript/);
@@ -359,7 +356,7 @@ async function proposed(output: BirthOutput = PROPOSED, dir?: string) {
 
 test('revisão aceita tudo: git init, .mabel/ pelo init, base de testes como item 1, CLAUDE.md e commit', async () => {
   const { root, db, birth } = await proposed();
-  const io = scriptedIO(['', '', '', 'v', '', '']) as BirthIO & ReturnType<typeof scriptedIO>;
+  const io = scriptedIO(['Aceitar a stack', 'Aceitar', 'Aceitar tudo', 'Ver o detalhe', 'Aceitar tudo', 'Gravar']) as BirthIO & ReturnType<typeof scriptedIO>;
   const review = await reviewBirth(io, birth, siteOf(birth));
   assert.equal(review.kind, 'accept');
   assert.ok(review.kind === 'accept');
@@ -407,18 +404,20 @@ test('revisão aceita tudo: git init, .mabel/ pelo init, base de testes como ite
   assert.match(summary, /regras críticas: 1 caminho · 1 conceito/);
   assert.match(summary, /commit "mabel nascer" na branch main/);
   assert.match(summary, /mabel refinar` nos itens com regra crítica \(#3\), depois `mabel run`/);
-  // `v` mostrou o bloco de cada item como ele vai para o backlog.
+  // "Ver o detalhe" mostrou o bloco de cada item como ele vai para o backlog.
   assert.match(io.lines.join('\n'), /## Pedido de férias\n {2}id: 3[\s\S]*Depende de: 2/);
 });
 
 test('revisão edita: outra stack, CLAUDE.md no editor, conceito renomeado e item descartado sai das dependências', async () => {
   const { root, db, birth } = await proposed();
-  const answers = [
-    's', '2', // stack: python
-    'e', '', // CLAUDE.md: edita e aceita
-    'e', '', '', 'Saldo nunca negativo', 'Só o gestor aprova', '', // regras: caminho mantido, conceito trocado, um novo
-    'e', '-', 'e', 'Pedir férias', '', 'Pedido sem saldo é recusado', '', // backlog: descarta o 1, edita o 2
-    's',
+  const answers: GuidedAnswer[] = [
+    'Escolher outra', 'Python', // stack
+    'Editar no editor', 'Aceitar', // CLAUDE.md: edita e aceita
+    // regras: caminho mantido, conceito trocado, um novo
+    'Revisar um a um', 'Manter', [], 'Editar', 'Saldo nunca negativo', ['Só o gestor aprova'],
+    // backlog: remove o 1, edita o 2 (título e o critério; a intenção fica)
+    'Revisar um a um', 'Remover', 'Editar', 'Pedir férias', null, 'Editar', 'Pedido sem saldo é recusado', [],
+    'Gravar',
   ];
   const io = Object.assign(scriptedIO(answers), { edit: async (text: string) => `${text}\nEditado no editor.\n` });
   const review = await reviewBirth(io, birth, siteOf(birth));
@@ -442,11 +441,11 @@ test('revisão edita: outra stack, CLAUDE.md no editor, conceito renomeado e ite
   assert.equal(saved.items, 2);
 });
 
-test('revisão: - no CLAUDE.md não o cria; d descarta; n deixa pendente', async () => {
+test('revisão: "Não criar" no CLAUDE.md não o cria; descartar e deixar pendente', async () => {
   const { root, db, birth } = await proposed();
-  const kept = await reviewBirth(scriptedIO(['', '-', '-', '', 'n']), birth, siteOf(birth));
+  const kept = await reviewBirth(scriptedIO(['Aceitar a stack', 'Não criar', 'Descartar', 'Aceitar tudo', 'Deixar a proposta pendente']), birth, siteOf(birth));
   assert.equal(kept.kind, 'keep');
-  const io = scriptedIO(['', '-', '-', '-', '']);
+  const io = scriptedIO(['Aceitar a stack', 'Não criar', 'Descartar', 'Descartar', 'Gravar']);
   const review = await reviewBirth(io, birth, siteOf(birth));
   assert.ok(review.kind === 'accept');
   assert.equal(review.proposal.claudeMd, '');
@@ -457,7 +456,8 @@ test('revisão: - no CLAUDE.md não o cria; d descarta; n deixa pendente', async
   assert.deepEqual(readCriticalRules(root), { paths: [], concepts: [] });
 
   const other = await proposed();
-  assert.equal((await reviewBirth(scriptedIO(['', '', '', '', 'd']), other.birth, siteOf(other.birth))).kind, 'discard');
+  const discard = scriptedIO(['Aceitar a stack', 'Aceitar', 'Aceitar tudo', 'Aceitar tudo', 'Descartar a proposta']);
+  assert.equal((await reviewBirth(discard, other.birth, siteOf(other.birth))).kind, 'discard');
 });
 
 test('repositório com testes e CLAUDE.md: sem base de testes, CLAUDE.md preservado e índice do usuário fora do commit', async () => {
@@ -466,7 +466,7 @@ test('repositório com testes e CLAUDE.md: sem base de testes, CLAUDE.md preserv
   spawnSync('git', ['add', 'rascunho.txt'], { cwd: root });
   const output = { ...PROPOSED, proposta: { ...PROPOSAL, acrescimosClaudeMd: ['Comandos: npm test'] } };
   const { db, birth } = await proposed(output, root);
-  const io = scriptedIO(['', '', '', '']);
+  const io = scriptedIO(['Aceitar a stack', 'Aceitar tudo', 'Aceitar tudo', 'Gravar']);
   const review = await reviewBirth(io, birth, siteOf(birth));
   assert.ok(review.kind === 'accept');
   const text = io.lines.join('\n');

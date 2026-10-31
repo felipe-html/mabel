@@ -3,14 +3,13 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { Interrupted } from '../src/ask.ts';
 import { type InboxIO, runInbox } from '../src/inbox.ts';
 import { getItem, syncBacklog } from '../src/items.ts';
 import { type PipelineEnv, advanceItem, autonomousAnswers } from '../src/pipeline.ts';
 import { readConfig, writeConfig } from '../src/project.ts';
 import type { ExecuteOutput, PlanOutput, Question } from '../src/schemas/stages.ts';
 import { readArtifact } from '../src/stages.ts';
-import { EXECUTION, EXECUTION_FILES, PLAN, REVIEW_OK, setupProject, useScenario } from './helpers.ts';
+import { EXECUTION, EXECUTION_FILES, PLAN, REVIEW_OK, scriptedGuided, setupProject, useScenario } from './helpers.ts';
 
 const q = (texto: string, sugestao: string, regraCritica = false): Question => ({ texto, sugestao, regraCritica });
 const ROOMS = q('Quais cômodos aparecem?', 'Sala, Cozinha, Quarto, Banheiro');
@@ -160,13 +159,9 @@ test('item crítico mostra na inbox as suposições autônomas junto dos critér
   const p = project([{ structured_output: { ...PLAN, perguntas: [COLOR], conceitosCriticos: ['Desconto'] } }]);
   assert.deepEqual(await p.advance(), { kind: 'stopped', status: 'needs_human' });
   assert.equal(p.item().pendingKind, 'critical_approval');
-  const out: string[] = [];
-  const io: InboxIO = {
-    ask: async () => {
-      throw new Interrupted();
-    },
-    write: (line) => out.push(line),
-  };
+  // Sem respostas: o menu simula o ctrl+c depois de mostrar o item.
+  const io: InboxIO = scriptedGuided([]);
+  const out = (io as ReturnType<typeof scriptedGuided>).lines;
   await runInbox(p.db, p.home, p.project, io);
   const criteria = out.indexOf('      critérios:');
   const assumptions = out.indexOf('      suposições:');

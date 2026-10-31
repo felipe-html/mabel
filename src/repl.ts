@@ -204,7 +204,11 @@ async function runCommand(command: Command, args: string[]): Promise<number> {
   const ignore = () => {};
   process.on('SIGINT', ignore);
   try {
-    if (args.length === 0 && command.promptArgs) args = await command.promptArgs();
+    if (args.length === 0 && command.promptArgs) {
+      const prompted = await command.promptArgs();
+      if (!prompted) return 0;
+      args = prompted;
+    }
     return await (command.run as NonNullable<Command['run']>)(args);
   } catch (error) {
     if (error instanceof Interrupted) {

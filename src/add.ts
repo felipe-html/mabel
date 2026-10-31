@@ -1,21 +1,23 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import { ask, confirm, interactive } from './ask.ts';
+import { Interrupted, interactive } from './ask.ts';
 import { type ItemFields, appendBlocks, parseBacklog, renderItemBlock } from './backlog.ts';
-import { type CatalogEntry, chooseReferences, referenceCatalog } from './capture.ts';
+import { type CatalogEntry, catalogHint, referenceCatalog } from './capture.ts';
 import { dataDir, openDb } from './db.ts';
-import { backlogPath, getItem, listItems, nextNumber, syncBacklog } from './items.ts';
+import { confirmAction, fillForm, itemOptions, terminalGuided } from './guided.ts';
+import { type Item, backlogPath, getItem, listItems, nextNumber, syncBacklog } from './items.ts';
 import type { ArgSpec, OptionSpecs } from './options.ts';
 import { ProjectError, resolveProject } from './project.ts';
 import { referenceProblem } from './references.ts';
 import { refineCommand } from './refine.ts';
+import { type FormConfig, type FormField, type FormValues, shellLine } from './screens.ts';
 import { style } from './style.ts';
 
 export const addUsage =
   'mabel add "<título>" [--intencao <texto>] [--criterio <texto>]... [--fora-do-escopo <texto>]... [--referencia <entrada>]... [--depende <n>]... [--restricoes <texto>]';
 
 export const addOptions = {
-  intencao: { type: 'string', value: '<texto>', description: 'O que você quer e por quê; sem ela, no terminal, o Mabel pergunta campo a campo' },
+  intencao: { type: 'string', value: '<texto>', description: 'O que você quer e por quê; sem ela, no terminal, o Mabel abre o formulário' },
   criterio: { type: 'string', multiple: true, value: '<texto>', description: 'Critério de aceite' },
   'fora-do-escopo': { type: 'string', multiple: true, value: '<texto>', description: 'O que o item não faz' },
   referencia: {
@@ -71,40 +73,81 @@ export function parseAddArgs(args: string[]): Partial<ItemFields> | string {
   return fields;
 }
 
-/** Lê uma lista no terminal, uma entrada por linha, até uma linha vazia. */
-async function askList(label: string): Promise<string[]> {
-  process.stdout.write(style.dim(`${label}, um por linha (linha vazia encerra):\n`));
-  const entries: string[] = [];
-  for (;;) {
-    const entry = await ask('  - ');
-    if (!entry) return entries;
-    entries.push(entry);
-  }
+const text = (values: FormValues, key: string) => (typeof values[key] === 'string' ? (values[key] as string).trim() : '');
+const list = (values: FormValues, key: string) => (Array.isArray(values[key]) ? (values[key] as string[]) : []);
+
+/** O comando de shell que faz o mesmo que o formulário. */
+export function addShell(values: FormValues): string {
+  const words = ['mabel', 'add', text(values, 'title') || '<título>'];
+  if (text(values, 'intent')) words.push('--intencao', text(values, 'intent'));
+  for (const entry of list(values, 'criteria')) words.push('--criterio', entry);
+  for (const entry of list(values, 'outOfScope')) words.push('--fora-do-escopo', entry);
+  for (const entry of list(values, 'references')) words.push('--referencia', entry);
+  for (const entry of list(values, 'dependsOn')) words.push('--depende', entry);
+  if (text(values, 'restrictions')) words.push('--restricoes', text(values, 'restrictions'));
+  return shellLine(words);
 }
 
-/** Perguntas em sequência no TTY: título, intenção, critérios, fora do escopo, referências, dependências e restrições. */
-async function askFields(partial: Partial<ItemFields>, catalog: CatalogEntry[]): Promise<ItemFields | string> {
-  const title = partial.title ?? (await ask('Título: '));
-  if (!title) return 'O título é obrigatório.';
-  const intent = partial.intent ?? (await ask('Intenção (o que você quer e por quê): '));
-  if (!intent) return 'A intenção é obrigatória.';
-  let criteria = partial.criteria ?? [];
-  if (criteria.length === 0) criteria = await askList('Critérios de aceite');
-  let outOfScope = partial.outOfScope ?? [];
-  if (outOfScope.length === 0) outOfScope = await askList('Fora do escopo (o que o item não faz)');
-  let references = partial.references ?? [];
-  if (references.length === 0 && catalog.length > 0) {
-    process.stdout.write(style.dim('Referências (telas, operações de API e arquivos já capturados):\n'));
-    references = (await chooseReferences(catalog, references)) ?? [];
-  }
-  let dependsOn = partial.dependsOn ?? [];
-  if (dependsOn.length === 0) {
-    const answer = parseNumbers([await ask('Depende de (ex.: 2, 3; enter para nenhum): ')]);
-    if (typeof answer === 'string') return answer;
-    dependsOn = answer;
-  }
-  const restrictions = partial.restrictions ?? ((await ask('Restrições (enter para nenhuma): ')) || null);
-  return { title, intent, criteria, dependsOn, restrictions, outOfScope, decisions: [], criticalConcepts: [], references };
+/** Formulário "Adicionar um item", como no protótipo: um campo por opção do comando. */
+export function addForm(catalog: CatalogEntry[], items: Item[]): FormConfig {
+  const references: FormField[] =
+    catalog.length > 0
+      ? [
+          {
+            type: 'pick',
+            key: 'references',
+            label: 'Referências',
+            multi: true,
+            noun: ['referência', 'referências'],
+            options: () => catalog.map((entry) => ({ value: entry.entry, label: entry.entry, hint: catalogHint(entry) })),
+          },
+        ]
+      : [];
+  const candidates = items.filter((item) => item.status !== 'cancelled' && item.status !== 'done');
+  return {
+    title: 'Adicionar um item',
+    description: 'Cria um item no backlog do projeto.',
+    command: 'add',
+    fields: [
+      { type: 'text', key: 'title', label: 'Título', required: true, placeholder: 'nome curto do item' },
+      { type: 'text', key: 'intent', label: 'Intenção', required: true, placeholder: 'o que você quer e por quê' },
+      { type: 'list', key: 'criteria', label: 'Critérios de aceite', noun: ['critério', 'critérios'] },
+      { type: 'list', key: 'outOfScope', label: 'Fora do escopo', noun: ['limite', 'limites'] },
+      ...references,
+      { type: 'pick', key: 'dependsOn', label: 'Depende de', multi: true, noun: ['item', 'itens'], options: () => itemOptions(candidates) },
+      { type: 'text', key: 'restrictions', label: 'Restrições', placeholder: 'bibliotecas, arquivos, padrões' },
+    ],
+    action: 'Adicionar ao backlog',
+    shell: addShell,
+  };
+}
+
+/** Campos do item a partir do formulário. */
+export function fieldsFromForm(values: FormValues): ItemFields {
+  return {
+    title: text(values, 'title'),
+    intent: text(values, 'intent'),
+    criteria: list(values, 'criteria'),
+    dependsOn: list(values, 'dependsOn').map(Number),
+    restrictions: text(values, 'restrictions') || null,
+    outOfScope: list(values, 'outOfScope'),
+    decisions: [],
+    criticalConcepts: [],
+    references: list(values, 'references'),
+  };
+}
+
+/** No TTY: o formulário, já preenchido com o que veio nos argumentos. `null` quando o usuário volta. */
+async function askFields(partial: Partial<ItemFields>, catalog: CatalogEntry[], items: Item[]): Promise<ItemFields | null> {
+  const values = await fillForm(addForm(catalog, items), {
+    title: partial.title ?? '',
+    criteria: partial.criteria ?? [],
+    outOfScope: partial.outOfScope ?? [],
+    references: partial.references ?? [],
+    dependsOn: (partial.dependsOn ?? []).map(String),
+    restrictions: partial.restrictions ?? '',
+  });
+  return values && fieldsFromForm(values);
 }
 
 export async function add(args: string[]): Promise<number> {
@@ -123,7 +166,19 @@ export async function add(args: string[]): Promise<number> {
 
     let fields: ItemFields | string;
     if (interactive() && !partial.intent) {
-      fields = await askFields(partial, referenceCatalog(project.root, listItems(db, project.id)));
+      const items = listItems(db, project.id);
+      let filled: ItemFields | null;
+      try {
+        filled = await askFields(partial, referenceCatalog(project.root, items), items);
+      } catch (error) {
+        if (error instanceof Interrupted) return 130;
+        throw error;
+      }
+      if (!filled) {
+        process.stdout.write('Nada foi adicionado.\n');
+        return 0;
+      }
+      fields = filled;
     } else if (!partial.title || !partial.intent) {
       fields = `Informe o título e a intenção (--intencao).`;
     } else {
@@ -168,6 +223,6 @@ export async function add(args: string[]): Promise<number> {
     db.close();
   }
   // Só no terminal: o refinamento custa uma run e espera a sua revisão.
-  if (!(await confirm('Refinar o item agora com um agente?', false))) return 0;
+  if (!(await confirmAction(terminalGuided, 'Refinar o item agora com um agente', { back: 'Agora não' }))) return 0;
   return refineCommand([String(number)]);
 }

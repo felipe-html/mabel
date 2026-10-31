@@ -44,7 +44,7 @@ tecla ou uma sintaxe.
 | "enter aceita · e edita · - descarta" | Menu: "Aceitar tudo", "Revisar um a um", "Descartar". |
 | "enter mantém · - remove · texto substitui" | Para cada entrada, menu: "Manter", "Editar", "Remover". "Editar" abre o campo de texto já preenchido. |
 | "um por linha, linha vazia encerra" | Lista repetível: entradas existentes e "+ adicionar" (como "Critérios de aceite" em "Adicionar um item"). |
-| Pergunta com "enter aceita a sugestão · texto responde · d decide você · p pula" | Menu: "Aceitar a sugestão: <texto>", "Responder com outro texto", "Deixar a decisão para você" (quando permitido), "Pular por agora". |
+| Pergunta com "enter aceita a sugestão · texto responde · d decide você · p pula" | A sugestão escrita abaixo da pergunta ("sugestão: <texto>") e o menu: "Aceitar a sugestão", "Responder com outro texto", "Deixar a decisão para você" (quando permitido), "Pular por agora". |
 | "Número do item: " | Lista de itens filtrada pelo estado em que o comando faz sentido. |
 | "Digite o nome do projeto para confirmar" | Mantém o campo de texto (é a confirmação de uma remoção), dentro do formulário. |
 | `$EDITOR` para editar a proposta | Continua, como item "Editar no editor" no menu da revisão. |

@@ -3,13 +3,12 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import type { DatabaseSync } from 'node:sqlite';
-import { Interrupted } from '../src/ask.ts';
 import { RULES_BUDGET, type ReviewIO, currentRules, outputProblems } from '../src/engine.ts';
 import { getItem, syncBacklog } from '../src/items.ts';
 import type { SpecifyOutput } from '../src/schemas/stages.ts';
 import { latestSpecProposal, specifySpec } from '../src/specify.ts';
 import { getSpecMetrics, getSpecRecord, readSpec } from '../src/specs.ts';
-import { setupProject, useScenario } from './helpers.ts';
+import { type GuidedAnswer, scriptedGuided, setupProject, useScenario } from './helpers.ts';
 
 const DRAFT = '# Exportar pedidos em CSV\n\n## História\nO financeiro exporta os pedidos do período.\n';
 
@@ -57,21 +56,8 @@ function seedBalance(db: DatabaseSync) {
   insert.run(new Date(now).toISOString(), 'seven_day', 0.1, new Date(now + 6 * 86400_000).toISOString(), 'allowed');
 }
 
-function scriptedIO(answers: (string | null)[]): ReviewIO & { lines: string[]; prompts: string[] } {
-  const lines: string[] = [];
-  const prompts: string[] = [];
-  return {
-    lines,
-    prompts,
-    write: (line) => lines.push(line),
-    ask: async (prompt) => {
-      prompts.push(prompt);
-      if (answers.length === 0) throw new Error(`pergunta sem resposta roteirizada: ${prompt}`);
-      const answer = answers.shift() as string | null;
-      if (answer === null) throw new Interrupted();
-      return answer;
-    },
-  };
+function scriptedIO(answers: GuidedAnswer[]): ReviewIO & { lines: string[]; prompts: string[] } {
+  return scriptedGuided(answers);
 }
 
 function project(draft = DRAFT) {
@@ -91,15 +77,16 @@ test('S.4 critérios 9 e 12: duas rodadas, respostas viram decisões e exemplos,
   writeFileSync(join(q.root, '.mabel', 'regras.md'), '# Regras vigentes\n\n## pedidos\n- Pedido excluído some de todas as listas.\n');
   const scenario = useScenario(q.root, [{ structured_output: ROUND1, session_id: 'sessao-spec' }, { structured_output: ROUND2 }]);
   const io = scriptedIO([
-    '', // R2: aceita a sugestão
-    'Horário de Brasília', // R3: responde
-    '', // história
-    '', // regras
-    '', // decisões
-    '', // fora do escopo
-    '', // alterações nas regras vigentes
-    '', // tarefas
-    '', // grava
+    'Aceitar a sugestão', // R2
+    'Responder', // R3
+    'Horário de Brasília',
+    'Aceitar', // história
+    'Aceitar tudo', // regras
+    'Aceitar tudo', // decisões
+    'Aceitar tudo', // fora do escopo
+    'Aceitar tudo', // alterações nas regras vigentes
+    'Aceitar tudo', // tarefas
+    'Gravar',
   ]);
   assert.equal(await specifySpec(q.db, q.home, q.project, 'exportar-csv', {}, io), 0);
 

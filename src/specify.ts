@@ -26,6 +26,7 @@ import {
   terminalReviewIO,
 } from './engine.ts';
 import { formatWhen } from './format.ts';
+import { confirmAction } from './guided.ts';
 import { backlogPath, listItems, nextNumber, syncBacklog } from './items.ts';
 import type { ArgSpec, OptionSpecs } from './options.ts';
 import { type Project, ProjectError, resolveProject } from './project.ts';
@@ -290,8 +291,8 @@ export async function specifySpec(
   }
   if (!proposal && !flags.redo && io && status === 'aceita') {
     try {
-      const answer = (await io.ask(`A spec ${slug} já foi aceita. Pedir outra proposta ao agente? [s/N] `)).trim().toLowerCase();
-      if (!answer.startsWith('s') && !answer.startsWith('y')) return 0;
+      io.write(`A spec ${slug} já foi aceita.`);
+      if (!(await confirmAction(io, 'Pedir outra proposta ao agente'))) return 0;
     } catch (error) {
       if (error instanceof Interrupted) return 130;
       throw error;

@@ -59,8 +59,8 @@ test('oferta da inbox no fim do planejamento, uma vez; o item respondido é repl
   const asked: string[] = [];
   const result = await q.start({
     interactive: true,
-    confirm: async (question) => {
-      asked.push(question);
+    confirm: async (question, action) => {
+      asked.push(`${question} ${action}`);
       return true;
     },
     inbox: async () => {
@@ -69,7 +69,7 @@ test('oferta da inbox no fim do planejamento, uma vez; o item respondido é repl
     },
   });
   assert.equal(result.end, 'empty');
-  assert.deepEqual(asked, ['\n1 item aguarda você. Abrir a inbox agora?']);
+  assert.deepEqual(asked, ['\n1 item aguarda você. Abrir a inbox agora']);
   assert.deepEqual(q.stages(), [
     'plan#1', 'plan#2', 'plan#3', 'plan#2',
     'execute#1', 'review#1', 'execute#2', 'review#2', 'execute#3', 'review#3',

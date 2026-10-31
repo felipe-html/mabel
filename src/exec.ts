@@ -1,7 +1,8 @@
 import { statSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { parseArgs } from 'node:util';
-import { ask, askOrEnd, Interrupted, interactive } from './ask.ts';
+import { Interrupted, interactive } from './ask.ts';
+import { terminalGuided } from './guided.ts';
 import { dataDir, openDb } from './db.ts';
 import { formatCost, formatDuration, formatTokens, truncate } from './format.ts';
 import { type RunOutcome, type RunRequest, startRun } from './runner.ts';
@@ -156,7 +157,7 @@ export interface ChatIO {
   write(text: string): void;
 }
 
-export const chatHint = 'Continue a conversa; sair ou Ctrl+D encerra.';
+export const chatHint = 'Continue a conversa; esc encerra.';
 
 /** Linha curta depois de cada resposta da conversa. */
 export function turnLine(outcome: RunOutcome): string {
@@ -185,7 +186,7 @@ export function sessionLine(outcomes: RunOutcome[]): string {
 
 /**
  * Conversa a partir da primeira resposta: cada mensagem é uma run nova que retoma a sessão
- * do claude. Encerra só com `sair`, Ctrl+D ou o orçamento da sessão esgotado.
+ * do claude. Encerra só com esc no campo da mensagem ou o orçamento da sessão esgotado.
  */
 export async function chat(request: RunRequest, first: RunOutcome, io: ChatIO): Promise<RunOutcome[]> {
   const outcomes = [first];
@@ -212,7 +213,7 @@ export async function chat(request: RunRequest, first: RunOutcome, io: ChatIO): 
       io.write(style.dim(chatHint));
       continue;
     }
-    if (message === null || message === 'sair') break;
+    if (message === null) break;
     if (!message) continue;
 
     const next: RunRequest = { ...request, prompt: message };
@@ -291,14 +292,14 @@ export async function exec(args: string[]): Promise<number> {
 
   await chat(request, first, {
     turn,
-    read: () => askOrEnd(`\n${style.bold('exec › ')}`),
+    read: () => terminalGuided.text('Mensagem', { placeholder: 'continue a conversa' }),
     write: (text) => log.write(text),
   });
   return 0;
 }
 
-/** Pede o prompt numa linha de entrada, para o `exec` escolhido no menu. */
-export async function askPrompt(): Promise<string[]> {
-  const prompt = await ask(style.bold('Prompt: '));
-  return prompt ? [prompt] : [];
+/** Pede o pedido num campo de texto, para o `exec` escolhido no menu; `null` quando o usuário volta. */
+export async function askPrompt(): Promise<string[] | null> {
+  const prompt = await terminalGuided.text('Pedido', { placeholder: 'o que o agente deve fazer' });
+  return prompt ? [prompt] : null;
 }
