@@ -127,6 +127,18 @@ achados do teste orientam a especificação dos passos seguintes.
 - [x] Causa da falha, primeira fatia: `verify` que não chega a rodar por ambiente da máquina
       (Docker parado, DNS) segue a regra do contrato para teste que não roda, como a prova.
 
+- [ ] Novo terminal (`docs/specs/terminal.md`), com o protótipo `docs/specs/terminal.html`
+      como referência visual e funcional; desvio só se inviável, registrado aqui. Premissa:
+      interface guiada, tudo é item de menu. Contrato autorizado: a troca dos nomes entra no
+      `CONTRATO.md` com o T.2.
+  - [ ] T.1 Componentes de tela (formulário, escolha, lista repetível, menu de opções,
+        campo de texto, vista, rodapé de teclas) e conversão de todos os prompts de tecla e
+        `[s/N]` de hoje.
+  - [ ] T.2 Tela inicial (lista agrupada pela ordem do momento, filtro, contagens) e nomes
+        novos no shell, no catálogo e no autocompletar.
+  - [ ] T.3 Telas dos comandos, com a linha de shell; `retomar` e `rodar --limite` novos.
+  - [ ] T.4 Painel da fila no `rodar` e no `acompanhar`.
+
 ## Histórico
 
 | Data | Registro |
@@ -240,3 +252,4 @@ achados do teste orientam a especificação dos passos seguintes.
 | 2026-10-30 | Tarefas #1 e #2 do wego-keycloak-tema paradas em `environment_block`, analisadas a pedido do usuário: o Docker funcionava fora do sandbox, e o que falhava eram os próprios testes (PKCE ausente na URL de login; seletor que pegava o `styles.css` do tema pai em vez do `wego.css`). O executor declara impedimento sempre que não consegue rodar os testes no sandbox, e a falha do `verify` com impedimento ia direto ao humano, sem o executor ver o log. Agora a falha do `verify` reprova a tentativa como qualquer outra, e o executor recebe o log com o aviso de que a verificação rodou sem o bloqueio declarado. Continuam indo a `environment_block` a execução sem nada a verificar e a prova com `verify` vazio. Contrato: parágrafo de impedimento em "Retentativas", autorizado pelo usuário. Desvio: um bloqueio real do ambiente do host agora gasta as três tentativas antes de chegar ao humano (como `attempts_exhausted`, com a causa provável pelo log). |
 | 2026-10-30 | Item #3 do wego-keycloak-tema parado pela terceira vez, analisado a pedido do usuário. A primeira parada foi a aprovação do item crítico, como esperado. Nas duas seguintes, o G7 parou nas mesmas suposições críticas: o executor as repetiu, já com "(confirmado pelo humano)", e o gate não guardava a confirmação. Agora o `responder` em `question_execute` grava as suposições críticas da parada em `items.confirmed_assumptions` (migração nova), inclusive com `--replanejar`. O G7 ignora as confirmadas, comparando o texto com `sameAssumption` (sem diferença de caixa e sem a pontuação final nem a observação entre parênteses), e o prompt da execução as lista como decisões do humano. Contrato: frase nova no G7, autorizada pelo usuário. Desvio: uma confirmada reescrita com outras palavras ainda para o item. |
 | 2026-10-31 | Leitura do cepa (`../cepa`) a pedido do usuário e medição das 18 paradas em `needs_human` do banco: só 2 eram decisão de negócio (~9 ambiente, 6 defeito do Mabel, 1 mecânica). Propostas registradas na seção do Claude no `BACKLOG.md`; as que mudam o contrato (janela `--ate`, G7) ficam para depois da medição. Primeira fatia da rota por causa da falha, dentro do contrato: no item #3 do wego-keycloak-tema, o Docker parado na máquina fez a verificação do Mabel falhar antes de rodar qualquer teste, e o executor gastou 3 tentativas (a última escalonada). `hostEnvironmentSign` (`src/pipeline.ts`) reconhece no log do `verify` sinais estreitos de ambiente da máquina (daemon do Docker, `getaddrinfo EAI_AGAIN`; conexão recusada fica de fora, porque vem também de código quebrado) e grava `verificacao-N.json` com `naoRodou`. A tentativa conta e o executor recebe que não é falha do código; na segunda seguida em que os testes não rodaram (na verificação ou na prova, `previousNotRun`), o item vai a `environment_block` sem a terceira tentativa. É a regra "teste que não chega a rodar" do contrato, que só valia na prova; o texto do contrato não muda. Desvio: a parte que mudaria a seção de retentativas (cortar execuções vazias em série, escopo em arquivo do Mabel de volta ao planejamento) ficou de fora, aguardando autorização. |
+| 2026-10-31 | Spec do novo terminal (`docs/specs/terminal.md`), com o protótipo em `docs/specs/terminal.html` como referência e a interface guiada como premissa; incrementos T.1 a T.4 no plano. Troca dos nomes dos comandos no contrato autorizada pelo usuário, para entrar com o T.2. |
