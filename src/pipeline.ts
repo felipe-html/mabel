@@ -269,6 +269,21 @@ const GATE_MEANING: Record<string, string> = {
   environment: 'impedimento de ambiente',
 };
 
+/**
+ * Mesma suposição com outra redação de pontuação ou caixa, ou com uma observação final entre
+ * parênteses, como o "(confirmado pelo humano)" que o executor acrescenta ao repeti-la.
+ */
+export function sameAssumption(a: string, b: string): boolean {
+  const normalize = (text: string) =>
+    text
+      .toLowerCase()
+      .replace(/(\s*\([^()]*\))+[\s.;:!]*$/, '')
+      .replace(/[\s.;:!]+$/, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  return normalize(a) === normalize(b);
+}
+
 /** Trechos de log que indicam bloqueio do ambiente (sandbox, rede), não erro do código. */
 const ENVIRONMENT_SIGNS = /Operation not permitted|EPERM|ENOTFOUND|EAI_AGAIN|getaddrinfo|ECONNREFUSED|Failed to fetch/;
 
@@ -570,7 +585,10 @@ async function executeStep(env: PipelineEnv, item: Item): Promise<Step> {
 
   // G7: perguntas ou suposições sobre regra crítica param antes do commit. Com suposição
   // crítica o item para de qualquer jeito, e as perguntas vão junto para o humano.
-  const critical = result.output.suposicoes.filter((s) => s.regraCritica).map((s) => s.texto);
+  // Suposição que o humano já confirmou no item é decisão dele: não para de novo.
+  const critical = result.output.suposicoes
+    .filter((s) => s.regraCritica && !item.confirmedAssumptions.some((c) => sameAssumption(c, s.texto)))
+    .map((s) => s.texto);
   const assumed = critical.length === 0 ? autonomousAnswers(env.project.config, result.output.perguntas) : undefined;
   if (assumed) {
     const questions = result.output.perguntas;

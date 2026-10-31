@@ -16,7 +16,7 @@ import {
   appendItemDecision,
   isStarted,
 } from './items.ts';
-import { attemptsSummary } from './pipeline.ts';
+import { attemptsSummary, sameAssumption } from './pipeline.ts';
 import { appendSpecDecision } from './specs.ts';
 import type { Project } from './project.ts';
 
@@ -74,6 +74,18 @@ export function recordDecisions(db: DatabaseSync, project: Project, item: Item, 
 }
 
 /**
+ * Suposições críticas da parada que o humano respondeu: viram decisão dele e o G7 não para
+ * de novo nelas, nem depois de um replanejamento.
+ */
+function confirmAssumptions(item: Item): string[] {
+  const confirmed = [...item.confirmedAssumptions];
+  for (const assumption of item.pending?.criticalAssumptions ?? []) {
+    if (!confirmed.some((c) => sameAssumption(c, assumption))) confirmed.push(assumption);
+  }
+  return confirmed;
+}
+
+/**
  * Orienta um item parado em `needs_human`. O efeito depende do motivo da parada
  * (`pending_kind`); ver a tabela "Motivos de needs_human" do passo 4.
  */
@@ -112,11 +124,12 @@ export function respond(
       return 'planning';
     case 'question_execute':
       if (replan) {
-        decide(db, project, item, 'planning', reason, replanFresh);
+        decide(db, project, item, 'planning', reason, { ...replanFresh, confirmedAssumptions: confirmAssumptions(item) });
         return 'planning';
       }
       decide(db, project, item, 'executing', reason, {
         nextInput: { resumeSessionId: sessionId, answer, sameAttempt: true },
+        confirmedAssumptions: confirmAssumptions(item),
       });
       return 'executing';
     case 'environment_block':
