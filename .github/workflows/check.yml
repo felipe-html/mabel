@@ -8,12 +8,18 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    # A suíte leva uns 2 min; um teste travado não pode queimar as 6 h do padrão.
+    timeout-minutes: 10
     strategy:
+      # Uma versão falhando não cancela a outra: o resultado de cada uma interessa.
+      fail-fast: false
       matrix:
         # Versão mínima do `engines` e a LTS atual.
         node: ['22.18', '24']
     steps:
       - uses: actions/checkout@v4
+      # O `run` recusa etapas sem o sandbox do Claude Code, que no Linux pede bwrap e socat.
+      - run: sudo apt-get install -y --no-install-recommends bubblewrap socat
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
