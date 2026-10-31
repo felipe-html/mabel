@@ -285,7 +285,27 @@ export function sameAssumption(a: string, b: string): boolean {
 }
 
 /** Trechos de log que indicam bloqueio do ambiente (sandbox, rede), não erro do código. */
-const ENVIRONMENT_SIGNS = /Operation not permitted|EPERM|ENOTFOUND|EAI_AGAIN|getaddrinfo|ECONNREFUSED|Failed to fetch/;
+const ENVIRONMENT_SIGNS = /Operation not permitted|EPERM|ENOTFOUND|EAI_AGAIN|getaddrinfo|ECONNREFUSED|Failed to fetch|Cannot connect to the Docker daemon/;
+
+/**
+ * Sinais de que a verificação do Mabel, fora do sandbox, não chegou ao código: a máquina
+ * falhou antes (Docker parado, DNS fora). Estreitos de propósito: conexão recusada ou
+ * permissão negada também vêm de código quebrado, e esses o executor corrige.
+ */
+const HOST_ENVIRONMENT_SIGNS = /Cannot connect to the Docker daemon|Is the docker daemon running\?|getaddrinfo EAI_AGAIN/i;
+
+/** Linha do log com o sinal de ambiente da máquina, se houver. */
+export function hostEnvironmentSign(output: string): string | undefined {
+  return output
+    .split('\n')
+    .find((line) => HOST_ENVIRONMENT_SIGNS.test(line))
+    ?.trim();
+}
+
+/** Verificação que não chegou a rodar o código, gravada em `verificacao-N.json`. */
+interface VerifyNotRun {
+  naoRodou: { comando: string; sinal: string };
+}
 
 function readLog(path: string | null): string {
   if (!path || !existsSync(path)) return '';
@@ -785,6 +805,29 @@ function verifyStep(env: PipelineEnv, item: Item): Step {
     writeFileSync(logPath, output);
     const passed = code === 0;
     recordGate(env.db, item.id, attemptNo, command.name, passed, passed ? null : `\`${command.command}\` saiu com ${code}`, logPath);
+    const sign = passed ? undefined : hostEnvironmentSign(output);
+    if (sign) {
+      // O teste não chegou a rodar: a tentativa conta, e na segunda seguida o item para,
+      // porque outra execução não muda a máquina.
+      writeArtifact(env.home, item.id, `verificacao-${attemptNo}.json`, { naoRodou: { comando: command.command, sinal: sign } } satisfies VerifyNotRun);
+      if (previousNotRun(env, item)) {
+        const reason = `duas tentativas seguidas em que os testes não chegaram a rodar; a última na verificação do Mabel, fora do sandbox: ${sign} (log: ${logPath}).`;
+        recordGate(env.db, item.id, attemptNo, 'environment', false, reason);
+        return stopForHuman(
+          env,
+          item,
+          'environment_block',
+          { reason, sessionId: lastExecuteSession(env.db, item.id) ?? null },
+          `impedimento de ambiente: ${reason}`,
+        );
+      }
+      return attemptFailed(
+        env,
+        item,
+        item.attempts,
+        `A verificação do Mabel, fora do sandbox, não chegou a rodar o código: \`${command.command}\` falhou no ambiente da máquina (${sign}). Não é falha do código. Se não houver o que corrigir no item, termine sem alterações e descreva o impedimento. Últimas linhas:\n${tail(output, 40)}`,
+      );
+    }
     if (!passed) {
       // Com impedimento declarado, a falha fora do sandbox não prova que o ambiente é a
       // causa: o executor recebe o resultado real e a tentativa conta como qualquer outra.
@@ -842,8 +885,7 @@ function proofStep(env: PipelineEnv, item: Item, plan: PlanOutput, execution: Ex
     // Fora do sandbox o teste também não roda: o impedimento se confirmou (ou se repetiu),
     // e outra tentativa não muda o ambiente.
     // `attempts` já conta esta tentativa: a anterior é do mesmo ciclo só a partir da segunda.
-    const previous = item.attempts >= 2 ? readArtifact<ProofResult>(env.home, item.id, `prova-${attemptNo - 1}.json`) : undefined;
-    const repeated = previous?.naoRodou !== undefined;
+    const repeated = previousNotRun(env, item);
     if (unverified || repeated) {
       const reason = unverified
         ? `${blocker} A prova do Mabel, fora do sandbox, também não rodou \`${notRun.nome}\` (log: ${logDir}).`
@@ -873,6 +915,20 @@ function proofStep(env: PipelineEnv, item: Item, plan: PlanOutput, execution: Ex
   }
   move(env, item, 'reviewing', `verificação ${attemptNo} aprovada`);
   return undefined;
+}
+
+/**
+ * A tentativa anterior do mesmo ciclo também não chegou a rodar os testes, na verificação ou
+ * na prova (regra do contrato: duas seguidas levam a `environment_block`). `attempts` já
+ * conta a tentativa atual: a anterior é do mesmo ciclo só a partir da segunda.
+ */
+function previousNotRun(env: PipelineEnv, item: Item): boolean {
+  if (item.attempts < 2) return false;
+  const previous = item.attemptNo - 1;
+  return (
+    readArtifact<ProofResult>(env.home, item.id, `prova-${previous}.json`)?.naoRodou !== undefined ||
+    readArtifact<VerifyNotRun>(env.home, item.id, `verificacao-${previous}.json`)?.naoRodou !== undefined
+  );
 }
 
 /** Notas para o humano no `awaiting_merge`: critérios de validação humana e suposições. */
