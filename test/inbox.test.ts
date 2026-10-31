@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { Interrupted } from '../src/ask.ts';
 import { DELEGATE, type InboxIO, answerText, inboxSession, runInbox } from '../src/inbox.ts';
 import { getItem, listItems } from '../src/items.ts';
 import { writeConfig } from '../src/project.ts';
-import { EXECUTION, EXECUTION_FILES, PLAN, setupProject, useScenario } from './helpers.ts';
+import { EXECUTION, EXECUTION_FILES, type GuidedAnswer, PLAN, guidedProblems, scriptedGuided, setupProject, useScenario } from './helpers.ts';
 
 function inboxProject(backlog: string, responses: unknown[]) {
   const ctx = setupProject(backlog);
@@ -24,20 +23,10 @@ function inboxProject(backlog: string, responses: unknown[]) {
   return { ...ctx, item, reasons };
 }
 
-/** Terminal falso: devolve as entradas na ordem; sem entradas, simula o ctrl+c. */
-function scripted(inputs: string[]): { io: InboxIO; out: string[]; prompts: string[] } {
-  const out: string[] = [];
-  const prompts: string[] = [];
-  const io: InboxIO = {
-    ask: async (prompt) => {
-      prompts.push(prompt);
-      const next = inputs.shift();
-      if (next === undefined) throw new Interrupted();
-      return next;
-    },
-    write: (line) => out.push(line),
-  };
-  return { io, out, prompts };
+/** Terminal falso da interface guiada; sem respostas, simula o ctrl+c. */
+function scripted(answers: GuidedAnswer[]): { io: InboxIO; out: string[]; prompts: string[] } {
+  const io = scriptedGuided(answers);
+  return { io, out: io.lines, prompts: io.prompts };
 }
 
 const QUESTIONS = {
@@ -53,16 +42,18 @@ const QUESTIONS = {
 };
 const CRITICAL = { structured_output: { ...PLAN, conceitosCriticos: ['Desconto'] }, session_id: 'plan-c' };
 
-test('perguntas do planejamento: enter aceita, texto responde, d delega; uma resposta só por item', async () => {
+test('perguntas do planejamento: aceitar a sugestão, responder, deixar o agente decidir; uma resposta só por item', async () => {
   const p = inboxProject('\n## Casa\ncômodos\n', [QUESTIONS]);
   assert.equal(p.item(1).status, 'needs_human');
-  // Sem sugestão, enter vazio repete a pergunta.
-  const { io, out } = scripted(['', '', 'Real', 'd']);
+  // Sem sugestão, o menu não oferece aceitá-la; o campo cancelado volta ao menu.
+  const { io, out, prompts } = scripted(['Aceitar a sugestão', 'Responder', null, 'Responder', 'Real', 'Deixar o agente decidir']);
   const result = await runInbox(p.db, p.home, p.project, io);
 
   assert.deepEqual(result, { answered: 1, skipped: 0, interrupted: false });
   assert.ok(out.includes('      sugestão: Sala e Cozinha'));
-  assert.ok(out.some((line) => line.includes('Sem sugestão')));
+  assert.equal(prompts[0], 'Aceitar a sugestão | Responder com outro texto | Deixar o agente decidir | Pular por agora');
+  assert.equal(prompts[1], 'Responder com outro texto | Deixar o agente decidir | Pular por agora');
+  assert.deepEqual([...out, ...prompts].flatMap(guidedProblems), []);
   const expected = answerText([
     { question: 'Quais cômodos aparecem?', answer: 'Sala e Cozinha' },
     { question: 'Qual moeda?', answer: 'Real' },
@@ -75,33 +66,31 @@ test('perguntas do planejamento: enter aceita, texto responde, d delega; uma res
   assert.match(p.reasons(1)[0] ?? '', /^humano: inbox responder: P1: Quais cômodos aparecem\? R1: Sala e Cozinha/);
 });
 
-test('item crítico: sem "decide você"; a aprova e o item vai a planned', async () => {
+test('item crítico: sem "deixar o agente decidir"; aprovar leva o item a planned', async () => {
   const p = inboxProject('\n## Desconto\naplica desconto\n', [CRITICAL]);
-  const { io, out } = scripted(['d', 'a']);
+  const { io, out, prompts } = scripted(['Aprovar os critérios']);
   await runInbox(p.db, p.home, p.project, io);
   assert.ok(out.some((line) => line.includes('motivo: conceito crítico: Desconto')));
   assert.ok(out.some((line) => line.includes('C1 (teste) soma(2, 3) devolve 5')));
-  assert.ok(out.some((line) => line.includes('a aprovação é sua')));
-  assert.ok(!out.some((line) => line.includes('d decide você')));
+  assert.deepEqual(prompts, ['Aprovar os critérios | Ajustar os critérios | Cancelar o item | Pular por agora']);
   assert.equal(p.item(1).status, 'planned');
   assert.deepEqual(p.reasons(1), ['humano: inbox critérios aprovados']);
 });
 
-test('pergunta de regra crítica: sem "decide você" na inbox (G7)', async () => {
+test('pergunta de regra crítica: sem "deixar o agente decidir" na inbox (G7)', async () => {
   const p = setupProject('\n## Desconto\naplica desconto\n');
   assert.equal(p.cli('status').status, 0);
   const item = getItem(p.db, p.project.id, 1)!;
   const pending = { questions: [{ texto: 'Desconto máximo?', sugestao: '10%', regraCritica: true }] };
   p.db.prepare("UPDATE items SET status = 'needs_human', pending_kind = 'question_plan', pending = ? WHERE id = ?").run(JSON.stringify(pending), item.id);
-  const { io, out } = scripted(['d', '15%']);
+  const { io, out, prompts } = scripted(['Responder', '15%']);
   await runInbox(p.db, p.home, p.project, io);
   assert.ok(out.some((line) => line.includes('Desconto máximo? (regra crítica)')));
-  assert.ok(!out.some((line) => line.includes('d decide você')));
-  assert.ok(out.some((line) => line.includes('Regra crítica: a resposta é sua.')));
+  assert.equal(prompts[0], 'Aceitar a sugestão | Responder com outro texto | Pular por agora');
   assert.equal(getItem(p.db, p.project.id, 1)!.nextInput?.answer, answerText([{ question: 'Desconto máximo?', answer: '15%' }]));
 });
 
-test('p pula o item, ctrl+c descarta só o item em andamento, plano incompleto e cancelamento', async () => {
+test('pular o item, ctrl+c descarta só o item em andamento, plano incompleto e cancelamento', async () => {
   const p = inboxProject('\n## A\nprimeiro\n\n## B\nsegundo\n\n## C\nterceiro\n\n## D\nquarto\n', [
     QUESTIONS,
     {},
@@ -114,7 +103,17 @@ test('p pula o item, ctrl+c descarta só o item em andamento, plano incompleto e
     ['question_plan', 'plan_incomplete', 'critical_approval', 'question_plan'],
   );
   // #1 pulado na 2ª pergunta; #2 cancelado depois de desistir uma vez; #3 ajustado; #4 interrompido.
-  const { io } = scripted(['', 'p', 'c', 'n', 'c', 's', 'Sem desconto acima de 10%.', '']);
+  const { io } = scripted([
+    'Aceitar a sugestão',
+    'Pular por agora',
+    'Cancelar o item',
+    'Voltar',
+    'Cancelar o item',
+    'Cancelar o item #2',
+    'Ajustar os critérios',
+    'Sem desconto acima de 10%.',
+    'Aceitar a sugestão',
+  ]);
   const result = await runInbox(p.db, p.home, p.project, io);
 
   assert.deepEqual(result, { answered: 2, skipped: 1, interrupted: true });
@@ -127,7 +126,7 @@ test('p pula o item, ctrl+c descarta só o item em andamento, plano incompleto e
   assert.equal(p.item(4).pendingKind, 'question_plan');
 });
 
-test('perguntas da execução: suposição crítica confirmada e r replaneja com as respostas', async () => {
+test('perguntas da execução: suposição crítica confirmada e replanejar com as respostas', async () => {
   const p = inboxProject('\n## Soma\nsoma\n', [
     { structured_output: PLAN },
     {
@@ -140,7 +139,7 @@ test('perguntas da execução: suposição crítica confirmada e r replaneja com
     },
   ]);
   assert.equal(p.item(1).pendingKind, 'question_execute');
-  const { io, out } = scripted(['', '', 'r']);
+  const { io, out } = scripted(['Aceitar a sugestão', 'Confirmar as suposições', 'Replanejar com as respostas']);
   await runInbox(p.db, p.home, p.project, io);
   assert.ok(out.includes('  ! suposição crítica: taxa zero'));
   assert.equal(p.item(1).status, 'planning');
@@ -149,27 +148,27 @@ test('perguntas da execução: suposição crítica confirmada e r replaneja com
   assert.match(p.reasons(1)[0] ?? '', /^humano: inbox responder --replanejar:/);
 });
 
-test('impedimento de ambiente: mostra o motivo e o texto retoma a execução', async () => {
+test('impedimento de ambiente: mostra o motivo e a orientação retoma a execução', async () => {
   const blocked = { ...EXECUTION, impedimento: 'o build baixa fontes de fonts.googleapis.com, fora da rede' };
   // Sem nenhuma alteração, não há o que verificar: o impedimento vai direto ao humano.
   const p = inboxProject('\n## Soma\nsoma\n', [{ structured_output: PLAN }, { structured_output: blocked, files: {}, session_id: 'exec-1' }]);
   assert.equal(p.item(1).pendingKind, 'environment_block');
-  const { io, out } = scripted(['Liberei fonts.googleapis.com na rede.']);
+  const { io, out, prompts } = scripted(['Dizer o que mudou', 'Liberei fonts.googleapis.com na rede.']);
   await runInbox(p.db, p.home, p.project, io);
   assert.ok(out.some((line) => line.includes('impedimento de ambiente')));
   assert.ok(out.some((line) => line.startsWith(`      ${blocked.impedimento}`)));
-  assert.ok(out.some((line) => line.includes('texto diz o que mudou no ambiente e retoma')));
+  assert.equal(prompts[0], 'Dizer o que mudou no ambiente e retomar | Replanejar com uma orientação | Cancelar o item | Pular por agora');
   assert.equal(p.item(1).status, 'executing');
   assert.equal(p.item(1).nextInput?.resumeSessionId, 'exec-1');
 });
 
 test('fim da inbox pergunta se retoma a esteira; sem respostas não pergunta', async () => {
   const p = inboxProject('\n## A\nprimeiro\n\n## B\nsegundo\n', [QUESTIONS, QUESTIONS]);
-  const yes = scripted(['', 'x', 'y', 'p', '']);
+  const yes = scripted(['Aceitar a sugestão', 'Responder', 'x', 'Aceitar a sugestão', 'Pular por agora', 'Retomar a esteira agora']);
   assert.equal(await inboxSession(p.db, p.home, p.project, yes.io), true);
-  assert.equal(yes.prompts.at(-1), 'Retomar a esteira agora? [S/n] ');
+  assert.equal(yes.prompts.at(-1), 'Retomar a esteira agora | Agora não');
 
-  const none = scripted(['p']);
+  const none = scripted(['Pular por agora']);
   assert.equal(await inboxSession(p.db, p.home, p.project, none.io), false);
   assert.ok(!none.prompts.some((prompt) => prompt.startsWith('Retomar')));
 });

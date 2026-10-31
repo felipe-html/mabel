@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
-import { Interrupted, ask, interactive } from './ask.ts';
+import { Interrupted, interactive } from './ask.ts';
 import { dataDir, openDb } from './db.ts';
+import { type GuidedIO, confirmAction, terminalGuided } from './guided.ts';
 import { select } from './menu.ts';
 import { git, gitWith, tryGit, withTrailers } from './git.ts';
 import { deliveryDocPath, renderDeliveryDoc } from './deliverydoc.ts';
@@ -666,9 +667,9 @@ function checkDelivery(db: DatabaseSync, project: Project, delivery: Delivery): 
 // Comando --------------------------------------------------------------------------------
 
 /** Confirmação da entrega parcial no terminal (R7). */
-export async function confirmPartial(ask: (prompt: string) => Promise<string>, missing: number[]): Promise<boolean> {
-  const answer = (await ask(`Faltam ${missing.map((n) => `#${n}`).join(', ')}. Entregar só o que está pronto? [s/N] `)).trim().toLowerCase();
-  return answer.startsWith('s') || answer.startsWith('y');
+export async function confirmPartial(io: GuidedIO, missing: number[]): Promise<boolean> {
+  io.write(`Faltam ${missing.map((n) => `#${n}`).join(', ')}.`);
+  return confirmAction(io, 'Entregar só o que está pronto');
 }
 
 export async function deliverCommand(args: string[]): Promise<number> {
@@ -708,7 +709,7 @@ export async function deliverCommand(args: string[]): Promise<number> {
     if (result.missing && interactive()) {
       process.stdout.write(`${result.lines.join('\n')}\n`);
       try {
-        if (!(await confirmPartial(ask, result.missing))) return 1;
+        if (!(await confirmPartial(terminalGuided, result.missing))) return 1;
       } catch (error) {
         if (error instanceof Interrupted) return 130;
         throw error;

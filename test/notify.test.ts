@@ -2,13 +2,12 @@ import assert from 'node:assert/strict';
 import type { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
-import { Interrupted } from '../src/ask.ts';
 import { type InboxIO, inboxSession } from '../src/inbox.ts';
 import { syncBacklog } from '../src/items.ts';
 import { notify } from '../src/notify.ts';
 import { writeConfig } from '../src/project.ts';
 import { type QueueOptions, startQueue } from '../src/run.ts';
-import { EXECUTION, EXECUTION_FILES, PLAN, REVIEW_OK, setupProject, useScenario } from './helpers.ts';
+import { EXECUTION, EXECUTION_FILES, PLAN, REVIEW_OK, scriptedGuided, setupProject, useScenario } from './helpers.ts';
 
 /** `spawn` falso: registra a chamada e devolve um processo que não faz nada. */
 function fakeSpawn() {
@@ -123,15 +122,7 @@ test('aviso antes de cada pergunta no terminal: saldo, inbox e retomada', async 
   ]);
 
   // Retomada: a inbox avisa antes de perguntar se a esteira volta.
-  const inputs = ['resposta', ''];
-  const io: InboxIO = {
-    ask: async () => {
-      const next = inputs.shift();
-      if (next === undefined) throw new Interrupted();
-      return next;
-    },
-    write: () => {},
-  };
+  const io: InboxIO = scriptedGuided(['Responder', 'resposta', 'Retomar a esteira agora']);
   const waiting: string[] = [];
   assert.equal(await inboxSession(offer.db, offer.home, offer.project, io, (question) => waiting.push(question)), true);
   assert.deepEqual(waiting, ['Retomar a esteira agora?']);

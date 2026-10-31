@@ -3,7 +3,9 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
-import { ask, interactive } from './ask.ts';
+import { interactive } from './ask.ts';
+import { fillForm } from './guided.ts';
+import { type FormConfig, shellLine } from './screens.ts';
 import { dataDir, openDb, runDir } from './db.ts';
 import { type DeliveryStatus, listDeliveries } from './delivery.ts';
 import { fail } from './errors.ts';
@@ -752,6 +754,20 @@ export function projectCommand(args: string[]): Promise<number> {
   });
 }
 
+/** Confirmação da remoção: o nome digitado no formulário, com o botão vermelho. */
+export function removalForm(name: string, query = name): FormConfig {
+  return {
+    title: 'Remover os dados do Mabel',
+    description: `Apaga do Mabel os dados de ${name}; o repositório do projeto não é tocado.`,
+    command: 'projeto remover',
+    fields: [{ type: 'text', key: 'confirma', label: 'Confirme o nome', required: true, placeholder: 'digite o nome do projeto' }],
+    action: 'Remover os dados',
+    danger: true,
+    check: (values) => (values.confirma !== name ? 'O nome digitado não confere com o projeto escolhido.' : null),
+    shell: (values) => shellLine(['mabel', 'projeto', 'remover', query, '--confirmar', String(values.confirma || '<nome>')]),
+  };
+}
+
 async function removeCommand(
   db: DatabaseSync,
   home: string,
@@ -772,7 +788,13 @@ async function removeCommand(
     if (json || !interactive()) {
       return fail('argumento_faltando', `\nPara remover, confirme com: mabel projeto remover ${query} --confirmar ${project.name}`);
     }
-    confirmation = await ask(`\n  Digite o nome do projeto para confirmar: `);
+    process.stdout.write('\n');
+    const values = await fillForm(removalForm(project.name, query));
+    if (!values) {
+      process.stdout.write('  Nada foi removido.\n');
+      return 0;
+    }
+    confirmation = String(values.confirma ?? '');
   }
   if (confirmation !== project.name) return fail('argumento_invalido', 'O nome não confere. Nada foi removido.');
 

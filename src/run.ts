@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
-import { confirm, interactive as isInteractive } from './ask.ts';
+import { interactive as isInteractive } from './ask.ts';
+import { type ConfirmSettings, confirmAction, terminalGuided } from './guided.ts';
 import {
   type BalanceReading,
   balanceOf,
@@ -64,6 +65,12 @@ export const systemClock: Clock = {
     }),
 };
 
+/** A pergunta escrita acima e o menu com a ação e a opção segura. */
+async function confirmInTerminal(question: string, action: string, settings?: ConfirmSettings): Promise<boolean> {
+  if (question) terminalGuided.write(question);
+  return confirmAction(terminalGuided, action, settings);
+}
+
 export interface QueueOptions {
   db: DatabaseSync;
   home: string;
@@ -78,8 +85,11 @@ export interface QueueOptions {
    * implicam item a item.
    */
   batch?: boolean;
-  /** Pergunta sim/não no terminal; os testes trocam por respostas roteirizadas. */
-  confirm?: (question: string, defaultYes?: boolean) => Promise<boolean>;
+  /**
+   * Pergunta no terminal com dois itens, a ação e a opção segura; os testes trocam por
+   * respostas roteirizadas.
+   */
+  confirm?: (question: string, action: string, settings?: ConfirmSettings) => Promise<boolean>;
   /** Abre a inbox no fim da fase de planejamento; sem ela, a oferta não acontece. */
   inbox?: () => Promise<void>;
   /** Aviso do sistema quando a fila para ou espera o humano. */
@@ -189,14 +199,14 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; stop
   const { db, home, project } = options;
   const clock = options.clock ?? systemClock;
   const interactive = options.interactive ?? false;
-  const ask = options.confirm ?? confirm;
+  const ask = options.confirm ?? confirmInTerminal;
   const batch = (options.batch ?? true) && options.itemNumber === undefined && !options.once;
   const notify = options.notify ?? systemNotify;
   const title = notifyTitle(project);
   /** Pergunta no terminal: avisa antes, porque a fila fica parada até a resposta. */
-  const askHuman = (question: string, defaultYes?: boolean, notice = question.trim()) => {
+  const askHuman = (question: string, action: string, settings: ConfirmSettings, notice = question.trim()) => {
     notify(title, `aguardando você: ${notice}`);
-    return ask(question, defaultYes);
+    return ask(question, action, settings);
   };
   const abort = new AbortController();
   const log = new ToolLog(project.root, '    ');
@@ -208,7 +218,7 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; stop
   const record = (event: Omit<QueueEvent, 'at'>) => recordQueueEvent(db, project.id, { at: clock.now(), ...event });
   /** Pergunta da política de saldo; a resposta do humano fica na auditoria. */
   const askBalance = async (cause: QueueEventCause, notice: string): Promise<boolean> => {
-    const approved = await askHuman('  Continuar mesmo assim?', false, notice);
+    const approved = await askHuman('', 'Continuar mesmo assim', { back: 'Esperar o saldo' }, notice);
     record({ kind: 'answer', cause, detail: notice, approved });
     return approved;
   };
@@ -366,7 +376,7 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; stop
     inboxOffered = true;
     log.flush();
     const label = waiting === 1 ? '1 item aguarda você' : `${waiting} itens aguardam você`;
-    if (!(await askHuman(`\n${label}. Abrir a inbox agora?`))) return false;
+    if (!(await askHuman(`\n${label}.`, 'Abrir a inbox agora', { back: 'Agora não', actionFirst: true }, `${label}. Abrir a inbox agora?`))) return false;
     await options.inbox();
     return true;
   };
@@ -638,7 +648,7 @@ export async function run(args: string[]): Promise<number> {
       const question = `${label}. Abrir a inbox agora?`;
       const waitingFor = (text: string) => systemNotify(notifyTitle(project), `aguardando você: ${text}`);
       waitingFor(question);
-      if (!(await confirm(`\n${question}`))) return 0;
+      if (!(await confirmInTerminal(`\n${label}.`, 'Abrir a inbox agora', { back: 'Agora não', actionFirst: true }))) return 0;
       process.stdout.write('\n');
       if (!(await inboxSession(db, home, project, terminalIO, waitingFor))) return 0;
       process.stdout.write('\n');

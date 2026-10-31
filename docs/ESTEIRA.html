@@ -623,7 +623,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
         <dt>Recebe</dt><dd>O rascunho da spec (ou o avulso) com as referências da spec, o código, o <code>.mabel/regras.md</code> (com orçamento de 20.000 caracteres; acima, aviso de consolidar) e, por <code>Grep</code>, as entregas anteriores. Nas rodadas seguintes, as respostas e as regras que elas mexem.</dd>
         <dt>Devolve</dt><dd>Example Mapping: <code>historia</code>, <code>regras</code> com <code>exemplos</code> (situação → resultado, <code>borda</code>), <code>perguntas</code> (≤ 5, cada uma de um exemplo sem resultado), <code>decisoes</code>, <code>foraDoEscopo</code>, <code>conceitosCriticos</code>, <code>alteracoesRegrasVigentes</code>, <code>tarefas</code>, <code>sugestaoQuebra</code>, <code>reproducao</code> (bug).</dd>
         <dt>Limites</dt><dd>Exemplo sem resultado e sem pergunta, mais de 5 perguntas, pergunta na última rodada, tarefa citando regra que não existe, <code>alterar</code> nas regras vigentes sem <code>antiga → nova</code> ou com a regra antiga fora do assunto, ou bug sem reprodução: correção pedida na mesma sessão, uma vez.</dd>
-        <dt>Depois</dt><dd>Você responde (enter aceita a sugestão, texto responde, <code>p</code> adia) e revisa parte a parte. <code>especificar</code> grava a spec (com as seções próprias e as <code>Referências</code> do rascunho como estavam), as tarefas e o estado <code>aceita</code>; <code>refinar</code>, o bloco do avulso.</dd>
+        <dt>Depois</dt><dd>Você responde pelo menu de cada pergunta (aceitar a sugestão, responder com outro texto ou deixar para o planejamento) e revisa parte a parte (aceitar tudo, revisar um a um ou descartar). <code>especificar</code> grava a spec (com as seções próprias e as <code>Referências</code> do rascunho como estavam), as tarefas e o estado <code>aceita</code>; <code>refinar</code>, o bloco do avulso.</dd>
       </dl>
     </article>
     <article class="agent-card">
@@ -682,24 +682,30 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
 1. Quem aprova as férias? <span class="d">[sugestão: o líder do time]</span>
 <span class="d">Rodada 2 de 3 … proposta</span>
 stack node · 6 itens · 1 regra crítica
-Gravar? [S/n]</pre>
+<span class="a">  › Gravar</span>
+    Deixar a proposta pendente
+    Descartar a proposta</pre>
         </article>
         <article class="cmd">
           <header><span class="name">init</span><span class="badge none">sem agente</span></header>
           <p class="usage">mabel init [--stack node|python|go|rust]</p>
-          <p>Detecta stack e comandos de <code>setup</code> e <code>verify</code>, ou pergunta. Já sendo projeto, só registra no banco.</p>
+          <p>Detecta stack e comandos de <code>setup</code> e <code>verify</code>, ou pergunta num menu. Já sendo projeto, só registra no banco.</p>
           <p class="writes"><b>Grava:</b> <code>.mabel/config.json</code> (base, modelos, limites, <code>autonomia</code>, integração, sandbox, rede), <code>regras-criticas.md</code>, <code>backlog.md</code>, <code>.gitignore</code>. Sem testes, o item 1 é “Estabelecer base de testes”.</p>
 <pre class="term">Stack: node · setup: npm ci · verify: npm test
-Usar estes comandos? [S/n/editar]
-Commitar o .mabel/ na branch main? [S/n]</pre>
+<span class="a">  › Usar estes comandos</span>
+    Editar os comandos
+    Não usar comandos
+<span class="a">  › Commitar o .mabel/ na branch main</span>
+    Não commitar</pre>
         </article>
         <article class="cmd">
           <header><span class="name">add</span><span class="badge none">sem agente</span></header>
           <p class="usage">mabel add "título" [--intencao] [--criterio]… [--fora-do-escopo]… [--referencia]… [--depende n]… [--restricoes]</p>
-          <p>Acrescenta um bloco ao fim do backlog e sincroniza com o banco. No TTY, as referências do item são escolhidas numa lista do catálogo.</p>
+          <p>Acrescenta um bloco ao fim do backlog e sincroniza com o banco. No TTY, sem <code>--intencao</code>, abre o formulário “Adicionar um item” (um campo por opção, com a linha de shell equivalente); as referências e as dependências são escolhidas em listas.</p>
           <p class="writes"><b>Grava:</b> o item em <code>.mabel/backlog.md</code>; estado <code>ready</code>, ou <code>backlog</code> se depende de item não concluído.</p>
 <pre class="term">Item #4 adicionado: Desconto por volume · ready
-Refinar o item agora com um agente? [s/N]</pre>
+    Refinar o item agora com um agente
+<span class="a">  › Agora não</span></pre>
         </article>
         <article class="cmd">
           <header><span class="name">especificar</span><span class="badge agent">especificador</span></header>
@@ -710,7 +716,9 @@ Refinar o item agora com um agente? [s/N]</pre>
 1/2 Pedido cancelado entra? <span class="d">(R2 Cancelados)</span>
     sugestão: Não
 Tamanho: 3 regras · 3 exemplos · 2 rodadas · 2 perguntas · 2 tarefas
-Gravar? [S/n/d]</pre>
+<span class="a">  › Gravar</span>
+    Deixar a proposta pendente
+    Descartar a proposta</pre>
         </article>
         <article class="cmd">
           <header><span class="name">refinar</span><span class="badge agent">especificador</span></header>
@@ -719,7 +727,9 @@ Gravar? [S/n/d]</pre>
           <p class="writes"><b>Grava:</b> só o que você aceita, no trecho do item no <code>backlog.md</code>: regras e exemplos como critérios (a reprodução do bug primeiro), fora do escopo, <code>Decisões: pergunta → resposta</code>, regras críticas e <code>Regras vigentes:</code> (aplicadas na entrega). Bug sem <code>Reprodução:</code> fica em <code>backlog</code>.</p>
 <pre class="term"><span class="a">▸ especificar · sonnet</span>
 1/1 Desconto acumula com cupom? <span class="d">(R2 Cupom)</span>
-Gravar? [S/n/d]</pre>
+<span class="a">  › Aceitar a sugestão</span>
+    Responder com outro texto
+    Deixar para o planejamento</pre>
         </article>
         <article class="cmd">
           <header><span class="name">referencia</span><span class="badge none">sem agente</span></header>
@@ -756,7 +766,9 @@ Gravar? [S/n/d]</pre>
 
 Decididas pela sugestão (revise no merge):
   #4 Desconto acumula com cupom? → não
-<span class="h">Abrir a inbox agora? [S/n]</span></pre>
+<span class="h">1 item aguarda você.</span>
+<span class="a">  › Abrir a inbox agora</span>
+    Agora não</pre>
         </article>
         <article class="cmd">
           <header><span class="name">supervisor · anexar · parar</span><span class="badge none">sem agente</span></header>
@@ -773,12 +785,17 @@ Decididas pela sugestão (revise no merge):
         <article class="cmd">
           <header><span class="name">inbox</span><span class="badge human">você decide</span></header>
           <p class="usage">mabel inbox</p>
-          <p>Uma pendência por vez, em ordem de número. Enter aceita a sugestão do agente; texto responde; <code>p</code> pula.</p>
+          <p>Uma pendência por vez, em ordem de número, cada uma com o menu das opções dela: aceitar a sugestão do agente, responder com outro texto, deixar o agente decidir (fora de regra crítica), aprovar ou ajustar os critérios, replanejar, cancelar o item (em vermelho, confirmado com “Voltar” selecionado) ou pular por agora.</p>
           <p class="writes"><b>Grava:</b> a decisão no item e o leva ao estado certo (tabela abaixo).</p>
 <pre class="term"><span class="h">#2 Exportar relatório · perguntas da execução</span>
 ? Incluir itens cancelados? <span class="d">[sugestão: não]</span>
+<span class="a">  › Aceitar a sugestão</span>
+    Responder com outro texto
+    Deixar o agente decidir
+    Pular por agora
 Respostas registradas em 2 itens · 1 pulado.
-Retomar a esteira agora? [S/n]</pre>
+<span class="a">  › Retomar a esteira agora</span>
+    Agora não</pre>
         </article>
         <article class="cmd">
           <header><span class="name">item</span><span class="badge none">leitura</span></header>
@@ -788,6 +805,7 @@ Retomar a esteira agora? [S/n]</pre>
         <article class="cmd">
           <header><span class="name">aprovar · responder · cancelar</span><span class="badge human">você decide</span></header>
           <p class="usage">mabel aprovar n · responder n "texto" | --respostas arquivo.json [--replanejar] · cancelar n</p>
+          <p>No modo Mabel, sem argumentos, cada um abre um formulário com a lista só dos itens no estado em que ele faz sentido; cancelar e rejeitar têm o botão em vermelho.</p>
           <p>Os mesmos efeitos da inbox, avulsos. <code>aprovar</code> leva um item crítico a <code>planned</code>; <code>responder</code> retoma a sessão certa ou replaneja; <code>cancelar</code> tira o item da fila.</p>
         </article>
       </div>
@@ -851,12 +869,12 @@ com o motivo no próximo `mabel run`.</pre>
         <article class="cmd">
           <header><span class="name">projetos · projeto · eventos</span><span class="badge none">leitura</span></header>
           <p class="usage">mabel projetos [--removidos] · projeto nome · projeto remover nome · eventos</p>
-          <p>Auditoria por projeto: custo por etapa e modelo, gates reprovados, escalonamentos, decisões autônomas, pausas. <code>eventos</code> emite uma linha JSON por evento, para o <code>mabel-ui</code>.</p>
+          <p>Auditoria por projeto: custo por etapa e modelo, gates reprovados, escalonamentos, decisões autônomas, pausas. <code>eventos</code> emite uma linha JSON por evento, para o <code>mabel-ui</code>. <code>projeto remover</code> no TTY confirma no formulário “Confirme o nome”, com o botão vermelho; fora dele, <code>--confirmar nome</code>.</p>
         </article>
         <article class="cmd">
           <header><span class="name">exec · comandos · completion</span><span class="badge none">avulso</span></header>
           <p class="usage">mabel exec "prompt" [--model] [--max-turns] [--max-budget-usd] · comandos [--json] · completion zsh</p>
-          <p><code>exec</code> abre uma conversa no Claude Code, com a mesma auditoria e fora de qualquer item: cada mensagem é uma run que retoma a sessão, até <code>sair</code> ou Ctrl+D. <code>comandos</code> lista cada comando com as opções explicadas (em JSON, para outros programas). <code>completion</code> imprime o autocompletar do zsh.</p>
+          <p><code>exec</code> abre uma conversa no Claude Code, com a mesma auditoria e fora de qualquer item: cada mensagem é uma run que retoma a sessão, até o esc no campo da mensagem. <code>comandos</code> lista cada comando com as opções explicadas (em JSON, para outros programas). <code>completion</code> imprime o autocompletar do zsh.</p>
         </article>
       </div>
     </div>

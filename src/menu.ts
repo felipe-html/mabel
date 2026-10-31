@@ -1,5 +1,7 @@
 import { emitKeypressEvents } from 'node:readline';
+import { Interrupted } from './ask.ts';
 import { redrawFooter } from './footer.ts';
+import { type ChoiceConfig, choiceState, choiceStep, isInterrupt, renderChoice, type ScreenStyle, visibleLength } from './screens.ts';
 
 export interface MenuOption {
   label: string;
@@ -8,46 +10,13 @@ export interface MenuOption {
   disabledReason?: string;
 }
 
-export interface MenuState {
-  cursor: number;
-  message?: string;
-}
-
-/** Subconjunto do evento `keypress` do readline usado pelo menu. */
+/** Subconjunto do evento `keypress` do readline usado pelas telas. */
 export interface Key {
   name?: string;
   sequence?: string;
   ctrl?: boolean;
-}
-
-export type MenuStep = { state: MenuState } | { chosen: number | null };
-
-/** Transição pura do menu: recebe o estado e a tecla, devolve o novo estado ou a escolha. */
-export function menuStep(options: MenuOption[], state: MenuState, key: Key): MenuStep {
-  const last = options.length - 1;
-  const move = (cursor: number): MenuStep => ({ state: { cursor } });
-
-  if ((key.ctrl && key.name === 'c') || key.name === 'escape' || key.name === 'q') {
-    return { chosen: null };
-  }
-  if (key.name === 'up' || key.name === 'k') return move(state.cursor === 0 ? last : state.cursor - 1);
-  if (key.name === 'down' || key.name === 'j') return move(state.cursor === last ? 0 : state.cursor + 1);
-  if (key.name === 'home') return move(0);
-  if (key.name === 'end') return move(last);
-
-  const digit = Number(key.sequence);
-  if (Number.isInteger(digit) && digit >= 1 && digit <= options.length) {
-    return choose(options, digit - 1);
-  }
-  if (key.name === 'return' || key.name === 'enter' || key.name === 'space') {
-    return choose(options, state.cursor);
-  }
-  return { state };
-}
-
-function choose(options: MenuOption[], index: number): MenuStep {
-  const reason = options[index]?.disabledReason;
-  return reason ? { state: { cursor: index, message: reason } } : { chosen: index };
+  /** Alt, ou esc seguido de outra tecla antes do tempo do readline. */
+  meta?: boolean;
 }
 
 export interface Style {
@@ -56,53 +25,66 @@ export interface Style {
   accent: (text: string) => string;
 }
 
-export function renderMenu(options: MenuOption[], state: MenuState, style: Style): string[] {
-  const width = Math.max(...options.map((option) => option.label.length));
-  const lines = options.map((option, i) => {
-    const selected = i === state.cursor;
-    const number = i < 9 ? `${i + 1}` : ' ';
-    const text = `${number}  ${option.label.padEnd(width)}  ${option.hint}`;
-    if (selected) return style.accent(`❯ ${text}`);
-    return option.disabledReason ? style.dim(`  ${text}`) : `  ${text}`;
-  });
-  return [
-    ...lines,
-    '',
-    state.message ? style.accent(state.message) : style.dim('↑/↓ navegar · enter escolher · q sair'),
-  ];
+/** Um componente de `src/screens.ts` ligado ao terminal. */
+export interface Screen<S, R> {
+  state: S;
+  step: (state: S, key: Key) => { state: S } | { result: R };
+  render: (state: S, width: number) => string[];
+  /** Linhas que ficam na rolagem quando a tela fecha; sem elas, a tela some. */
+  summary?: (result: R) => string[];
+}
+
+/** Linhas físicas que o texto ocupa, com a quebra do terminal. */
+function physicalRows(lines: string[], width: number): number {
+  return lines.reduce((total, line) => total + Math.max(1, Math.ceil(visibleLength(line) / Math.max(1, width))), 0);
 }
 
 /**
- * Mostra o menu no terminal e resolve com o índice escolhido, ou `null` se o usuário sair.
- * Exige stdin e stdout interativos.
+ * Desenha a tela abaixo do cursor, redesenha a cada tecla e resolve com o resultado.
+ * Ctrl+C rejeita com `Interrupted`. Exige stdin e stdout interativos.
  */
-export function select(options: MenuOption[], style: Style): Promise<number | null> {
+export function runScreen<S, R>(screen: Screen<S, R>): Promise<R> {
   const { stdin, stdout } = process;
-  let state: MenuState = { cursor: options.findIndex((option) => !option.disabledReason) };
-  if (state.cursor < 0) state = { cursor: 0 };
+  let state = screen.state;
   let drawn = 0;
+  const width = () => stdout.columns ?? 80;
 
+  const clear = () => {
+    if (drawn > 0) stdout.write(`\x1b[${drawn}A\r`);
+    stdout.write('\x1b[0J');
+  };
   const draw = () => {
-    const lines = renderMenu(options, state, style);
-    if (drawn > 0) stdout.write(`\x1b[${drawn}A`);
-    stdout.write(`\x1b[0J${lines.join('\n')}\n`);
+    const lines = screen.render(state, width());
+    clear();
+    stdout.write(`${lines.join('\n')}\n`);
     redrawFooter();
-    drawn = lines.length;
+    drawn = physicalRows(lines, width());
   };
 
-  return new Promise((resolve) => {
-    const finish = (chosen: number | null) => {
+  return new Promise((resolve, reject) => {
+    const close = () => {
       stdin.off('keypress', onKey);
       stdin.setRawMode(false);
       stdin.pause();
       stdout.write('\x1b[?25h');
-      resolve(chosen);
     };
     const onKey = (_: string, key: Key = {}) => {
-      const step = menuStep(options, { cursor: state.cursor }, key);
-      if ('chosen' in step) return finish(step.chosen);
-      state = step.state;
-      draw();
+      if (isInterrupt(key)) {
+        clear();
+        close();
+        return reject(new Interrupted());
+      }
+      const step = screen.step(state, key);
+      if ('state' in step) {
+        state = step.state;
+        return draw();
+      }
+      clear();
+      const summary = screen.summary?.(step.result) ?? [];
+      if (summary.length > 0) stdout.write(`${summary.join('\n')}\n`);
+      redrawFooter();
+      close();
+      resolve(step.result);
     };
 
     emitKeypressEvents(stdin);
@@ -114,109 +96,57 @@ export function select(options: MenuOption[], style: Style): Promise<number | nu
   });
 }
 
-// Múltipla escolha -----------------------------------------------------------------------
-
-export interface MultiState {
-  /** Posição na lista filtrada. */
-  cursor: number;
-  /** Índices marcados, na lista completa. */
-  chosen: number[];
-  /** Texto digitado; filtra pelo rótulo e pela dica. */
-  filter: string;
-}
-
-export type MultiStep = { state: MultiState } | { chosen: number[] | null };
-
-export const MULTI_LIST_SIZE = 10;
-
-/** Índices (na lista completa) das opções que casam com o filtro. */
-export function visibleOptions(options: MenuOption[], filter: string): number[] {
-  const needle = filter.toLowerCase();
-  return options.flatMap((option, i) =>
-    !needle || option.label.toLowerCase().includes(needle) || option.hint.toLowerCase().includes(needle) ? [i] : [],
-  );
-}
-
-/** Transição pura da múltipla escolha: espaço marca, enter confirma, letras filtram. */
-export function multiStep(options: MenuOption[], state: MultiState, key: Key): MultiStep {
-  const visible = visibleOptions(options, state.filter);
-  const last = visible.length - 1;
-  const move = (cursor: number): MultiStep => ({ state: { ...state, cursor } });
-
-  if ((key.ctrl && key.name === 'c') || key.name === 'escape') return { chosen: null };
-  if (key.name === 'return' || key.name === 'enter') return { chosen: [...state.chosen].sort((a, b) => a - b) };
-  if (key.name === 'up') return move(state.cursor <= 0 ? Math.max(last, 0) : state.cursor - 1);
-  if (key.name === 'down') return move(state.cursor >= last ? 0 : state.cursor + 1);
-  if (key.name === 'space') {
-    const index = visible[state.cursor];
-    if (index === undefined) return { state };
-    const chosen = state.chosen.includes(index) ? state.chosen.filter((i) => i !== index) : [...state.chosen, index];
-    return { state: { ...state, chosen } };
+/** Escolha de uma opção numa lista que se filtra ao digitar; `null` quando o usuário volta. */
+export async function select(options: MenuOption[], style: ScreenStyle): Promise<number | null> {
+  const config: ChoiceConfig = {
+    options: options.map((option) => ({ label: option.label, hint: option.hint, disabledReason: option.disabledReason })),
+    filter: true,
+    back: true,
+    size: 12,
+  };
+  const first = Math.max(0, options.findIndex((option) => !option.disabledReason));
+  try {
+    return await runScreen<ReturnType<typeof choiceState>, number | null>({
+      state: choiceState(first),
+      step: (state, key) => {
+        const step = choiceStep(config, state, key);
+        if ('state' in step) return step;
+        return { result: 'chosen' in step ? step.chosen : null };
+      },
+      render: (state, width) => renderChoice(config, state, style, width),
+      summary: (chosen) => (chosen === null ? [] : [`${style.accent('  › ')}${options[chosen]?.label ?? ''}`]),
+    });
+  } catch (error) {
+    if (error instanceof Interrupted) return null;
+    throw error;
   }
-  if (key.name === 'backspace') return { state: { ...state, filter: state.filter.slice(0, -1), cursor: 0 } };
-  const char = !key.ctrl && key.sequence && key.sequence.length === 1 && key.sequence > ' ' && key.sequence !== '\x7f' ? key.sequence : '';
-  if (char) return { state: { ...state, filter: state.filter + char, cursor: 0 } };
-  return { state };
-}
-
-export function renderMulti(options: MenuOption[], state: MultiState, style: Style): string[] {
-  const visible = visibleOptions(options, state.filter);
-  const start = visible.length <= MULTI_LIST_SIZE ? 0 : Math.min(Math.max(0, state.cursor - MULTI_LIST_SIZE + 1), visible.length - MULTI_LIST_SIZE);
-  const shown = visible.slice(start, start + MULTI_LIST_SIZE);
-  const width = Math.max(0, ...shown.map((i) => options[i]?.label.length ?? 0));
-  const lines = shown.map((index, offset) => {
-    const option = options[index] as MenuOption;
-    const mark = state.chosen.includes(index) ? '[x]' : '[ ]';
-    const text = `${mark} ${option.label.padEnd(width)}  ${option.hint}`;
-    return start + offset === state.cursor ? style.accent(`❯ ${text}`) : `  ${text}`;
-  });
-  if (visible.length === 0) lines.push(style.dim('  nada casa com o filtro'));
-  const more = visible.length > shown.length ? ` · ${visible.length - shown.length} fora da tela` : '';
-  return [
-    ...lines,
-    '',
-    state.filter ? style.accent(`filtro: ${state.filter}${more}`) : style.dim(`digite para filtrar${more}`),
-    style.dim(`espaço marca · enter confirma (${state.chosen.length} marcadas) · esc cancela`),
-  ];
 }
 
 /**
  * Lista com várias escolhas no terminal; resolve com os índices marcados, ou `null` se o
- * usuário cancelar. Exige stdin e stdout interativos.
+ * usuário voltar. Exige stdin e stdout interativos.
  */
-export function selectMany(options: MenuOption[], preselected: number[], style: Style): Promise<number[] | null> {
-  const { stdin, stdout } = process;
-  let state: MultiState = { cursor: 0, chosen: [...preselected], filter: '' };
-  let drawn = 0;
-
-  const draw = () => {
-    const lines = renderMulti(options, state, style);
-    if (drawn > 0) stdout.write(`\x1b[${drawn}A`);
-    stdout.write(`\x1b[0J${lines.join('\n')}\n`);
-    redrawFooter();
-    drawn = lines.length;
+export async function selectMany(options: MenuOption[], preselected: number[], style: ScreenStyle): Promise<number[] | null> {
+  const config: ChoiceConfig = {
+    options: options.map((option) => ({ label: option.label, hint: option.hint })),
+    multi: true,
+    filter: true,
+    back: true,
+    size: 10,
   };
-
-  return new Promise((resolve) => {
-    const finish = (chosen: number[] | null) => {
-      stdin.off('keypress', onKey);
-      stdin.setRawMode(false);
-      stdin.pause();
-      stdout.write('\x1b[?25h');
-      resolve(chosen);
-    };
-    const onKey = (_: string, key: Key = {}) => {
-      const step = multiStep(options, state, key);
-      if ('chosen' in step) return finish(step.chosen);
-      state = step.state;
-      draw();
-    };
-
-    emitKeypressEvents(stdin);
-    stdin.setRawMode(true);
-    stdin.resume();
-    stdout.write('\x1b[?25l');
-    stdin.on('keypress', onKey);
-    draw();
-  });
+  try {
+    return await runScreen<ReturnType<typeof choiceState>, number[] | null>({
+      state: choiceState(0, [...preselected]),
+      step: (state, key) => {
+        const step = choiceStep(config, state, key);
+        if ('state' in step) return step;
+        return { result: 'marked' in step ? step.marked : null };
+      },
+      render: (state, width) => renderChoice(config, state, style, width),
+      summary: (chosen) => (chosen === null ? [] : [style.dim(`  ${chosen.length} ${chosen.length === 1 ? 'marcada' : 'marcadas'}`)]),
+    });
+  } catch (error) {
+    if (error instanceof Interrupted) return null;
+    throw error;
+  }
 }

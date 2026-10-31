@@ -9,6 +9,7 @@ import {
   approveCommand,
   approveOptions,
   approveUsage,
+  askApprove,
   askCancel,
   askItemNumber,
   askReject,
@@ -60,8 +61,8 @@ export interface Command {
   /** Passo do plano em que o comando será implementado; ausente quando já está disponível. */
   plannedStep?: number;
   run?: (args: string[]) => number | Promise<number>;
-  /** Pede os argumentos quando o comando é chamado sem eles no modo Mabel. */
-  promptArgs?: () => string[] | Promise<string[]>;
+  /** Pede os argumentos quando o comando é chamado sem eles no modo Mabel; `null` quando o usuário volta. */
+  promptArgs?: () => string[] | null | Promise<string[] | null>;
   /** Só faz sentido no shell; não aparece no modo Mabel. */
   shellOnly?: boolean;
 }
@@ -162,7 +163,7 @@ export const commands: Command[] = [
     name: 'aprovar',
     description: 'Aprova os critérios de um item crítico',
     usage: approveUsage,
-    promptArgs: askItemNumber,
+    promptArgs: askApprove,
     options: approveOptions,
     args: [itemArg],
     run: approveCommand,

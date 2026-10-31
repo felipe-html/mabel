@@ -2,20 +2,21 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
-import { ask, confirm } from './ask.ts';
 import { dataDir, openDb } from './db.ts';
 import { openDeliveries, unitArg } from './delivery.ts';
 import { DecisionError, approve, cancel, reject, respond } from './decisions.ts';
 import { fail } from './errors.ts';
 import { formatCost } from './format.ts';
+import { fillForm, itemOptions } from './guided.ts';
 import { answersFromJson } from './inbox.ts';
 import { writeJson } from './json.ts';
-import { type Item, type PendingKind, TransitionError, getItem, itemCost } from './items.ts';
+import { type Item, type PendingKind, TRANSITIONS, TransitionError, getItem, itemCost, listItems } from './items.ts';
 import { LockError, acquireLock } from './lock.ts';
 import { autonomousDecisions, humanAttemptsSummary } from './pipeline.ts';
 import { unitSections, writeRunReport } from './runreport.ts';
 import { type Project, ProjectError, resolveProject } from './project.ts';
-import type { PlanOutput } from './schemas/stages.ts';
+import type { PlanOutput, Question } from './schemas/stages.ts';
+import { type FormConfig, type FormField, type FormValues, shellLine } from './screens.ts';
 import { itemDir, readArtifact } from './stages.ts';
 import { signals, signalsLine, situation } from './refine.ts';
 import { type RecentRun, renderRecentRuns } from './status.ts';
@@ -348,26 +349,158 @@ export async function integrationCommand(): Promise<number> {
 
 // Argumentos pedidos no menu interativo ----------------------------------------------------
 
-export async function askItemNumber(): Promise<string[]> {
-  const number = await ask('Número do item: ');
-  return number ? [number] : [];
+const value = (values: FormValues, key: string) => (typeof values[key] === 'string' ? (values[key] as string).trim() : '');
+
+/** Campo "Item": a lista só com os itens no estado em que o comando faz sentido. */
+function itemField(items: Item[]): FormField {
+  return { type: 'pick', key: 'item', label: 'Item', required: true, options: () => itemOptions(items) };
 }
 
-export async function askRespond(): Promise<string[]> {
-  const number = await ask('Número do item: ');
-  const answer = await ask('Resposta: ');
-  const replan = await confirm('Replanejar?', false);
-  return [number, answer, ...(replan ? ['--replanejar'] : [])];
+/** Itens do projeto atual; sem projeto, a lista vazia (o comando explica o erro depois). */
+function projectItems(): { items: Item[]; home: string } {
+  const home = dataDir();
+  const db = openDb(home);
+  try {
+    return { items: listItems(db, resolveProject(db).id), home };
+  } catch (error) {
+    if (error instanceof ProjectError) return { items: [], home };
+    throw error;
+  } finally {
+    db.close();
+  }
 }
 
-export async function askCancel(): Promise<string[]> {
-  const number = await ask('Número do item a cancelar: ');
-  return number && (await confirm(`Cancelar o item #${number}?`, false)) ? [number] : [];
+/** Formulário "Detalhar um item": qualquer item. */
+export function itemForm(items: Item[]): FormConfig {
+  return {
+    title: 'Detalhar um item',
+    description: 'Mostra estado, pendência, plano, custo e runs de um item.',
+    command: 'item',
+    fields: [itemField(items)],
+    action: 'Detalhar',
+    shell: (values) => shellLine(['mabel', 'item', value(values, 'item') || '<n>']),
+  };
 }
 
-export async function askReject(): Promise<string[]> {
-  const number = await ask('Número do item a rejeitar: ');
-  const reason = await ask('Motivo: ');
-  const cancelIt = await confirm('Cancelar o item em vez de replanejar?', false);
-  return number && reason ? [number, reason, ...(cancelIt ? ['--cancelar'] : [])] : [];
+/** Formulário "Aprovar critérios": itens aguardando aprovação, com os critérios do plano. */
+export function approveForm(items: Item[], criteria: (item: Item) => string[] = () => []): FormConfig {
+  const waiting = items.filter((item) => item.status === 'needs_human' && item.pendingKind === 'critical_approval');
+  return {
+    title: 'Aprovar critérios',
+    description: 'Aprova os critérios de um item que toca regra crítica.',
+    command: 'aprovar',
+    fields: [
+      itemField(waiting),
+      {
+        type: 'info',
+        key: 'criterios',
+        lines: (values) => {
+          const item = waiting.find((other) => String(other.number) === value(values, 'item'));
+          const list = item ? criteria(item) : [];
+          return list.length > 0 ? [style.dim('Critérios'), ...list.map((text, i) => `  ${i + 1}. ${text}`)] : [];
+        },
+      },
+    ],
+    action: 'Aprovar os critérios',
+    shell: (values) => shellLine(['mabel', 'aprovar', value(values, 'item') || '<n>']),
+  };
+}
+
+/** Formulário "Responder a um item": itens esperando você, com as perguntas e as sugestões. */
+export function respondForm(items: Item[]): FormConfig {
+  const waiting = items.filter((item) => item.status === 'needs_human' && item.pendingKind && item.pendingKind !== 'critical_approval');
+  return {
+    title: 'Responder a um item',
+    description: 'Responde a um item parado esperando você.',
+    command: 'responder',
+    fields: [
+      itemField(waiting),
+      {
+        type: 'info',
+        key: 'pergunta',
+        lines: (values) => {
+          const item = waiting.find((other) => String(other.number) === value(values, 'item'));
+          if (!item) return [];
+          const questions = item.pending?.questions ?? [];
+          if (questions.length === 0) return [item.pending?.reason ?? item.statusReason ?? ''].filter(Boolean);
+          // Pendências antigas guardavam as perguntas como texto.
+          return questions.flatMap((q: Question | string) =>
+            typeof q === 'string' ? [q] : [q.texto, ...(q.sugestao ? [style.dim(`sugestão: ${q.sugestao}`)] : [])],
+          );
+        },
+      },
+      { type: 'text', key: 'resposta', label: 'Resposta', required: true, placeholder: 'o que o agente deve saber' },
+      { type: 'bool', key: 'replanejar', label: 'Replanejar o item' },
+    ],
+    action: 'Responder',
+    shell: (values) =>
+      shellLine(['mabel', 'responder', value(values, 'item') || '<n>', value(values, 'resposta') || '<resposta>', ...(values.replanejar ? ['--replanejar'] : [])]),
+  };
+}
+
+/** Formulário "Cancelar um item": itens que ainda podem ser cancelados; botão vermelho. */
+export function cancelForm(items: Item[]): FormConfig {
+  return {
+    title: 'Cancelar um item',
+    description: 'Tira um item da fila de vez.',
+    command: 'cancelar',
+    fields: [itemField(items.filter((item) => TRANSITIONS[item.status].includes('cancelled')))],
+    action: 'Cancelar o item',
+    danger: true,
+    shell: (values) => shellLine(['mabel', 'cancelar', value(values, 'item') || '<n>']),
+  };
+}
+
+/** Formulário "Rejeitar um item": itens concluídos na unidade; botão vermelho. */
+export function rejectForm(items: Item[]): FormConfig {
+  return {
+    title: 'Rejeitar um item',
+    description: 'Desfaz um item na integração e o devolve ao planejamento.',
+    command: 'rejeitar',
+    fields: [
+      itemField(items.filter((item) => item.status === 'awaiting_merge')),
+      { type: 'text', key: 'motivo', label: 'Motivo', required: true, placeholder: 'por que o item volta; o planejamento recebe' },
+      { type: 'bool', key: 'cancelar', label: 'Cancelar em vez de devolver' },
+    ],
+    action: 'Rejeitar',
+    danger: true,
+    shell: (values) =>
+      shellLine(['mabel', 'rejeitar', value(values, 'item') || '<n>', value(values, 'motivo') || '<motivo>', ...(values.cancelar ? ['--cancelar'] : [])]),
+  };
+}
+
+/** Argumentos do comando a partir do formulário; `null` quando o usuário volta. */
+async function argsFrom(form: FormConfig, toArgs: (values: FormValues) => string[]): Promise<string[] | null> {
+  const values = await fillForm(form);
+  return values && toArgs(values);
+}
+
+export async function askItemNumber(): Promise<string[] | null> {
+  return argsFrom(itemForm(projectItems().items), (values) => [value(values, 'item')]);
+}
+
+export async function askApprove(): Promise<string[] | null> {
+  const { items, home } = projectItems();
+  const criteria = (item: Item) => (readArtifact<PlanOutput>(home, item.id, 'plano.json')?.criterios ?? []).map((c) => c.texto);
+  return argsFrom(approveForm(items, criteria), (values) => [value(values, 'item')]);
+}
+
+export async function askRespond(): Promise<string[] | null> {
+  return argsFrom(respondForm(projectItems().items), (values) => [
+    value(values, 'item'),
+    value(values, 'resposta'),
+    ...(values.replanejar ? ['--replanejar'] : []),
+  ]);
+}
+
+export async function askCancel(): Promise<string[] | null> {
+  return argsFrom(cancelForm(projectItems().items), (values) => [value(values, 'item')]);
+}
+
+export async function askReject(): Promise<string[] | null> {
+  return argsFrom(rejectForm(projectItems().items), (values) => [
+    value(values, 'item'),
+    value(values, 'motivo'),
+    ...(values.cancelar ? ['--cancelar'] : []),
+  ]);
 }

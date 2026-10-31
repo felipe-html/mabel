@@ -44,8 +44,8 @@ function scripted(inputs: (string | null | Interrupted)[], results: RunOutcome[]
 
 const base: RunRequest = { kind: 'exec', prompt: 'explique o runner', cwd: '/tmp/projeto', model: 'haiku' };
 
-test('cada mensagem retoma a sessão até o usuário digitar sair', async () => {
-  const { io, requests, output } = scripted(['e o stream?', '', 'obrigado', 'sair']);
+test('cada mensagem retoma a sessão até o usuário sair do campo com esc', async () => {
+  const { io, requests, output } = scripted(['e o stream?', '', 'obrigado', null]);
   const outcomes = await chat(base, outcome(), io);
 
   assert.equal(outcomes.length, 3);
@@ -56,21 +56,21 @@ test('cada mensagem retoma a sessão até o usuário digitar sair', async () => 
       ['obrigado', 'sess-1', 'haiku'],
     ],
   );
-  assert.match(output(), /sair ou Ctrl\+D encerra/);
+  assert.match(output(), /Continue a conversa; esc encerra\./);
   assert.match(output(), /■ sessão encerrada · 3 mensagens · 3,0s · US\$ 0,30/);
 });
 
-test('Ctrl+D encerra; Ctrl+C na pergunta só lembra como encerrar', async () => {
+test('esc encerra; Ctrl+C na pergunta só lembra como encerrar', async () => {
   const { io, requests, output } = scripted([new Interrupted(), null]);
   await chat(base, outcome(), io);
   assert.equal(requests.length, 0);
-  assert.equal(output().match(/sair ou Ctrl\+D encerra/g)?.length, 2);
+  assert.equal(output().match(/esc encerra/g)?.length, 2);
   assert.match(output(), /1 mensagem ·/);
 });
 
 test('resposta interrompida mantém a sessão; sem sessão, a próxima mensagem abre uma nova', async () => {
   const { io, requests, output } = scripted(
-    ['primeira', 'segunda', 'terceira', 'sair'],
+    ['primeira', 'segunda', 'terceira', null],
     [outcome({ status: 'interrupted', sessionId: null }), outcome({ sessionId: 'sess-2' }), outcome({ sessionId: 'sess-2' })],
   );
   await chat(base, outcome({ status: 'interrupted', sessionId: null, totals: null }), io);

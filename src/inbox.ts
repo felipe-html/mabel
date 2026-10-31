@@ -1,10 +1,11 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
-import { Interrupted, ask, interactive } from './ask.ts';
+import { Interrupted, interactive } from './ask.ts';
 import { dataDir, openDb } from './db.ts';
 import { type DecisionOptions, approve, cancel, respond } from './decisions.ts';
 import { renderItemDetail } from './decide.ts';
 import { fail } from './errors.ts';
+import { type GuidedIO, answerQuestion, confirmAction, terminalGuided } from './guided.ts';
 import { type Item, type ItemStatus, type Pending, type PendingKind, listItems } from './items.ts';
 import { writeJson } from './json.ts';
 import { humanAttemptsSummary } from './pipeline.ts';
@@ -23,16 +24,9 @@ export const inboxOptions = { json: jsonOption } satisfies OptionSpecs;
 export const DELEGATE = 'decida e registre como suposição.';
 
 /** Entrada e saída da inbox; os testes trocam o terminal por respostas roteirizadas. */
-export interface InboxIO {
-  /** Lê uma linha; ctrl+c lança `Interrupted`. */
-  ask: (prompt: string) => Promise<string>;
-  write: (line: string) => void;
-}
+export type InboxIO = GuidedIO;
 
-export const terminalIO: InboxIO = {
-  ask,
-  write: (line) => process.stdout.write(`${line}\n`),
-};
+export const terminalIO: InboxIO = terminalGuided;
 
 export interface InboxResult {
   answered: number;
@@ -124,40 +118,38 @@ export function answersFromJson(value: unknown, pending: Pending): { text: strin
 const SKIP = Symbol('skip');
 type Answer = string | typeof SKIP;
 
-/** Mostra as opções e lê até `parse` aceitar a entrada; `{ retry }` repete com um aviso. */
-async function choose<T>(io: InboxIO, hint: string, parse: (input: string) => T | { retry: string }): Promise<T> {
-  io.write(`${INDENT}${style.dim(`[${hint}]`)}`);
+/** Opção da pendência: o texto do menu e o que ela faz. */
+interface Action<T> {
+  label: string;
+  danger?: boolean;
+  then: () => Promise<T | null>;
+}
+
+/** Menu das opções da pendência; uma opção que devolve `null` (texto cancelado) volta ao menu. */
+async function chooseAction<T>(io: InboxIO, actions: Action<T>[]): Promise<T> {
   for (;;) {
-    const result = parse(await io.ask(`${INDENT}› `));
-    if (typeof result === 'object' && result !== null && 'retry' in result) {
-      io.write(`${INDENT}${result.retry}`);
-      continue;
-    }
-    return result as T;
+    const action = actions[await io.choose(actions.map(({ label, danger }) => ({ label, danger })))];
+    const result = await action?.then();
+    if (result !== null && result !== undefined) return result;
   }
 }
 
-async function confirmCancel(io: InboxIO, item: Item): Promise<boolean> {
-  const answer = (await io.ask(`${INDENT}Cancelar o item #${item.number}? [s/N] `)).toLowerCase();
-  return answer.startsWith('s') || answer.startsWith('y');
+/** Campo de texto que devolve `null` quando vazio ou cancelado. */
+async function textOrNull(io: InboxIO, label: string): Promise<string | null> {
+  return (await io.text(label)) || null;
 }
+
+const SKIP_LABEL = 'Pular por agora';
 
 async function askQuestions(io: InboxIO, questions: Question[]): Promise<Answer[] | typeof SKIP> {
   const answers: Answer[] = [];
   for (const [i, question] of questions.entries()) {
     io.write(`  ${i + 1}/${questions.length} ${question.texto}${question.regraCritica ? style.dim(' (regra crítica)') : ''}`);
     if (question.sugestao) io.write(`${INDENT}sugestão: ${question.sugestao}`);
-    // Regra crítica é decisão humana (G7): sem "decide você".
-    const delegate = !question.regraCritica;
-    const hint = [question.sugestao ? 'enter aceita' : '', 'texto responde', delegate ? 'd decide você' : '', 'p pula o item'].filter(Boolean).join(' · ');
-    const answer = await choose<Answer>(io, hint, (input) => {
-      if (input === 'p') return SKIP;
-      if (input === 'd') return delegate ? DELEGATE : { retry: 'Regra crítica: a resposta é sua.' };
-      if (input) return input;
-      return question.sugestao || { retry: `Sem sugestão: digite a resposta${delegate ? ', d' : ''} ou p.` };
-    });
-    if (answer === SKIP) return SKIP;
-    answers.push(answer);
+    // Regra crítica é decisão humana (G7): sem "deixar o agente decidir".
+    const result = await answerQuestion(io, { sugestao: question.sugestao, delegate: !question.regraCritica, skip: SKIP_LABEL });
+    if ('skip' in result) return SKIP;
+    answers.push('delegate' in result ? DELEGATE : result.answer);
   }
   return answers;
 }
@@ -180,21 +172,23 @@ async function questionsFlow(
   const critical = pending.criticalAssumptions ?? [];
   if (critical.length > 0) {
     for (const assumption of critical) io.write(`  ! suposição crítica: ${assumption}`);
-    // Suposição sobre regra crítica é decisão humana (G7): sem "decide você".
-    const answer = await choose<Answer>(io, 'enter confirma · texto corrige · p pula o item', (input) =>
-      input === 'p' ? SKIP : input || CONFIRM_ASSUMPTIONS,
-    );
+    // Suposição sobre regra crítica é decisão humana (G7): sem "deixar o agente decidir".
+    const answer = await chooseAction<Answer>(io, [
+      { label: 'Confirmar as suposições', then: async () => CONFIRM_ASSUMPTIONS },
+      { label: 'Corrigir com outro texto', then: () => textOrNull(io, 'Correção') },
+      { label: SKIP_LABEL, then: async () => SKIP },
+    ]);
     if (answer === SKIP) return SKIP;
     pairs.push({ question: assumptionsQuestion(critical), answer });
   }
 
   let replan = false;
   if (item.pendingKind === 'question_execute') {
-    const next = await choose<'go' | 'replan' | typeof SKIP>(
-      io,
-      'enter retoma a execução · r replaneja com as respostas · p pula o item',
-      (input) => (input === '' ? 'go' : input === 'r' ? 'replan' : input === 'p' ? SKIP : { retry: 'Use enter, r ou p.' }),
-    );
+    const next = await chooseAction<'go' | 'replan' | typeof SKIP>(io, [
+      { label: 'Retomar a execução', then: async () => 'go' },
+      { label: 'Replanejar com as respostas', then: async () => 'replan' },
+      { label: SKIP_LABEL, then: async () => SKIP },
+    ]);
     if (next === SKIP) return SKIP;
     replan = next === 'replan';
   }
@@ -203,18 +197,29 @@ async function questionsFlow(
 
 async function incompleteFlow(db: DatabaseSync, project: Project, io: InboxIO, item: Item): Promise<Decision> {
   io.write(`${INDENT}motivo: ${item.pending?.reason ?? 'plano incompleto'}`);
-  for (;;) {
-    const input = await choose<string>(io, 'texto orienta o plano · c cancela · p pula', (text) =>
-      text || { retry: 'Digite a orientação, c ou p.' },
-    );
-    if (input === 'p') return SKIP;
-    if (input === 'c') {
-      if (!(await confirmCancel(io, item))) continue;
+  return chooseAction<Decision>(io, [
+    { label: 'Orientar o plano', then: async () => answerWith(db, project, item, await textOrNull(io, 'Orientação')) },
+    cancelAction(db, project, io, item),
+    { label: SKIP_LABEL, then: async () => SKIP },
+  ]);
+}
+
+/** Resposta gravada com o texto do campo; `null` (vazio ou cancelado) volta ao menu. */
+function answerWith(db: DatabaseSync, project: Project, item: Item, text: string | null, replan = false): Decision | null {
+  return text ? respond(db, project, item, text, { replan, ...VIA }) : null;
+}
+
+/** "Cancelar o item", em vermelho, confirmado com "Voltar" selecionado. */
+function cancelAction(db: DatabaseSync, project: Project, io: InboxIO, item: Item): Action<Decision> {
+  return {
+    label: 'Cancelar o item',
+    danger: true,
+    then: async () => {
+      if (!(await confirmAction(io, `Cancelar o item #${item.number}`, { danger: true }))) return null;
       cancel(db, project, item, VIA);
       return 'cancelled';
-    }
-    return respond(db, project, item, input, VIA);
-  }
+    },
+  };
 }
 
 async function criticalFlow(
@@ -236,30 +241,26 @@ async function criticalFlow(
       for (const s of plan.suposicoes) io.write(`${INDENT}  - ${s.texto}${s.regraCritica ? ' (regra crítica)' : ''}`);
     }
   }
-  for (;;) {
-    const input = await choose<string>(io, 'a aprova · texto ajusta os critérios · c cancela · p pula', (text) => {
-      if (text === 'd') return { retry: 'Item crítico: a aprovação é sua. Use a, texto, c ou p.' };
-      return text || { retry: 'Digite a, o ajuste, c ou p.' };
-    });
-    if (input === 'p') return SKIP;
-    if (input === 'a') {
-      approve(db, project, item, VIA);
-      return 'planned';
-    }
-    if (input === 'c') {
-      if (!(await confirmCancel(io, item))) continue;
-      cancel(db, project, item, VIA);
-      return 'cancelled';
-    }
-    return respond(db, project, item, input, VIA);
-  }
+  // Item crítico: a aprovação é humana, sem "deixar o agente decidir".
+  return chooseAction<Decision>(io, [
+    {
+      label: 'Aprovar os critérios',
+      then: async () => {
+        approve(db, project, item, VIA);
+        return 'planned';
+      },
+    },
+    { label: 'Ajustar os critérios', then: async () => answerWith(db, project, item, await textOrNull(io, 'Ajuste')) },
+    cancelAction(db, project, io, item),
+    { label: SKIP_LABEL, then: async () => SKIP },
+  ]);
 }
 
-/** O que o texto livre faz em cada pendência que pede orientação. */
+/** A opção que orienta, em cada pendência que pede orientação. */
 const GUIDANCE: Partial<Record<PendingKind, string>> = {
-  attempts_exhausted: 'texto orienta um novo ciclo',
-  environment_block: 'texto diz o que mudou no ambiente e retoma',
-  integration_conflict: 'texto orienta a resolução do conflito',
+  attempts_exhausted: 'Orientar um novo ciclo',
+  environment_block: 'Dizer o que mudou no ambiente e retomar',
+  integration_conflict: 'Orientar a resolução do conflito',
 };
 
 /**
@@ -280,25 +281,12 @@ async function exhaustedFlow(db: DatabaseSync, home: string, project: Project, i
           ]
         : humanAttemptsSummary(db, home, item);
   for (const line of lines) io.write(line ? `${INDENT}${line}` : '');
-  for (;;) {
-    const input = await choose<string>(
-      io,
-      `${GUIDANCE[kind]} · r <texto> replaneja · c cancela · p pula`,
-      (text) => text || { retry: 'Digite a orientação, r <texto>, c ou p.' },
-    );
-    if (input === 'p') return SKIP;
-    if (input === 'c') {
-      if (!(await confirmCancel(io, item))) continue;
-      cancel(db, project, item, VIA);
-      return 'cancelled';
-    }
-    if (input === 'r' || input.startsWith('r ')) {
-      const guidance = input.slice(1).trim() || (await io.ask(`${INDENT}Orientação para o replanejamento: `)).trim();
-      if (!guidance) continue;
-      return respond(db, project, item, guidance, { replan: true, ...VIA });
-    }
-    return respond(db, project, item, input, VIA);
-  }
+  return chooseAction<Decision>(io, [
+    { label: GUIDANCE[kind] as string, then: async () => answerWith(db, project, item, await textOrNull(io, 'Orientação')) },
+    { label: 'Replanejar com uma orientação', then: async () => answerWith(db, project, item, await textOrNull(io, 'Orientação'), true) },
+    cancelAction(db, project, io, item),
+    { label: SKIP_LABEL, then: async () => SKIP },
+  ]);
 }
 
 function itemFlow(db: DatabaseSync, home: string, project: Project, io: InboxIO, item: Item): Promise<Decision> {
@@ -373,8 +361,7 @@ export async function inboxSession(
   if (result.interrupted || result.answered === 0) return false;
   try {
     waiting?.('Retomar a esteira agora?');
-    const answer = (await io.ask('Retomar a esteira agora? [S/n] ')).toLowerCase();
-    return !answer || answer.startsWith('s') || answer.startsWith('y');
+    return await confirmAction(io, 'Retomar a esteira agora', { back: 'Agora não', actionFirst: true });
   } catch (error) {
     if (error instanceof Interrupted) return false;
     throw error;

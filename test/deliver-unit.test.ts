@@ -7,7 +7,7 @@ import { git, tryGit } from '../src/git.ts';
 import { getItem, listItems, syncBacklog } from '../src/items.ts';
 import { type QueueOptions, startQueue } from '../src/run.ts';
 import { applyRuleChanges, getSpecRecord, setSpecStatus } from '../src/specs.ts';
-import { PLAN, REVIEW_OK, setupProject, useScenario } from './helpers.ts';
+import { PLAN, REVIEW_OK, scriptedGuided, setupProject, useScenario } from './helpers.ts';
 
 // S.6: `mabel entregar <unidade>` (critérios 18 a 21 de `docs/specs/specs-e-entrega.md`).
 
@@ -128,14 +128,11 @@ test('S.6 critério 20: entrega parcial pede --parcial fora do TTY e confirmaç�
   assert.match(refused.lines.join('\n'), /Entrega parcial: a ainda tem #2 por concluir\. Rode com --parcial/);
   assert.equal(q.deliveryBranches(), '');
 
-  const prompts: string[] = [];
-  const scripted = (answer: string) => async (prompt: string) => {
-    prompts.push(prompt);
-    return answer;
-  };
-  assert.equal(await confirmPartial(scripted('s'), [2]), true);
-  assert.equal(await confirmPartial(scripted(''), [2]), false);
-  assert.match(prompts[0] ?? '', /Faltam #2\. Entregar só o que está pronto\? \[s\/N\]/);
+  const yes = scriptedGuided(['Entregar só o que está pronto']);
+  assert.equal(await confirmPartial(yes, [2]), true);
+  assert.equal(await confirmPartial(scriptedGuided(['Voltar']), [2]), false);
+  assert.deepEqual(yes.lines, ['Faltam #2.']);
+  assert.deepEqual(yes.prompts, ['Entregar só o que está pronto | Voltar']);
 
   const partial = deliver(q.db, q.home, q.project, { unit: 'a', partial: true });
   assert.equal(partial.code, 0, partial.lines.join('\n'));

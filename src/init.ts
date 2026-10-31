@@ -2,7 +2,8 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
-import { ask, confirm, interactive } from './ask.ts';
+import { interactive } from './ask.ts';
+import { confirmAction, terminalGuided as io } from './guided.ts';
 import { BACKLOG_TEMPLATE, type ItemFields, appendBlocks, renderItemBlock } from './backlog.ts';
 import { syncBacklog } from './items.ts';
 import { dataDir, openDb } from './db.ts';
@@ -120,17 +121,13 @@ async function chooseStack(question: string, askOther: boolean): Promise<StackCh
   if (chosen === null) return null;
   const stack = STACKS[chosen];
   if (stack) return { stack };
-  return { other: askOther ? await ask('Qual stack? ') : '' };
+  return { other: askOther ? ((await io.text('Qual stack', { placeholder: 'linguagem e framework' })) ?? '') : '' };
 }
 
-/** Pergunta `[S/n/editar]` até receber uma resposta válida. */
+/** Usar os comandos detectados, editá-los ou ficar sem eles. */
 async function confirmCommands(): Promise<'yes' | 'no' | 'edit'> {
-  for (;;) {
-    const answer = (await ask('Usar estes comandos? [S/n/editar] ')).toLowerCase();
-    if (!answer || answer.startsWith('s') || answer.startsWith('y')) return 'yes';
-    if (answer === 'n' || answer === 'nao' || answer === 'não') return 'no';
-    if (answer.startsWith('e')) return 'edit';
-  }
+  const answers = ['yes', 'edit', 'no'] as const;
+  return answers[await io.choose(['Usar estes comandos', 'Editar os comandos', { label: 'Não usar comandos', danger: true }])] ?? 'yes';
 }
 
 function describe(setup: string | null, verify: VerifyCommand[]): string[] {
@@ -142,27 +139,36 @@ function describe(setup: string | null, verify: VerifyCommand[]): string[] {
   ];
 }
 
-/** No TTY: enter mantém, `-` remove, texto substitui; depois permite acrescentar comandos. */
+/** Um comando: manter, editar (campo já preenchido) ou remover; sem comando, definir um. */
+async function editCommand(label: string, current: string | null): Promise<string | null> {
+  io.write(`  ${label.padEnd(7)} ${current ?? style.dim('(nenhum)')}`);
+  if (current === null) {
+    if ((await io.choose(['Deixar sem comando', 'Definir um comando'])) === 0) return null;
+    return (await io.text(label, { placeholder: 'comando de shell' })) || null;
+  }
+  const action = await io.choose(['Manter', 'Editar', { label: 'Remover', danger: true }]);
+  if (action === 2) return null;
+  if (action === 0) return current;
+  return (await io.text(label, { initial: current })) || current;
+}
+
+/** No TTY: cada comando com Manter, Editar e Remover; depois, comandos de verificação novos. */
 async function editCommands(setup: string | null, verify: VerifyCommand[]) {
-  process.stdout.write(style.dim("Edite cada comando: enter mantém, '-' remove, texto novo substitui.\n"));
-  const edit = async (label: string, current: string | null) => {
-    const answer = await ask(`  ${label.padEnd(9)}[${current ?? ''}] `);
-    if (answer === '-') return null;
-    return answer || current;
-  };
-  const newSetup = await edit('setup', setup);
+  const newSetup = await editCommand('setup', setup);
   const newVerify: VerifyCommand[] = [];
   for (const command of verify) {
-    const edited = await edit(command.name, command.command);
+    const edited = await editCommand(command.name, command.command);
     if (edited) newVerify.push({ name: command.name, command: edited });
   }
-  process.stdout.write(style.dim('Comandos de verificação extras, um por linha como `nome: comando` (linha vazia termina).\n'));
-  for (;;) {
-    const answer = await ask('  + ');
-    if (!answer) break;
-    const match = /^([\w-]+)\s*:\s*(.+)$/.exec(answer);
-    if (match?.[1] && match[2]) newVerify.push({ name: match[1], command: match[2] });
-    else process.stdout.write(style.dim('  formato: nome: comando\n'));
+  while ((await io.choose(['Concluir', 'Adicionar um comando de verificação'])) === 1) {
+    const name = await io.text('Nome', { placeholder: 'letras, dígitos e hífen, como lint' });
+    if (!name) continue;
+    if (!/^[\w-]+$/.test(name)) {
+      io.write(style.dim('  O nome aceita só letras, dígitos, _ e hífen.'));
+      continue;
+    }
+    const command = await io.text('Comando', { placeholder: 'comando de shell' });
+    if (command) newVerify.push({ name, command });
   }
   return { setup: newSetup, verify: newVerify };
 }
@@ -371,7 +377,7 @@ async function offerCommit(root: string): Promise<void> {
   if (!mabelUncommitted(root)) return;
   const branch = currentBranch(root);
   process.stdout.write(`O .mabel/ tem arquivos fora do git; os worktrees dos itens nascem da branch ${branch}.\n`);
-  if (interactive() && (await confirm(`Commitar o .mabel/ na branch ${branch}?`))) {
+  if (interactive() && (await confirmAction(io, `Commitar o .mabel/ na branch ${branch}`, { back: 'Não commitar', actionFirst: true }))) {
     commitMabelDir(root);
     process.stdout.write('Commit criado.\n');
   } else {

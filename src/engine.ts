@@ -1,9 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
-import { ask } from './ask.ts';
 import { type CatalogEntry, chooseReferences } from './capture.ts';
 import { ToolLog, summaryLine } from './exec.ts';
 import { truncate } from './format.ts';
+import { type GuidedIO, answerQuestion, editList, terminalGuided } from './guided.ts';
 import { projectContext } from './hermetic.ts';
 import type { Item } from './items.ts';
 import { type Project, mabelPath, readCriticalRules } from './project.ts';
@@ -451,23 +451,19 @@ export async function converse(
 // Terminal -------------------------------------------------------------------------------
 
 /** Entrada e saída da revisão; os testes trocam o terminal por respostas roteirizadas. */
-export interface ReviewIO {
-  /** Lê uma linha; ctrl+c lança `Interrupted`. */
-  ask: (prompt: string) => Promise<string>;
-  write: (line: string) => void;
+export interface ReviewIO extends GuidedIO {
   /** Escolha das referências no catálogo; `null` quando cancelada. Sem ela, a etapa não aparece. */
   pickReferences?: (catalog: CatalogEntry[], current: string[]) => Promise<string[] | null>;
 }
 
 export const terminalReviewIO: ReviewIO = {
-  ask,
+  ...terminalGuided,
   pickReferences: chooseReferences,
-  write: (line) => process.stdout.write(`${line}\n`),
 };
 
 export const INDENT = '  ';
 
-/** Perguntas da rodada uma a uma, como na inbox: enter aceita a sugestão, texto responde, `p` adia. */
+/** Perguntas da rodada uma a uma, como na inbox: aceitar a sugestão, responder ou deixar para o planejamento. */
 export function terminalAnswerer(io: ReviewIO): Answerer {
   return async (output) => {
     io.write('');
@@ -477,62 +473,38 @@ export function terminalAnswerer(io: ReviewIO): Answerer {
       const example = output.regras.find((rule) => rule.id === q.regra);
       io.write(`${INDENT}${i + 1}/${output.perguntas.length} ${q.texto}${style.dim(` (${q.regra}${example ? ` ${example.texto}` : ''})`)}${q.regraCritica ? style.dim(' (regra crítica)') : ''}`);
       if (q.sugestao) io.write(`${INDENT}    sugestão: ${q.sugestao}`);
-      const hint = q.sugestao ? 'enter aceita a sugestão · texto responde · p deixa para o planejamento' : 'texto responde · enter ou p deixa para o planejamento';
-      const answer = (await io.ask(`${INDENT}    › ${style.dim(hint)}: `)).trim();
-      const chosen = answer.toLowerCase() === 'p' ? '' : answer || q.sugestao;
-      pairs.push({ question: q, answer: chosen.trim() || null });
+      const result = await answerQuestion(io, { sugestao: q.sugestao, skip: 'Deixar para o planejamento' });
+      pairs.push({ question: q, answer: 'answer' in result ? result.answer.trim() || null : null });
     }
     return pairs;
   };
 }
 
-/** Lista proposta: enter aceita, `e` edita uma a uma, `-` descarta. */
+/** Revisão de uma parte da proposta: aceitar tudo, revisar um a um ou descartar. */
+const REVIEW_OPTIONS = ['Aceitar tudo', 'Revisar um a um', { label: 'Descartar', danger: true }];
+/** Parte que não se descarta: aceitar ou editar. */
+const EDIT_OPTIONS = ['Aceitar', 'Editar'];
+
+/** Lista proposta: aceitar tudo, revisar uma a uma ou descartar. */
 export async function reviewList(io: ReviewIO, title: string, entries: string[]): Promise<string[]> {
   if (entries.length === 0) return [];
   io.write('');
   io.write(style.bold(title));
   entries.forEach((entry, i) => io.write(`${INDENT}${i + 1}. ${entry}`));
-  for (;;) {
-    const answer = (await io.ask(`${INDENT}› enter aceita · e edita um a um · - descarta: `)).trim().toLowerCase();
-    if (!answer) return entries;
-    if (answer === '-') return [];
-    if (answer === 'e') return editList(io, entries);
-    io.write(style.dim(`${INDENT}responda enter, e ou -`));
-  }
+  const answer = await io.choose(REVIEW_OPTIONS);
+  if (answer === 0) return entries;
+  if (answer === 2) return [];
+  return editList(io, entries);
 }
 
-export async function editList(io: ReviewIO, entries: string[]): Promise<string[]> {
-  io.write(style.dim(`${INDENT}enter mantém · - remove · texto novo substitui`));
-  const kept: string[] = [];
-  for (const [i, entry] of entries.entries()) {
-    io.write(`${INDENT}${i + 1}. ${entry}`);
-    const answer = (await io.ask(`${INDENT}   › `)).trim();
-    if (answer === '-') continue;
-    kept.push(answer || entry);
-  }
-  io.write(style.dim(`${INDENT}acrescente outros, um por linha (linha vazia encerra)`));
-  for (;;) {
-    const extra = (await io.ask(`${INDENT}+ `)).trim();
-    if (!extra) return kept;
-    kept.push(extra);
-  }
-}
-
-async function choice(io: ReviewIO, prompt: string, valid: string[]): Promise<string> {
-  for (;;) {
-    const answer = (await io.ask(prompt)).trim().toLowerCase();
-    if (valid.includes(answer)) return answer;
-    io.write(style.dim(`${INDENT}responda ${valid.map((v) => v || 'enter').join(', ')}`));
-  }
-}
+export { editList };
 
 async function reviewText(io: ReviewIO, title: string, text: string): Promise<string> {
   io.write('');
   io.write(style.bold(title));
   for (const line of text.trim().split('\n')) io.write(`${INDENT}${line}`);
-  if ((await choice(io, `${INDENT}› enter aceita · e edita: `, ['', 'e'])) === '') return text;
-  const edited = (await io.ask(`${INDENT}novo texto (enter mantém) › `)).trim();
-  return edited || text;
+  if ((await io.choose(EDIT_OPTIONS)) === 0) return text;
+  return (await io.text('Novo texto', { initial: text.trim() })) || text;
 }
 
 const exampleLine = (example: SpecExample) => renderExample(example);
@@ -546,14 +518,20 @@ async function reviewRules(io: ReviewIO, rules: SpecifyOutput['regras']): Promis
   io.write('');
   io.write(style.bold('Regras e exemplos') + style.dim(` (borda marcada com ${EDGE_MARK})`));
   for (const rule of rules) for (const line of ruleLines(rule)) io.write(line);
-  if ((await choice(io, `${INDENT}› enter aceita · e edita uma a uma: `, ['', 'e'])) === '') return rules;
+  if ((await io.choose(['Aceitar tudo', 'Revisar uma a uma'])) === 0) return rules;
   const kept: SpecifyOutput['regras'] = [];
   for (const rule of rules) {
-    io.write(`${INDENT}${rule.id} ${rule.texto}`);
-    const answer = (await io.ask(`${INDENT}   › enter mantém · - remove · texto novo substitui: `)).trim();
-    if (answer === '-') continue;
+    for (const line of ruleLines(rule)) io.write(line);
+    const action = await io.choose(['Manter', 'Editar', { label: 'Remover', danger: true }]);
+    if (action === 2) continue;
+    if (action === 0) {
+      kept.push(rule);
+      continue;
+    }
+    const texto = (await io.text('Regra', { initial: rule.texto })) || rule.texto;
+    io.write(style.dim(`${INDENT}exemplos de ${rule.id}`));
     const exemplos = (await editList(io, rule.exemplos.map(exampleLine))).map(parseExample);
-    kept.push({ ...rule, texto: answer || rule.texto, exemplos });
+    kept.push({ ...rule, texto, exemplos });
   }
   return kept;
 }
@@ -584,16 +562,17 @@ async function reviewTasks(io: ReviewIO, tasks: Task[], offset: number): Promise
   io.write('');
   io.write(style.bold('Tarefas para o quadro'));
   for (const line of taskLines(tasks, offset)) io.write(line);
-  const answer = await choice(io, `${INDENT}› enter aceita · e edita uma a uma · - descarta: `, ['', 'e', '-']);
-  if (answer === '') return tasks;
-  if (answer === '-') return [];
+  const answer = await io.choose(REVIEW_OPTIONS);
+  if (answer === 0) return tasks;
+  if (answer === 2) return [];
   const keep: boolean[] = [];
   const renamed: Task[] = [];
-  for (const task of tasks) {
-    io.write(`${INDENT}${task.titulo}`);
-    const title = (await io.ask(`${INDENT}   › enter mantém · - remove · texto novo troca o título: `)).trim();
-    keep.push(title !== '-');
-    renamed.push(title && title !== '-' ? { ...task, titulo: title } : task);
+  for (const [i, task] of tasks.entries()) {
+    io.write(`${INDENT}${i + 1 + offset}. ${task.titulo}`);
+    const action = await io.choose(['Manter', 'Editar o título', { label: 'Remover', danger: true }]);
+    keep.push(action !== 2);
+    const title = action === 1 ? await io.text('Título', { initial: task.titulo }) : null;
+    renamed.push(title ? { ...task, titulo: title } : task);
   }
   return dropTasks(renamed, keep);
 }
@@ -604,16 +583,20 @@ async function reviewReproduction(io: ReviewIO, reproduction: SpecifyOutput['rep
   io.write(`${INDENT}passos: ${reproduction.passos}`);
   io.write(`${INDENT}esperado: ${reproduction.esperado}`);
   io.write(`${INDENT}obtido hoje: ${reproduction.obtido}`);
-  if ((await choice(io, `${INDENT}› enter aceita · e edita: `, ['', 'e'])) === '') return reproduction;
-  const field = async (label: string, value: string) => (await io.ask(`${INDENT}${label} (enter mantém) › `)).trim() || value;
+  if ((await io.choose(EDIT_OPTIONS)) === 0) return reproduction;
+  const field = async (label: string, value: string) => (await io.text(label, { initial: value })) || value;
   return {
-    passos: await field('passos', reproduction.passos),
-    esperado: await field('esperado', reproduction.esperado),
-    obtido: await field('obtido hoje', reproduction.obtido),
+    passos: await field('Passos', reproduction.passos),
+    esperado: await field('Esperado', reproduction.esperado),
+    obtido: await field('Obtido hoje', reproduction.obtido),
   };
 }
 
 export type EngineReview = { kind: 'accept'; output: SpecifyOutput } | { kind: 'keep' } | { kind: 'discard' };
+
+/** O antigo "Gravar? [S/n/d]": gravar, deixar a proposta pendente ou descartá-la. */
+export const SAVE_OPTIONS = ['Gravar', 'Deixar a proposta pendente', { label: 'Descartar a proposta', danger: true }];
+export const SAVE_KINDS = ['accept', 'keep', 'discard'] as const;
 
 export interface ReviewOptions {
   target: Target;
@@ -629,7 +612,7 @@ export interface ReviewOptions {
 
 /**
  * Revisão parte a parte (história, regras com exemplos, decisões, fora do escopo, regras
- * críticas, alterações nas regras vigentes e tarefas), a prévia e `Gravar? [S/n/d]`.
+ * críticas, alterações nas regras vigentes e tarefas), a prévia e o menu de gravação.
  */
 export async function reviewOutput(io: ReviewIO, output: SpecifyOutput, options: ReviewOptions): Promise<EngineReview> {
   const { target } = options;
@@ -668,12 +651,8 @@ export async function reviewOutput(io: ReviewIO, output: SpecifyOutput, options:
   io.write(style.bold('Como fica'));
   for (const line of options.preview(reviewed)) io.write(`${INDENT}${line}`);
   io.write('');
-  for (;;) {
-    const answer = (await io.ask('Gravar? [S/n/d] (n deixa a proposta pendente · d descarta) ')).trim().toLowerCase();
-    if (!answer || answer.startsWith('s') || answer.startsWith('y')) return { kind: 'accept', output: reviewed };
-    if (answer.startsWith('n')) return { kind: 'keep' };
-    if (answer.startsWith('d')) return { kind: 'discard' };
-  }
+  const kind = SAVE_KINDS[await io.choose(SAVE_OPTIONS)];
+  return kind === 'accept' ? { kind, output: reviewed } : { kind: kind ?? 'keep' };
 }
 
 /** Resumo da proposta fora do TTY (sem revisão). */
