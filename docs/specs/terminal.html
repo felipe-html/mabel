@@ -1,0 +1,1266 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<title>Novo terminal do Mabel</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,600;1,400&family=Instrument+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: página estreita de estudo; o terminal é o objeto, controles acima, notas abaixo. */
+:root {
+  --bg: #f3f4f1; --fg: #1d211f; --muted: #626a66; --line: #d7dbd6; --panel: #ffffff;
+  --term-bg: #fbfcfa; --term-fg: #22272a; --term-dim: #8a928e;
+  --t-green: #2f7d4f; --t-red: #b8403a; --t-yellow: #9a6a00; --t-accent: #2a6f97;
+  --accent: #2a6f97; --sel: #dde8ee;
+  --f-body: "Instrument Sans", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121514; --fg: #e3e6e3; --muted: #939b97; --line: #2b302e; --panel: #191d1b;
+  --term-bg: #0d0f0e; --term-fg: #d9dedb; --term-dim: #6c7470;
+  --t-green: #6cc58c; --t-red: #ec7a72; --t-yellow: #e2b44f; --t-accent: #7cc0e6;
+  --accent: #7cc0e6; --sel: #1b2c37; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #121514; --fg: #e3e6e3; --muted: #939b97; --line: #2b302e; --panel: #191d1b;
+  --term-bg: #0d0f0e; --term-fg: #d9dedb; --term-dim: #6c7470;
+  --t-green: #6cc58c; --t-red: #ec7a72; --t-yellow: #e2b44f; --t-accent: #7cc0e6;
+  --accent: #7cc0e6; --sel: #1b2c37; color-scheme: dark; }
+
+body { background: var(--bg); color: var(--fg); font-family: var(--f-body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1480px; margin: 0 auto; padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 22px; }
+header h1 { font-size: 1.5rem; font-weight: 600; margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+header p { margin: 4px 0 0; color: var(--muted); max-width: 70ch; }
+
+.controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+.group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.group > .lbl { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-right: 4px; }
+button, select { font: inherit; font-size: 0.86rem; color: var(--fg); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 6px; padding: 5px 11px; cursor: pointer; }
+button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+button:focus-visible, select:focus-visible, .term:focus-visible, label:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+label.chk { display: inline-flex; gap: 6px; align-items: center; font-size: 0.86rem; cursor: pointer; }
+label.chk kbd { font-family: var(--f-mono); font-size: 0.72rem; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+
+.panes { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
+.panes.compare { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1400px) { .panes.compare { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.pane { min-width: 0; display: grid; gap: 6px; }
+.pane h2 { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 500; margin: 0; }
+.term { background: var(--term-bg); color: var(--term-fg); border: 1px solid var(--line); border-radius: 8px;
+  font-family: var(--f-mono); font-size: 12.5px; line-height: 1.55; padding: 12px 6px; overflow-x: auto; }
+.term pre { margin: 0; font: inherit; white-space: pre; min-height: calc(1.55em * 30); }
+#old pre { height: calc(1.55em * 30); overflow-y: auto; }
+.d { color: var(--term-dim); } .b { font-weight: 600; } .i { font-style: italic; color: var(--term-dim); }
+.g { color: var(--t-green); } .r { color: var(--t-red); } .y { color: var(--t-yellow); } .a { color: var(--t-accent); }
+
+.notes { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) { .notes { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; min-width: 0; }
+.card h3 { margin: 0 0 10px; font-size: 1rem; font-weight: 600; }
+.legend { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 0.9rem; }
+.legend span:nth-child(odd) { font-family: var(--f-mono); text-align: center; }
+ol.q { margin: 0; padding-left: 1.3em; display: grid; gap: 10px; font-size: 0.92rem; }
+ol.q b { font-weight: 600; }
+ol.q .sug { color: var(--muted); display: block; }
+code { font-family: var(--f-mono); font-size: 0.85em; }
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); }
+.tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 8px 14px; font-size: 0.95rem; font-weight: 500; color: var(--muted); }
+.tabs button[aria-selected="true"] { border-bottom-color: var(--accent); color: var(--fg); }
+.tabpanel { display: grid; gap: 18px; }
+[hidden] { display: none !important; }
+.hint { margin: 0; color: var(--muted); font-size: 0.86rem; }
+.s { background: var(--sel); }
+.pick { cursor: pointer; }
+#screen2 { min-height: 0; }
+@media (max-width: 640px) { .term { font-size: 10.5px; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Novo terminal do Mabel</h1>
+    <p>Protótipos para refinar o terminal antes de implementar: a tela inicial com os comandos e o painel da fila. Os dados são de exemplo.</p>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Telas">
+    <button role="tab" id="tabbtn-comandos" data-tab="comandos" aria-selected="true">Comandos</button>
+    <button role="tab" id="tabbtn-fila" data-tab="fila" aria-selected="false">Fila (rodar)</button>
+  </nav>
+
+  <section id="tab-comandos" class="tabpanel">
+    <div class="controls">
+      <div class="group" role="group" aria-label="Situação do diretório">
+        <span class="lbl">Situação</span>
+        <button data-ctx="pendente" aria-pressed="true">Com pendência</button>
+        <button data-ctx="pronto" aria-pressed="false">Com itens prontos</button>
+        <button data-ctx="novo" aria-pressed="false">Sem Mabel no diretório</button>
+      </div>
+    </div>
+    <p class="hint">Clique no terminal e use ↑ ↓ e enter. Digitar filtra a lista; esc limpa ou volta. Nos formulários: enter edita, ←→ trocam opções, espaço marca.</p>
+    <div class="term" id="term2" tabindex="0" aria-label="Terminal simulado da tela inicial do mabel"><pre id="screen2"></pre></div>
+
+    <div class="notes">
+      <div class="card">
+        <h3>Decisões</h3>
+        <ol class="q">
+          <li><b>Tela inicial aprovada.</b>
+            <span class="sug">Nome, projeto e o que espera por você; lista navegável com filtro; o nome do shell à direita; a ordem acompanha o momento; sem desenho por enquanto.</span></li>
+          <li><b>Os nomes mudam no shell também.</b>
+            <span class="sug">Um verbo por comando, igual ao do título, sem apelidos para os antigos. A doc de integração registra a troca.</span></li>
+          <li><b>Menos comandos no menu.</b>
+            <span class="sug">O saldo entra em "Conferir o estado"; a lista das prontas entra em "Entregar uma unidade".</span></li>
+          <li><b>Sem Mabel no diretório.</b>
+            <span class="sug">Aparecem Começar, Listar e Auditar projetos, e Pedir algo avulso.</span></li>
+        </ol>
+      </div>
+      <div class="card">
+        <h3>Telas dos comandos: para refinar</h3>
+        <ol class="q">
+          <li><b>Quatro tipos de tela.</b> Formulário (um campo por opção), escolha de item (só os itens no estado certo), vista (só leitura) e fluxo (Decidir, Rodar).
+            <span class="sug">Sugestão: manter só esses quatro, para todo comando novo caber num deles.</span></li>
+          <li><b>A linha <code>$ mabel …</code> embaixo do formulário.</b>
+            <span class="sug">Sugestão: manter. Ensina o comando de shell equivalente e deixa copiar para um script.</span></li>
+          <li><b>Aprovar e Responder no menu.</b> "Decidir as pendências" já passa pelos dois, uma decisão por vez.
+            <span class="sug">Sugestão: tirar os dois do menu e deixá-los só no shell.</span></li>
+          <li><b>Ações que apagam ou revertem.</b> Cancelar, rejeitar e remover projeto aparecem com o botão em vermelho.
+            <span class="sug">Sugestão: o botão vermelho basta para cancelar e rejeitar. Remover projeto pede o nome digitado, como o <code>--confirmar</code> de hoje.</span></li>
+          <li><b>O que fica depois do resultado.</b> Hoje, enter volta ao menu e o resultado some.
+            <span class="sug">Sugestão: ao voltar, o resultado é impresso no terminal comum, acima do menu, para ficar na rolagem.</span></li>
+          <li><b>Rodar a fila sai do menu.</b> O painel da aba Fila toma a tela.
+            <span class="sug">Sugestão: quando a fila termina ou você solta com ctrl+c, a tela volta ao menu com o resumo.</span></li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-fila" class="tabpanel" hidden>
+  <div class="controls">
+    <div class="group" role="group" aria-label="Cenário">
+      <span class="lbl">Cenário</span>
+      <button id="sc-normal" data-sc="normal" aria-pressed="true">Fila normal</button>
+      <button id="sc-retry" data-sc="retry" aria-pressed="false">Verificação reprova</button>
+      <button id="sc-human" data-sc="human" aria-pressed="false">Para em você</button>
+      <button id="sc-balance" data-sc="balance" aria-pressed="false">Pausa por saldo</button>
+    </div>
+    <div class="group">
+      <span class="lbl">Tempo</span>
+      <button id="play">Pausar</button>
+      <button id="restart">Recomeçar</button>
+      <select id="speed" aria-label="Velocidade">
+        <option value="5">5×</option>
+        <option value="12" selected>12×</option>
+        <option value="30">30×</option>
+      </select>
+    </div>
+    <div class="group">
+      <span class="lbl">Vista</span>
+      <label class="chk"><input type="checkbox" id="opt-phrase" checked> Frase padronizada</label>
+      <label class="chk"><input type="checkbox" id="opt-tools"> Ferramentas abertas</label>
+      <label class="chk"><input type="checkbox" id="opt-done"> Etapas dos concluídos</label>
+      <label class="chk"><input type="checkbox" id="opt-compare"> Comparar com a saída de hoje</label>
+    </div>
+  </div>
+
+  <div class="panes" id="panes">
+    <div class="pane">
+      <h2>Proposta</h2>
+      <div class="term" id="term" tabindex="0" aria-label="Terminal simulado do mabel run"><pre id="screen"></pre></div>
+    </div>
+    <div class="pane" id="old-pane" hidden>
+      <h2>Saída de hoje, mesmos eventos</h2>
+      <div class="term" id="old"><pre id="oldscreen"></pre></div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div class="card">
+      <h3>Símbolos</h3>
+      <div class="legend">
+        <span class="g">✓</span><span>etapa ou gate concluído</span>
+        <span class="a">⠹</span><span>em andamento (gira enquanto a run está viva)</span>
+        <span class="d">◌</span><span>ainda não começou</span>
+        <span class="r">✗</span><span>gate reprovou</span>
+        <span class="y">↻</span><span>nova tentativa, com a causa da anterior</span>
+        <span class="y">⏸</span><span>esperando você (needs_human) ou o saldo</span>
+        <span class="d">▸ ▾</span><span>ferramentas recolhidas ou abertas</span>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Decisões</h3>
+      <ol class="q">
+        <li><b>Frase padronizada, montada pelo Mabel a partir das ferramentas.</b>
+          <span class="sug">Não usa o texto do agente. A causa de uma nova tentativa aparece no ↻. A chave "Frase padronizada" no topo continua só para comparar.</span></li>
+        <li><b>Gates em linhas próprias enquanto o item roda.</b>
+          <span class="sug">Ao concluir, o item vira uma linha só.</span></li>
+        <li><b>Os três últimos concluídos ficam na tela.</b>
+          <span class="sug">Os anteriores viram "+N concluídos". "Mostrar concluídos", na barra de ações, abre as etapas desses três.</span></li>
+        <li><b>Painel só no TTY.</b>
+          <span class="sug">Fora dele (CI, pipe, <code>--json</code>), a saída de hoje sem mudança. O detalhe continua no banco e no transcript (G1).</span></li>
+        <li><b>Planejamento em lote com fase no cabeçalho.</b>
+          <span class="sug">No planejamento, cada item mostra planejar e o critério de início (G2). Na execução, o plano aceito vira ✓ planejar.</span></li>
+        <li><b>Terminal baixo recolhe por ordem.</b>
+          <span class="sug">Ferramentas abertas, depois pendentes ("+N na fila"), depois concluídos. O item ativo e o rodapé nunca são cortados; abaixo do mínimo, volta o log de hoje. Este ponto não está simulado aqui.</span></li>
+      </ol>
+    </div>
+  </div>
+  </section>
+</div>
+
+<script>
+const COLS = 88;
+const SPIN = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const DONE_SHOWN = 3;
+const STAGES = [
+  { k: 'plan', label: 'planejar', kind: 'agent', phase: 'plan' },
+  { k: 'start', label: 'critério de início', kind: 'gate', gate: 'G2', hint: 'critérios, escopo, regra crítica', phase: 'plan' },
+  { k: 'execute', label: 'executar', kind: 'agent', phase: 'exec' },
+  { k: 'verify', label: 'verificação', kind: 'gate', gate: 'G3', hint: 'npm test', phase: 'exec' },
+  { k: 'scope', label: 'escopo', kind: 'gate', gate: 'G4', hint: 'arquivos alterados × plano', phase: 'exec' },
+  { k: 'proof', label: 'prova', kind: 'gate', gate: 'G3', hint: 'cada critério ligado a um teste', phase: 'exec' },
+  { k: 'review', label: 'revisar', kind: 'agent', phase: 'exec' },
+  { k: 'merge', label: 'merge na unidade', kind: 'gate', gate: 'G10', hint: 'mabel/spec/frete-gratis', phase: 'exec' },
+];
+
+const state = {};
+let steps = [], ptr = 0, nextAt = 0, logLines = [], frame = 0, playing = true, scenario = 'normal';
+let speed = 12;
+const view = { tools: false, done: false, phrase: true };
+
+/* ---------- formatação ---------- */
+const fmt = (s) => {
+  s = Math.max(0, Math.round(s));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60), r = s % 60;
+  if (m < 60) return `${m}m${String(r).padStart(2, '0')}`;
+  return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`;
+};
+const money = (v) => `$${v.toFixed(2)}`;
+const clockAt = (s) => { const t = 14 * 60 + 2 + Math.floor(s / 60); return `${String(Math.floor(t / 60) % 24).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`; };
+const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const len = (segs) => segs.reduce((n, s) => n + [...s[0]].length, 0);
+const BLANK = [['', '']];
+
+/** Linha de COLS colunas: segmentos à esquerda, à direita, e o segmento marcado com 1 encolhe. */
+function row(left, right = []) {
+  let free = COLS - len(left) - len(right) - (right.length ? 1 : 0);
+  if (free < 0) {
+    const f = left.find((s) => s[2]);
+    if (f) { const chars = [...f[0]]; f[0] = chars.slice(0, Math.max(1, chars.length + free - 1)).join('') + '…'; free = COLS - len(left) - len(right) - 1; }
+  }
+  return [...left, [' '.repeat(Math.max(right.length ? 1 : 0, free + (right.length ? 1 : 0))), ''], ...right];
+}
+
+/** Frase montada pelo Mabel a partir das ferramentas, sem depender do texto do agente. */
+function standardPhrase(s) {
+  const last = s.tools[s.tools.length - 1];
+  if (!last) return 'iniciando a sessão…';
+  const changed = new Set(s.tools.filter((t) => t.name === 'Edit' || t.name === 'Write').map((t) => t.target)).size;
+  const verb = {
+    Read: `lendo ${last.target}`,
+    Grep: `procurando "${last.target}"`,
+    Edit: `editando ${last.target}`,
+    Write: `criando ${last.target}`,
+    Bash: /test/.test(last.target) ? `rodando os testes (${last.target})` : `executando ${last.target}`,
+  }[last.name] ?? `${last.name} ${last.target}`;
+  return changed ? `${verb} · ${changed} ${changed === 1 ? 'arquivo alterado' : 'arquivos alterados'}` : verb;
+}
+
+/* ---------- estado e roteiro ---------- */
+const it = (n) => state.items.find((i) => i.n === n);
+const sg = (n, k) => it(n).stages.find((s) => s.k === k);
+const freshStages = () => STAGES.map((s) => ({ ...s, status: 'pending', tools: [], turns: 0, history: [] }));
+
+function doneItem(n, title, dur, cost, doneAt) {
+  const parts = [[52, .16, 'sonnet', 7, ''], [1, 0, '', 0, '2 critérios, escopo de 3 arquivos'], [228, .44, 'opus', 21, ''], [11, 0, '', 0, '38 testes verdes'], [1, 0, '', 0, '3 arquivos, todos no escopo'], [3, 0, '', 0, '2 critérios ligados a testes'], [96, .24, 'sonnet', 6, ''], [2, 0, '', 0, 'mabel/spec/cupom']];
+  const stages = freshStages().map((s, i) => ({ ...s, status: 'done', dur: parts[i][0], cost: parts[i][1], model: parts[i][2], turns: parts[i][3], note: parts[i][4] }));
+  return { n, title, status: 'done', dur, cost, doneAt, stages };
+}
+
+function reset(sc) {
+  scenario = sc;
+  Object.assign(state, {
+    now: 0, ended: false, stop: false, notice: null, phase: 'plan', doneSeq: 0,
+    h5: sc === 'balance' ? 79 : 41, d7: sc === 'balance' ? 63 : 28,
+    items: [
+      doneItem(9, 'Cadastro de endereço com CEP', 388, 0.71, -4),
+      doneItem(10, 'Validação de CPF no cadastro', 254, 0.52, -3),
+      doneItem(11, 'Carrinho persistente entre sessões', 517, 1.06, -2),
+      doneItem(12, 'Cupom de desconto no checkout', 432, 0.84, -1),
+      { n: 13, title: 'Frete grátis acima de R$ 200', status: 'pending', stages: freshStages() },
+      { n: 14, title: 'Histórico de pedidos na conta do cliente', status: 'pending', stages: freshStages() },
+    ],
+  });
+  steps = []; ptr = 0; logLines = [];
+  log('── planejamento (2 itens) ──', 'd');
+  SCRIPTS[sc]();
+  nextAt = steps.length ? steps[0][0] : 0;
+  document.querySelectorAll('[data-sc]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.sc === sc)));
+  playing = true; document.getElementById('play').textContent = 'Pausar';
+}
+
+const at = (wait, fn) => steps.push([wait, fn]);
+function log(text, cls = '') { logLines.push([[text, cls]]); }
+
+function begin(n, k, model) {
+  const i = it(n), s = sg(n, k);
+  if (i.status === 'pending') { i.status = 'planning'; i.start = state.now; log(''); log(`#${n} ${i.title}`, 'b'); }
+  if (i.status === 'planned') { i.status = 'active'; i.start = state.now; log(''); log(`#${n} ${i.title}`, 'b'); }
+  Object.assign(s, { status: 'running', start: state.now, model, turns: 0, tools: [], activity: null });
+  if (s.kind === 'agent') log(`  ▸ ${s.label} · ${model}`, 'd'); else log(`  ${s.label}: ${s.hint}…`, 'd');
+}
+function say(n, k, text) { const s = sg(n, k); s.activity = text; s.turns++; }
+function tool(n, k, name, target, ok = true) {
+  const s = sg(n, k);
+  s.tools.forEach((t) => (t.open = false));
+  s.tools.push({ name, target, ok, open: true }); s.turns++;
+  log(`  → ${name.padEnd(6)} ${target.padEnd(40)} ${ok ? '✓' : '✗'}`, ok ? 'd' : 'r');
+}
+function end(n, k, { cost = 0, note = '', fail = false, tok = '' } = {}) {
+  const s = sg(n, k);
+  s.tools.forEach((t) => (t.open = false));
+  if (s.attempt && !note) note = `${s.attempt} tentativas`;
+  Object.assign(s, { status: fail ? 'failed' : 'done', dur: state.now - s.start, cost, note });
+  if (s.kind === 'agent') log(`  ${fail ? '✗ falhou' : '✓ concluída'} · ${s.turns} turnos · ${fmt(s.dur)} · ${money(cost)} · ${tok}`, 'd');
+  else log(`  ${s.label}: ${note}`, fail ? 'r' : 'd');
+  state.h5 = Math.min(99, Math.round(state.h5 + cost * 9)); state.d7 = Math.round(state.d7 + cost * 1.5);
+}
+function planned(n) {
+  const i = it(n);
+  Object.assign(i, { status: 'planned', planDur: state.now - i.start, planCost: sg(n, 'plan').cost || 0 });
+  log(`#${n} ${i.title}: planning → planned`);
+}
+function toExec(count) {
+  state.phase = 'exec';
+  log(''); log(`── execução (${count} ${count === 1 ? 'item' : 'itens'}) ──`, 'd');
+}
+function finish(n) {
+  const i = it(n);
+  Object.assign(i, { status: 'done', doneAt: ++state.doneSeq, dur: state.now - i.start + (i.planDur || 0), cost: i.stages.reduce((c, s) => c + (s.cost || 0), 0) });
+  log(`#${n} ${i.title}: reviewing → done`);
+}
+
+const wt = (a) => 3 + (a[1].length % 9);
+function acts(n, k, list) {
+  for (const a of list) at(a[0] === 'say' ? 4 : wt(a), () => (a[0] === 'say' ? say(n, k, a[1]) : tool(n, k, a[0], a[1], a[2] !== false)));
+}
+function agent(n, k, model, list, endOpts) {
+  at(2, () => begin(n, k, model));
+  acts(n, k, list);
+  if (endOpts) at(5, () => end(n, k, endOpts));
+}
+function gate(n, k, dur, note, fail = false) { at(1, () => begin(n, k)); at(dur, () => end(n, k, { note, fail })); }
+
+const PLAN13 = [['say', 'Lendo os critérios da spec e as regras do projeto'], ['Read', '.mabel/specs/frete-gratis.md'], ['Read', 'src/shipping/rules.ts'], ['Grep', 'freeShipping'], ['say', 'Montando o escopo e os critérios verificáveis'], ['Write', '.mabel/planos/13.json']];
+const EXEC13 = [['say', 'Lendo a regra de frete atual'], ['Read', 'src/shipping/rules.ts'], ['Read', 'src/checkout/total.ts'], ['Grep', 'calculateShipping'], ['say', 'Ajustando a regra de frete no checkout'], ['Edit', 'src/shipping/rules.ts'], ['Edit', 'src/checkout/total.ts'], ['say', 'Escrevendo os testes dos critérios'], ['Write', 'test/shipping/free-threshold.test.ts'], ['Bash', 'npm test -- shipping'], ['say', 'Conferindo o limite de R$ 200,00 exato'], ['Edit', 'test/shipping/free-threshold.test.ts'], ['Bash', 'npm test -- shipping']];
+const REVIEW13 = [['say', 'Lendo o diff contra os critérios'], ['Bash', 'git diff mabel/spec/frete-gratis'], ['Read', 'test/shipping/free-threshold.test.ts'], ['say', 'Avaliando os três critérios']];
+const PLAN14 = [['say', 'Lendo os critérios e o modelo de pedidos'], ['Read', '.mabel/specs/conta-cliente.md'], ['Read', 'src/orders/model.ts'], ['Write', '.mabel/planos/14.json']];
+const EXEC14 = [['say', 'Criando a consulta paginada de pedidos'], ['Read', 'src/orders/repository.ts'], ['Edit', 'src/orders/repository.ts'], ['Write', 'src/account/orders-page.ts'], ['say', 'Testando a paginação'], ['Write', 'test/account/orders-page.test.ts'], ['Bash', 'npm test -- account']];
+
+function plan13() {
+  agent(13, 'plan', 'sonnet', PLAN13, { cost: 0.18, tok: '88k tokens de entrada · 3k de saída' });
+  gate(13, 'start', 2, '3 critérios, escopo de 4 arquivos');
+  at(1, () => planned(13));
+}
+function plan14() {
+  agent(14, 'plan', 'sonnet', PLAN14, { cost: 0.12, tok: '64k tokens de entrada · 2k de saída' });
+  gate(14, 'start', 2, '2 critérios, escopo de 3 arquivos');
+  at(1, () => planned(14));
+}
+function tail13() {
+  gate(13, 'scope', 3, '4 arquivos, todos no escopo');
+  gate(13, 'proof', 5, '3 critérios ligados a testes');
+  agent(13, 'review', 'sonnet', REVIEW13, { cost: 0.21, note: '3 de 3 critérios atendidos', tok: '96k tokens de entrada · 2k de saída' });
+  gate(13, 'merge', 2, 'mabel/spec/frete-gratis');
+  at(1, () => finish(13));
+}
+function exec14() {
+  agent(14, 'execute', 'opus', EXEC14, { cost: 0.58, tok: '410k tokens de entrada · 9k de saída' });
+  gate(14, 'verify', 9, '57 testes verdes');
+  gate(14, 'scope', 2, '3 arquivos, todos no escopo');
+  gate(14, 'proof', 4, '2 critérios ligados a testes');
+  agent(14, 'review', 'sonnet', [['say', 'Lendo o diff contra os critérios'], ['Bash', 'git diff mabel/spec/conta']], { cost: 0.15, tok: '71k tokens de entrada · 1k de saída' });
+  gate(14, 'merge', 2, 'mabel/spec/conta-cliente');
+  at(1, () => finish(14));
+}
+function close() { at(2, () => { state.ended = true; log(''); log('Fila encerrada.', 'b'); }); }
+
+const SCRIPTS = {
+  normal() {
+    plan13(); plan14(); at(2, () => toExec(2));
+    agent(13, 'execute', 'opus', EXEC13, { cost: 0.97, tok: '612k tokens de entrada · 14k de saída' });
+    gate(13, 'verify', 10, '51 testes verdes');
+    tail13(); exec14(); close();
+  },
+  retry() {
+    plan13(); plan14(); at(2, () => toExec(2));
+    agent(13, 'execute', 'opus', EXEC13.slice(0, 10), { cost: 0.71, tok: '455k tokens de entrada · 11k de saída' });
+    gate(13, 'verify', 10, '2 de 51 testes falharam', true);
+    at(3, () => {
+      const s = sg(13, 'execute'), v = sg(13, 'verify');
+      s.history.push('tentativa 1 reprovada na verificação: frete no limite exato (2 testes)');
+      Object.assign(s, { status: 'running', start: state.now, attempt: 2, tools: [], activity: null });
+      Object.assign(v, { status: 'pending', note: '' });
+      log('  ↻ executar, tentativa 2/3: verificação reprovou (2 testes)', 'y');
+    });
+    acts(13, 'execute', [['say', 'Corrigindo: o limite é inclusivo, a partir de R$ 200,00'], ['Read', 'test/shipping/free-threshold.test.ts'], ['Edit', 'src/shipping/rules.ts'], ['Bash', 'npm test -- shipping']]);
+    at(4, () => end(13, 'execute', { cost: 0.97, tok: '188k tokens de entrada · 4k de saída' }));
+    gate(13, 'verify', 10, '51 testes verdes');
+    tail13(); exec14(); close();
+  },
+  human() {
+    agent(13, 'plan', 'sonnet', PLAN13.slice(0, 4).concat([['Read', '.mabel/regras.md'], ['say', 'Frete grátis vale para itens em promoção? A regra R4 não diz']]), null);
+    at(5, () => {
+      const s = sg(13, 'plan'), i = it(13);
+      s.tools.forEach((t) => (t.open = false));
+      Object.assign(s, { status: 'done', dur: state.now - s.start, cost: 0.14 });
+      i.status = 'human'; i.dur = state.now - i.start; i.cost = 0.14;
+      i.note = 'suposição em regra crítica R4: frete grátis vale para itens em promoção?';
+      log('  ✓ concluída · 8 turnos · ' + fmt(s.dur) + ' · $0.14 · 70k tokens de entrada · 2k de saída', 'd');
+      log('#13 Frete grátis acima de R$ 200: planning → needs_human', 'y');
+    });
+    plan14(); at(2, () => toExec(1));
+    exec14(); close();
+  },
+  balance() {
+    plan13(); plan14(); at(2, () => toExec(2));
+    agent(13, 'execute', 'opus', EXEC13, { cost: 0.97, tok: '612k tokens de entrada · 14k de saída' });
+    gate(13, 'verify', 10, '51 testes verdes');
+    gate(13, 'scope', 3, '4 arquivos, todos no escopo');
+    gate(13, 'proof', 5, '3 critérios ligados a testes');
+    at(2, () => {
+      state.notice = { until: state.now + 2460, fast: true };
+      sg(13, 'review').status = 'waiting';
+      log(`  Saldo da janela de 5h em ${state.h5}% (limite 90%).`, 'b');
+      log(`  Aguardando 5h (renova às ${clockAt(state.now + 2460)})…`, 'd');
+    });
+    at(2460, () => { state.notice = null; state.h5 = 3; log('  Janela de 5h renovada.', 'd'); });
+    agent(13, 'review', 'sonnet', REVIEW13, { cost: 0.21, note: '3 de 3 critérios atendidos', tok: '96k tokens de entrada · 2k de saída' });
+    gate(13, 'merge', 2, 'mabel/spec/frete-gratis');
+    at(1, () => finish(13));
+    exec14(); close();
+  },
+};
+
+/* ---------- desenho ---------- */
+function stageRows(s, sp, compactPlan) {
+  const L = [];
+  const label = s.label.padEnd(19);
+  const el = state.now - (s.start || 0);
+  if (s.status === 'done' || s.status === 'failed') {
+    const ok = s.status === 'done';
+    if (compactPlan) L.push(row([['    ✓ ', 'g'], [label, ''], [`plano aceito · ${s.model}`, 'd', 1]], [[`${fmt(s.dur)} · ${money(s.cost || 0)}`, 'd']]));
+    else if (s.kind === 'agent') L.push(row([['    ✓ ', 'g'], [label, ''], [`${s.model} · ${s.turns} turnos${s.note ? ' · ' + s.note : ''}`, 'd', 1]], [[`${fmt(s.dur)} · ${money(s.cost || 0)}`, 'd']]));
+    else L.push(row([[ok ? '    ✓ ' : '    ✗ ', ok ? 'g' : 'r'], [label, ok ? '' : 'r'], [s.note, ok ? 'd' : 'r', 1]], [[`${s.gate} · ${fmt(s.dur)}`, 'd']]));
+  } else if (s.status === 'running') {
+    if (s.kind === 'agent') {
+      const att = s.attempt ? ` · tentativa ${s.attempt}/3` : '';
+      L.push(row([[`    ${sp} `, 'a'], [label, 'b'], [`${s.model} · turno ${s.turns}${att}`, 'd', 1]], [[fmt(el), '']]));
+      for (const h of s.history) L.push(row([['      ↻ ', 'y'], [h, 'd', 1]]));
+      const n = s.tools.length;
+      const phrase = view.phrase ? standardPhrase(s) : s.activity || 'iniciando a sessão…';
+      L.push(row([['      ', ''], [phrase, 'i', 1]], [[`${n} ${n === 1 ? 'ferramenta' : 'ferramentas'} ${view.tools ? '▾' : '▸'}`, 'd']]));
+      if (view.tools) {
+        const shown = s.tools.slice(-6);
+        if (n > shown.length) L.push(row([['        ', ''], [`… ${n - shown.length} anteriores`, 'd']]));
+        for (const t of shown) L.push(row([['        ', ''], [t.open ? sp : t.ok ? '✓' : '✗', t.open ? 'a' : t.ok ? 'g' : 'r'], [` ${t.name.padEnd(6)} `, 'd'], [t.target, 'd', 1]]));
+      }
+    } else {
+      L.push(row([[`    ${sp} `, 'a'], [label, 'b'], [s.hint, 'd', 1]], [[`${s.gate} · ${fmt(el)}`, 'd']]));
+    }
+  } else if (s.status === 'waiting') {
+    L.push(row([['    ⏸ ', 'y'], [label, ''], ['espera o saldo', 'y', 1]]));
+  } else {
+    L.push(row([['    ◌ ', 'd'], [label, 'd'], [s.hint || '', 'd', 1]], [[s.gate || '', 'd']]));
+  }
+  return L;
+}
+
+/** Etapas visíveis do item: as da fase em que ele está; na execução, o plano vira uma linha. */
+function visibleStages(i) {
+  if (i.status === 'planning') return i.stages.filter((s) => s.phase === 'plan');
+  return i.stages.filter((s) => s.k !== 'start');
+}
+
+function render() {
+  const sp = REDUCED ? '•' : SPIN[frame % SPIN.length];
+  const L = [];
+  const doneItems = state.items.filter((i) => i.status === 'done').sort((a, b) => a.doneAt - b.doneAt);
+  const phaseLabel = state.phase === 'plan' ? 'planejamento' : 'execução';
+  L.push(row([[' mabel', 'b'], [' · loja-api · ', 'd'], [phaseLabel, 'b']], [[`fila ${doneItems.length}/${state.items.length} · ${clockAt(state.now)} `, 'd']]));
+  L.push([['─'.repeat(COLS), 'd']]);
+
+  const hidden = doneItems.length - DONE_SHOWN;
+  if (hidden > 0) L.push(row([['   ', ''], [`+${hidden} ${hidden === 1 ? 'concluído' : 'concluídos'}`, 'd']]));
+  for (const i of doneItems.slice(-DONE_SHOWN)) {
+    L.push(row([[' ✓ ', 'g'], [`#${i.n}  `, 'd'], [i.title, '', 1]], [[`${fmt(i.dur)} · ${money(i.cost)} `, 'd']]));
+    if (view.done) for (const s of visibleStages(i)) L.push(...stageRows(s, sp, s.k === 'plan'));
+  }
+
+  for (const i of state.items) {
+    if (i.status === 'done') continue;
+    if (i.status === 'human') {
+      L.push(row([[' ⏸ ', 'y'], [`#${i.n}  `, 'd'], [i.title, '', 1]], [['aguardando você ', 'y']]));
+      L.push(row([['      ', ''], [i.note, 'd', 1]]));
+      L.push(row([['      ', ''], ['"Decidir agora", na barra abaixo, responde e devolve o item à fila', 'd', 1]]));
+    } else if (i.status === 'active' || i.status === 'planning') {
+      const cost = i.stages.reduce((c, s) => c + (s.status === 'done' || s.status === 'failed' ? s.cost || 0 : 0), 0);
+      L.push(BLANK);
+      L.push(row([[' ● ', 'a'], [`#${i.n}  `, 'd'], [i.title, 'b', 1]], [[`${fmt(state.now - i.start)} · ${money(cost)} `, 'd']]));
+      for (const s of visibleStages(i)) L.push(...stageRows(s, sp, i.status === 'active' && s.k === 'plan'));
+      L.push(BLANK);
+    } else if (i.status === 'planned' && state.phase === 'plan') {
+      L.push(row([[' ✓ ', 'g'], [`#${i.n}  `, 'd'], [i.title, '', 1]], [[`plano aceito · ${fmt(i.planDur)} · ${money(i.planCost)} `, 'd']]));
+    } else if (i.status === 'planned') {
+      L.push(row([[' ◌ ', 'd'], [`#${i.n}  ${i.title}`, 'd', 1]], [['planejado ', 'd']]));
+    } else {
+      L.push(row([[' ◌ ', 'd'], [`#${i.n}  ${i.title}`, 'd', 1]], [[state.phase === 'plan' ? 'a planejar ' : '', 'd']]));
+    }
+  }
+  if (state.ended) {
+    const human = state.items.filter((i) => i.status === 'human').length;
+    const fresh = doneItems.filter((i) => i.doneAt > 0);
+    const total = fresh.reduce((c, i) => c + (i.cost || 0), 0);
+    L.push(BLANK);
+    L.push(row([[' Fila encerrada', 'b'], [` · ${fresh.length} ${fresh.length === 1 ? 'concluído' : 'concluídos'}${human ? ` · ${human} aguardando você` : ''} · ${money(total)}`, 'd', 1]]));
+  }
+  // o rodapé fica preso embaixo, como o de saldo de hoje
+  const foot = [];
+  if (state.notice) foot.push(row([[' ⏸ ', 'y'], [`Janela de 5h em ${state.h5}% (limite 90%). Retoma às ${clockAt(state.notice.until)}`, 'y', 1]], [[`faltam ${fmt(state.notice.until - state.now)} `, 'y']]));
+  if (state.stop && !state.ended) foot.push(row([[' ■ ', 'y'], ['Parada pedida: a fila encerra depois da etapa em andamento.', 'y', 1]]));
+  foot.push([['─'.repeat(COLS), 'd']]);
+  const acts = panelActions();
+  panelSel = Math.min(panelSel, acts.length - 1);
+  foot.push(acts.flatMap(([label], i) => [[' ', ''], i === panelSel ? [`[${label}]`, 'abs'] : [` ${label} `, 'd']]));
+  foot.push(row([[' ←→', 'a'], [' escolher  ', 'd'], ['enter', 'a'], [' executar', 'd']], [['5h ', 'd'], [bar(state.h5), state.h5 >= 90 ? 'y' : 'a'], [` ${String(state.h5).padStart(2)}%  `, ''], ['7d ', 'd'], [bar(state.d7), 'a'], [` ${String(state.d7).padStart(2)}% `, '']]));
+  while (L.length + foot.length < 30) L.push(BLANK);
+  document.getElementById('screen').innerHTML = [...L, ...foot].map(paint).join('\n');
+
+  const old = document.getElementById('oldscreen');
+  if (!document.getElementById('old-pane').hidden && old.dataset.n !== String(logLines.length)) {
+    old.innerHTML = logLines.map(paint).join('\n'); old.dataset.n = String(logLines.length); old.scrollTop = old.scrollHeight;
+  }
+}
+const bar = (p) => { const f = Math.round(p / 10); return '█'.repeat(f) + '░'.repeat(10 - f); };
+const paint = (segs) => segs.map(([t, c]) => (c ? `<span class="${c.split('').join(' ')}">${esc(t)}</span>` : esc(t))).join('');
+
+/* ---------- laço ---------- */
+function advance(dt) {
+  state.now += dt;
+  while (ptr < steps.length && state.now >= nextAt) {
+    steps[ptr][1](); ptr++;
+    if (ptr < steps.length) nextAt += steps[ptr][0];
+  }
+}
+setInterval(() => {
+  if (playing && !state.ended) advance(0.1 * speed * (state.notice?.fast ? 40 : 1));
+  frame++;
+  if (!document.getElementById('tab-fila').hidden) render();
+}, 100);
+
+document.querySelectorAll('[data-sc]').forEach((b) => b.addEventListener('click', () => reset(b.dataset.sc)));
+document.getElementById('restart').addEventListener('click', () => reset(scenario));
+document.getElementById('play').addEventListener('click', (e) => { playing = !playing; e.target.textContent = playing ? 'Pausar' : 'Continuar'; });
+document.getElementById('speed').addEventListener('change', (e) => (speed = Number(e.target.value)));
+const boxes = { phrase: document.getElementById('opt-phrase'), tools: document.getElementById('opt-tools'), done: document.getElementById('opt-done') };
+for (const [key, box] of Object.entries(boxes)) box.addEventListener('change', () => (view[key] = box.checked));
+const flip = (key) => { boxes[key].checked = !boxes[key].checked; view[key] = boxes[key].checked; };
+const cmpBox = document.getElementById('opt-compare');
+cmpBox.addEventListener('change', () => {
+  document.getElementById('old-pane').hidden = !cmpBox.checked;
+  document.getElementById('panes').classList.toggle('compare', cmpBox.checked);
+  document.getElementById('oldscreen').dataset.n = '';
+});
+/** Ações do painel como itens de menu: nada de atalho de uma tecla. */
+let panelSel = 0;
+function panelActions() {
+  if (state.ended) return [['Voltar ao menu', () => document.getElementById('tabbtn-comandos').click()], ['Ver a fila de novo', () => reset(scenario)]];
+  return [
+    [view.tools ? 'Esconder ferramentas' : 'Mostrar ferramentas', () => flip('tools')],
+    [view.done ? 'Esconder concluídos' : 'Mostrar concluídos', () => flip('done')],
+    ...(state.items.some((i) => i.status === 'human') ? [['Decidir agora', () => document.getElementById('tabbtn-comandos').click()]] : []),
+    [state.stop ? 'Parada pedida' : 'Parar depois da etapa', () => { if (!state.stop) { state.stop = true; log('  Parada pedida: a fila encerra depois da etapa em andamento.', 'b'); } }],
+  ];
+}
+document.getElementById('term').addEventListener('keydown', (e) => {
+  const acts = panelActions();
+  if (e.key === 'ArrowRight') panelSel = (panelSel + 1) % acts.length;
+  else if (e.key === 'ArrowLeft') panelSel = (panelSel - 1 + acts.length) % acts.length;
+  else if (e.key === 'Enter') acts[panelSel][1]();
+  else return;
+  e.preventDefault();
+});
+
+reset('normal');
+// abre já com a fila em andamento, não numa tela vazia
+for (let k = 0; k < 900 && ptr < 10; k++) advance(1);
+render();
+</script>
+
+<script>
+/* Tela inicial: nome, estado do projeto e lista de comandos navegável. */
+(() => {
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+  /* ---------- comandos ---------- */
+  const CMDS = [
+    { g: 'comecar', t: 'Preparar este projeto', s: 'preparar', d: 'Prepara o projeto atual para o Mabel, detectando a stack pelo código.' },
+    { g: 'comecar', t: 'Criar um projeto novo', s: 'criar', d: 'Conversa com um agente que propõe stack, CLAUDE.md, regras críticas e backlog.' },
+    { g: 'planejar', t: 'Adicionar um item', s: 'adicionar', d: 'Cria um item no backlog do projeto.' },
+    { g: 'planejar', t: 'Especificar uma funcionalidade', s: 'especificar', d: 'Lista, valida e aceita as specs; as tarefas ligadas só ficam prontas com a spec aceita.' },
+    { g: 'planejar', t: 'Refinar um item', s: 'refinar', d: 'Um agente propõe critérios, decisões e limites para um item, e você revisa.' },
+    { g: 'planejar', t: 'Capturar uma referência', s: 'capturar', d: 'Guarda uma tela do Figma ou uma API OpenAPI para os itens citarem.' },
+    { g: 'planejar', t: 'Credenciar um token', s: 'credenciar', d: 'Registra quando vence cada token da captura, para o Mabel avisar antes.' },
+    { g: 'rodar', t: 'Rodar a fila', s: 'rodar', d: 'Planeja os itens prontos e depois executa um por um.', badge: (c) => (c.ready ? `${c.ready} prontos` : '') },
+    { g: 'rodar', t: 'Acompanhar a fila', s: 'acompanhar', d: 'Mostra ao vivo a fila em segundo plano; sair não para a fila.' },
+    { g: 'rodar', t: 'Parar a fila', s: 'parar', d: 'Encerra a fila depois da etapa em andamento.' },
+    { g: 'decidir', t: 'Decidir as pendências', s: 'decidir', d: 'Responde perguntas e aprova critérios: uma pendência ou todas, uma por vez.', badge: (c) => (c.pending ? `${c.pending} esperando` : '') },
+    { g: 'decidir', t: 'Retomar um item', s: 'retomar', d: 'Devolve à fila um item parado por falha ou bloqueio, com o motivo à vista.' },
+    { g: 'decidir', t: 'Cancelar um item', s: 'cancelar', d: 'Tira um item da fila de vez.' },
+    { g: 'entregar', t: 'Entregar uma unidade', s: 'entregar', d: 'Mostra as unidades prontas, prova uma contra a base e abre o PR.', badge: (c) => (c.units ? `${c.units} pronta${c.units > 1 ? 's' : ''}` : '') },
+    { g: 'entregar', t: 'Rejeitar um item', s: 'rejeitar', d: 'Desfaz um item na integração e o devolve ao planejamento.' },
+    { g: 'acompanhar', t: 'Conferir o estado', s: 'conferir', d: 'Mostra a fila, as etapas em andamento e as duas janelas de saldo.' },
+    { g: 'acompanhar', t: 'Detalhar um item', s: 'detalhar', d: 'Mostra estado, pendência, plano, custo e runs de um item.' },
+    { g: 'acompanhar', t: 'Consultar as runs', s: 'consultar', d: 'Lista as runs auditadas e mostra o detalhe e as ferramentas de cada uma.' },
+    { g: 'acompanhar', t: 'Listar os projetos', s: 'listar', d: 'Lista os projetos registrados, com itens, runs, custo e última atividade.', global: true },
+    { g: 'acompanhar', t: 'Auditar um projeto', s: 'auditar', d: 'Mostra a auditoria de um projeto e permite remover os dados dele do Mabel.', global: true },
+    { g: 'avulso', t: 'Pedir algo avulso', s: 'pedir', d: 'Manda um prompt ao Claude Code fora da fila, com auditoria.', global: true },
+  ];
+  const GROUPS = { comecar: 'Começar', planejar: 'Planejar', rodar: 'Rodar', decidir: 'Decidir', entregar: 'Entregar', acompanhar: 'Acompanhar', avulso: 'Avulso' };
+  const CTX = {
+    pendente: { project: 'loja-api', path: '~/Pessoal/loja-api', instance: true, pending: 2, ready: 2, units: 1, bg: true, h5: 41, d7: 28 },
+    pronto: { project: 'loja-api', path: '~/Pessoal/loja-api', instance: true, pending: 0, ready: 3, units: 0, h5: 41, d7: 28 },
+    novo: { project: 'site-padaria', path: '~/Pessoal/site-padaria', instance: false, h5: 41, d7: 28 },
+  };
+  const LIST_ROWS = 28;
+  const norm = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+  let ctxName = 'pendente', filter = '', sel = 0, scroll = 0, flash = null;
+
+  function groupOrder(c) {
+    if (!c.instance) return ['comecar', 'acompanhar', 'avulso'];
+    const first = [];
+    if (c.pending) first.push('decidir');
+    if (c.ready) first.push('rodar');
+    return [...first, ...['planejar', 'rodar', 'decidir', 'entregar', 'acompanhar', 'avulso'].filter((g) => !first.includes(g))];
+  }
+  function entries() {
+    const c = CTX[ctxName], f = norm(filter.trim()), out = [];
+    for (const g of groupOrder(c)) {
+      const list = CMDS.filter((cmd) => cmd.g === g && (c.instance ? g !== 'comecar' : g === 'comecar' || cmd.global))
+        .filter((cmd) => !f || norm(`${cmd.t} ${cmd.s}`).includes(f));
+      if (!list.length) continue;
+      out.push({ head: g });
+      for (const cmd of list) out.push({ cmd });
+    }
+    return out;
+  }
+
+  /* ---------- dados de exemplo ---------- */
+  const ITEMS = [
+    { n: 11, t: 'Carrinho persistente entre sessões', st: 'unidade' },
+    { n: 12, t: 'Cupom de desconto no checkout', st: 'unidade' },
+    { n: 13, t: 'Frete grátis acima de R$ 200', st: 'humano', q: 'Frete grátis vale para itens em promoção? A regra R4 não diz.', sug: 'Não vale: itens em promoção já têm desconto.' },
+    { n: 14, t: 'Histórico de pedidos na conta do cliente', st: 'pronto' },
+    { n: 15, t: 'Exportar pedidos em CSV', st: 'pronto' },
+    { n: 16, t: 'Login com Google', st: 'rascunho' },
+    { n: 17, t: 'Desconto progressivo por quantidade', st: 'aprovacao', crit: ['De 3 a 5 unidades, 5% de desconto', 'A partir de 6 unidades, 10% de desconto', 'Não acumula com cupom (regra crítica R2)'] },
+    { n: 18, t: 'Busca por nome de produto', st: 'rascunho' },
+    { n: 10, t: 'Importar catálogo do ERP', st: 'falhou', why: 'verificação reprovou 3 vezes (timeout na API)' },
+  ];
+  const ST = { pronto: ['pronto', 'g'], rascunho: ['rascunho', 'd'], humano: ['esperando você', 'y'], aprovacao: ['aguardando aprovação', 'y'], unidade: ['na unidade', 'a'], falhou: ['falhou', 'r'] };
+  const UNITS = [
+    { v: 'cupom', label: 'cupom', note: 'spec · 2 tarefas concluídas', ready: true },
+    { v: 'frete-gratis', label: 'frete-gratis', note: 'spec · 1 de 3 tarefas', ready: false },
+    { v: '#9', label: '#9 Cadastro de endereço com CEP', note: 'avulso', ready: false },
+  ];
+  const SPECS = [
+    { v: 'frete-gratis', label: 'frete-gratis', note: 'aceita · 3 tarefas' },
+    { v: 'conta-cliente', label: 'conta-cliente', note: 'proposta do agente pendente' },
+    { v: 'busca', label: 'busca', note: 'arquivo novo, ainda não validado' },
+  ];
+  const PROJECTS = [
+    { v: 'loja-api', label: 'loja-api', note: '18 itens · 64 runs · $41.20' },
+    { v: 'site-padaria', label: 'site-padaria', note: 'sem itens' },
+    { v: 'harness-cli', label: 'harness-cli', note: '7 itens · 22 runs · $9.85' },
+  ];
+  const itemOpts = (states) => ITEMS.filter((i) => states.includes(i.st)).map((i) => ({ v: String(i.n), label: `#${i.n}  ${i.t}`, chip: ST[i.st] }));
+  const L = (text, cls = '') => [['  ' + text, cls]];
+  const KV = (k, v, cls = '') => [['  ' + k.padEnd(14), 'd'], [v, cls]];
+
+  /* ---------- campos ---------- */
+  const F = {
+    pick: (label, src, o = {}) => ({ type: 'pick', label, src, ...o }),
+    item: (label, states, o = {}) => ({ type: 'pick', label, src: () => itemOpts(states), req: true, ...o }),
+    text: (label, o = {}) => ({ type: 'text', label, ...o }),
+    multi: (label, flag, noun, o = {}) => ({ type: 'multi', label, flag, noun, ...o }),
+    bool: (label, flag, o = {}) => ({ type: 'bool', label, flag, ...o }),
+    choice: (label, options, o = {}) => ({ type: 'choice', label, options, def: options[0][0], ...o }),
+    info: (lines) => ({ type: 'info', lines }),
+  };
+  const itemOf = (v) => ITEMS.find((i) => String(i.n) === v);
+
+  const FORMS = {
+    preparar: {
+      fields: { stack: F.choice('Stack', [['', 'detectar pelo código'], ['node-ts', 'Node + TypeScript'], ['python', 'Python + pytest'], ['go', 'Go']], { flag: '--stack' }) },
+      action: 'Preparar o projeto',
+      result: (v) => [L(`Stack: ${v.stack || 'node-ts, detectada por package.json e tsconfig.json'}`), L('Criado .mabel/ com config.json, regras.md e o backlog vazio.'), BLANK, L('Próximo passo: Adicionar um item ou Especificar uma funcionalidade.', 'd')],
+    },
+    criar: {
+      fields: {
+        desc: F.text('Descrição', { req: true, ph: 'o que o projeto vai ser, em poucas frases' }),
+        stack: F.choice('Stack', [['', 'deixar o agente propor'], ['node-ts', 'Node + TypeScript'], ['python', 'Python + pytest'], ['go', 'Go']], { flag: '--stack' }),
+        modelo: F.choice('Modelo', [['', 'sonnet (padrão)'], ['opus', 'opus'], ['haiku', 'haiku']], { flag: '--modelo' }),
+      },
+      action: 'Começar a conversa',
+      result: (v) => [L(`Rodada 1 · ${v.modelo || 'sonnet'}`, 'b'), L('O agente lê a descrição e propõe stack, CLAUDE.md, regras críticas e backlog.'), L('As perguntas dele aparecem aqui, uma por vez, e você revisa a proposta no fim.', 'd')],
+    },
+    adicionar: {
+      fields: {
+        titulo: F.text('Título', { req: true, ph: 'nome curto do item' }),
+        intencao: F.text('Intenção', { flag: '--intencao', ph: 'o que você quer e por quê' }),
+        criterio: F.multi('Critérios de aceite', '--criterio', ['critério', 'critérios']),
+        fora: F.multi('Fora do escopo', '--fora-do-escopo', ['limite', 'limites']),
+        ref: F.pick('Referências', () => [{ v: 'tela-checkout', label: 'tela-checkout', note: 'tela do Figma' }, { v: 'api-pedidos', label: 'api-pedidos', note: 'OpenAPI' }], { multiPick: true, flag: '--referencia', noun: ['referência', 'referências'] }),
+        depende: F.pick('Depende de', () => itemOpts(['pronto', 'rascunho', 'humano', 'aprovacao']), { multiPick: true, flag: '--depende', noun: ['item', 'itens'] }),
+        restricoes: F.text('Restrições', { flag: '--restricoes', ph: 'bibliotecas, arquivos, padrões' }),
+      },
+      action: 'Adicionar ao backlog',
+      result: (v) => [L(`#19 ${v.titulo}`, 'b'), L('Estado: rascunho.'), BLANK, L('Próximo passo: Refinar um item, para o agente propor critérios e limites.', 'd')],
+    },
+    especificar: {
+      fields: {
+        spec: F.pick('Spec', () => SPECS, { req: true }),
+        acao: F.choice('O que fazer', [['', 'validar e mostrar'], ['--refazer', 'pedir outra proposta ao agente'], ['--aceitar', 'aceitar sem revisar'], ['--descartar', 'descartar a proposta pendente']], { asFlag: true }),
+      },
+      action: 'Abrir a spec',
+      result: (v) => [L(`.mabel/specs/${v.spec}.md`, 'b'), L('Válida: objetivo, 3 regras com exemplo e 3 tarefas ligadas.'), L(v.acao === '--aceitar' ? 'Aceita. As tarefas ligadas vão para pronto.' : 'Para aceitar, escolha "aceitar sem revisar" ou revise as tarefas aqui.', 'd')],
+    },
+    refinar: {
+      fields: {
+        item: F.item('Item', ['rascunho']),
+        acao: F.choice('O que fazer', [['', 'pedir a proposta ao agente'], ['--refazer', 'pedir outra proposta'], ['--aceitar', 'aceitar a proposta sem revisar'], ['--descartar', 'descartar a proposta pendente'], ['--referencias', 'só escolher referências, sem agente']], { asFlag: true }),
+      },
+      action: 'Refinar',
+      result: (v) => [L(`#${v.item} ${itemOf(v.item)?.t ?? ''}`, 'b'), L('O agente propõe critérios, decisões e limites. Você revisa um por um aqui:'), L('enter mantém · - remove · texto novo substitui', 'd')],
+    },
+    capturar: {
+      fields: {
+        tipo: F.choice('Tipo', [['tela', 'tela do Figma'], ['api', 'API OpenAPI ou Swagger']]),
+        nome: F.text('Nome', { req: true, ph: 'minúsculas, dígitos e hífen' }),
+        url: F.text('Endereço', { req: true, ph: 'URL do frame (com node-id) ou do OpenAPI' }),
+        escala: F.choice('Escala da imagem', [['', '2 (padrão)'], ['1', '1'], ['3', '3'], ['4', '4']], { flag: '--escala', when: (v) => v.tipo === 'tela' }),
+        png: F.text('PNG exportado', { flag: '--png', ph: 'opcional: usa este arquivo em vez de baixar', when: (v) => v.tipo === 'tela' }),
+      },
+      action: 'Capturar',
+      result: (v) => [L(`.mabel/referencias/${v.nome}`, 'b'), L(v.tipo === 'tela' ? 'Imagem e estrutura do frame salvas.' : '14 operações salvas.'), L(`Os itens citam com: Referências: ${v.nome}`, 'd')],
+    },
+    credenciar: {
+      fields: {
+        cred: F.choice('Credencial', [['FIGMA_TOKEN', 'FIGMA_TOKEN']]),
+        expira: F.text('Vence em', { flag: '--expira', req: true, ph: 'AAAA-MM-DD' }),
+      },
+      action: 'Registrar',
+      result: (v) => [L(`FIGMA_TOKEN vence em ${v.expira}.`, 'b'), L('O Mabel avisa 7 dias antes, na tela inicial.', 'd')],
+    },
+    rodar: {
+      fields: {
+        modo: F.choice('Modo', [['', 'fila inteira: planeja todos, depois executa'], ['item', 'só um item, do plano ao fim'], ['--sem-lote', 'item a item, cada um até o fim']], { skip: true }),
+        limite: F.text('Quantos itens', { flag: '--limite', ph: 'todos os prontos', when: (v) => v.modo !== 'item' }),
+        item: F.item('Item', ['pronto'], { flag: '--item', when: (v) => v.modo === 'item' }),
+        fundo: F.bool('Em segundo plano', '--fundo'),
+      },
+      action: 'Rodar',
+      extra: (v) => (v.modo && v.modo !== 'item' ? [v.modo] : []),
+      run: (v) => (v.fundo ? null : 'fila'),
+      result: () => [L('Fila entregue ao supervisor.', 'b'), L('Ela segue mesmo se você fechar o terminal.'), L('Acompanhe em "Acompanhar a fila" ou com mabel acompanhar.', 'd')],
+    },
+    aprovar: {
+      fields: {
+        item: F.item('Item', ['aprovacao']),
+        crit: F.info((v) => (v.item ? [L('Critérios', 'd'), ...itemOf(v.item).crit.map((c, i) => L(`  ${i + 1}. ${c}`))] : [])),
+      },
+      action: 'Aprovar os critérios',
+      result: (v) => [L(`#${v.item} aprovado.`, 'b'), L('A aprovação fica registrada como decisão sua (G2), e o item volta para o planejamento.', 'd')],
+    },
+    responder: {
+      fields: {
+        item: F.item('Item', ['humano']),
+        q: F.info((v) => (v.item ? [L(itemOf(v.item).q), L(`sugestão: ${itemOf(v.item).sug}`, 'd')] : [])),
+        resposta: F.text('Resposta', { req: true, ph: 'enter vazio usa a sugestão' }),
+        replanejar: F.bool('Replanejar o item', '--replanejar'),
+      },
+      action: 'Responder',
+      result: (v) => [L(`#${v.item} respondido.`, 'b'), L(v.replanejar ? 'O ciclo atual é descartado e o item volta ao planejamento.' : 'A resposta vira decisão registrada e o item volta à fila.', 'd')],
+    },
+    cancelar: {
+      fields: { item: F.item('Item', ['pronto', 'rascunho', 'humano', 'aprovacao', 'falhou']) },
+      action: 'Cancelar o item',
+      danger: true,
+      result: (v) => [L(`#${v.item} cancelado.`, 'b'), L('O histórico e as runs continuam na auditoria.', 'd')],
+    },
+    retomar: {
+      fields: {
+        item: F.item('Item', ['falhou']),
+        why: F.info((v) => (v.item ? [L(`motivo: ${itemOf(v.item).why}`, 'd')] : [])),
+        orientacao: F.text('Orientação', { flag: '--orientacao', ph: 'opcional: o que mudou ou o que tentar agora' }),
+      },
+      action: 'Retomar',
+      result: (v) => [L(`#${v.item} voltou para pronto.`, 'b'), L('Ele volta ao planejamento na próxima vez que a fila rodar, com o motivo e a sua orientação.', 'd')],
+    },
+    entregar: {
+      fields: {
+        unidade: F.pick('Unidade', () => UNITS.filter((u) => u.ready), { req: true }),
+        com: F.pick('Junto com', () => UNITS.filter((u) => !u.ready), { multiPick: true, flag: '--com', noun: ['unidade', 'unidades'] }),
+        parcial: F.bool('Entrega parcial', '--parcial'),
+        substituir: F.bool('Substituir a entrega aberta', '--substituir'),
+        rascunho: F.bool('PR como rascunho', '--rascunho'),
+      },
+      action: 'Provar e entregar',
+      result: (v) => [L(`Prova de ${v.unidade}`, 'b'), L('  ✓ base + unidade sem conflito', 'g'), L('  ✓ npm test: 57 testes verdes', 'g'), L(`PR aberto${v.rascunho ? ' como rascunho' : ''}: mabel/entrega/${v.unidade}`), L('O checkout voltou para a base. O merge é seu.', 'd')],
+    },
+    rejeitar: {
+      fields: {
+        item: F.item('Item', ['unidade']),
+        motivo: F.text('Motivo', { req: true, ph: 'por que o item volta; o planejamento recebe' }),
+        cancelar: F.bool('Cancelar em vez de devolver', '--cancelar'),
+      },
+      action: 'Rejeitar',
+      danger: true,
+      result: (v) => [L(`#${v.item} revertido na unidade.`, 'b'), L(v.cancelar ? 'O item foi cancelado.' : 'Ele volta ao planejamento com o seu motivo.', 'd')],
+    },
+    detalhar: {
+      fields: { item: F.item('Item', Object.keys(ST)) },
+      action: 'Detalhar',
+      result: (v) => {
+        const i = itemOf(v.item);
+        return [L(`#${i.n} ${i.t}`, 'b'), BLANK, KV('Estado', ST[i.st][0], ST[i.st][1]), KV('Pendência', i.q ?? 'nenhuma'), KV('Plano', '3 critérios · escopo de 4 arquivos'), KV('Custo', '$1.36 em 5 runs'), KV('Última run', 'executar · opus · 2m10 · há 3h')];
+      },
+    },
+    auditar: {
+      fields: {
+        projeto: F.pick('Projeto', () => PROJECTS, { req: true }),
+        remover: F.bool('Remover os dados do Mabel', 'remover', { skip: true }),
+        confirma: F.text('Confirme o nome', { flag: '--confirmar', req: true, ph: 'digite o nome do projeto', when: (v) => v.remover }),
+      },
+      action: 'Auditar',
+      pre: (v) => (v.remover ? ['remover'] : []),
+      check: (v) => (v.remover && v.confirma !== v.projeto ? 'O nome digitado não confere com o projeto escolhido.' : null),
+      danger: (v) => v.remover,
+      result: (v) => (v.remover
+        ? [L(`Dados de ${v.projeto} removidos do Mabel.`, 'b'), L('O repositório do projeto não foi tocado.', 'd')]
+        : [L(v.projeto, 'b'), BLANK, KV('Itens', '18 · 4 concluídos'), KV('Runs', '64 · $41.20'), KV('Auditoria', 'transcripts completos de todas as runs'), KV('Sandbox', 'ligado em todas as runs')]),
+    },
+    pedir: {
+      fields: {
+        prompt: F.text('Pedido', { req: true, ph: 'o que o agente deve fazer' }),
+        model: F.choice('Modelo', [['', 'sonnet (padrão)'], ['opus', 'opus'], ['haiku', 'haiku']], { flag: '--model' }),
+        turnos: F.text('Limite de turnos', { flag: '--max-turns', ph: 'opcional' }),
+        custo: F.text('Limite de custo', { flag: '--max-budget-usd', ph: 'opcional, em dólares' }),
+        tools: F.text('Ferramentas', { flag: '--allowed-tools', ph: 'opcional, separadas por vírgula' }),
+        cwd: F.text('Diretório', { flag: '--cwd', ph: 'o atual' }),
+      },
+      action: 'Executar',
+      result: () => [L('▸ pedido avulso · sonnet', 'd'), L('  → Read   src/orders/repository.ts ✓', 'd'), L('✓ concluída · 4 turnos · 38s · $0.09', 'g'), L('A run fica na auditoria como qualquer outra.', 'd')],
+    },
+  };
+  for (const spec of Object.values(FORMS)) spec.fields = Object.entries(spec.fields).map(([k, f]) => ({ k, ...f }));
+
+  const VIEWS = {
+    conferir: (c) => [
+      KV('Fila', c.bg ? 'rodando em segundo plano · #14 executar (opus, 2m10)' : 'parada', c.bg ? 'a' : ''),
+      KV('Itens', `${c.ready} prontos · ${c.pending} esperando você · 2 na unidade · 2 em rascunho`),
+      KV('Unidades', c.units ? 'cupom pronta para entregar · frete-gratis em andamento' : 'frete-gratis em andamento'),
+      [['  ' + 'Saldo'.padEnd(14), 'd'], ['5h ', 'd'], [bar(c.h5), 'a'], [` ${c.h5}% renova 17:40   `, ''], ['7d ', 'd'], [bar(c.d7), 'a'], [` ${c.d7}% no ritmo`, '']],
+    ],
+    consultar: () => [
+      [['  ' + 'ID'.padEnd(10) + 'ITEM  ETAPA        MODELO  DURAÇÃO  CUSTO   RESULTADO', 'd']],
+      L('a41f9c2   #14   executar     opus    2m10     $0.58   em andamento', 'a'),
+      L('9be03d1   #14   planejar     sonnet  41s      $0.12   ✓ concluída'),
+      L('77c1a0e   #13   planejar     sonnet  52s      $0.14   ⏸ suposição crítica'),
+      L('5d2e9f4   #12   revisar      sonnet  1m36     $0.24   ✓ concluída'),
+      L('31aa7c8   #12   executar     opus    3m48     $0.44   ✓ concluída'),
+      L('0f9c2b1   #12   executar     opus    2m02     $0.31   ✗ verificação reprovou'),
+      BLANK,
+      L('Com um id, mostra o detalhe e as ferramentas: mabel consultar a41f9c2', 'd'),
+    ],
+    listar: () => [
+      [['  ' + 'PROJETO'.padEnd(16) + 'ITENS  RUNS  CUSTO    ÚLTIMA ATIVIDADE', 'd']],
+      L('loja-api        18     64    $41.20   agora'),
+      L('harness-cli     7      22    $9.85    há 2 dias'),
+      L('site-padaria    0      0     $0.00    preparado hoje'),
+    ],
+  };
+
+  /* ---------- telas ---------- */
+  let screen = { mode: 'menu' };
+  const CMD = (s) => CMDS.find((c) => c.s === s);
+  const isEmpty = (v) => v === undefined || v === '' || (Array.isArray(v) && !v.length);
+  const q = (v) => (/\s/.test(v) ? `"${v}"` : v);
+  const visible = (spec, vals) => spec.fields.filter((f) => !f.when || f.when(vals));
+  const rowsOf = (spec, vals) => visible(spec, vals).filter((f) => f.type !== 'info');
+  const missing = (spec, vals) => visible(spec, vals).filter((f) => f.req && isEmpty(vals[f.k]));
+
+  function cmdline(cmd, spec, vals) {
+    const pos = [], flags = [];
+    for (const f of visible(spec, vals)) {
+      const v = vals[f.k];
+      if (f.type === 'info' || f.skip) continue;
+      if (f.type === 'bool') { if (v) flags.push(f.flag); continue; }
+      if (isEmpty(v)) continue;
+      if (f.type === 'multi' || f.multiPick) for (const x of v) flags.push(f.flag, q(x));
+      else if (f.type === 'choice' && f.asFlag) flags.push(v);
+      else if (f.flag) flags.push(f.flag, q(v));
+      else pos.push(q(v));
+    }
+    return ['mabel', cmd.s, ...(spec.pre ? spec.pre(vals) : []), ...pos, ...flags, ...(spec.extra ? spec.extra(vals) : [])].join(' ');
+  }
+
+  function openCmd(cmd) {
+    const c = CTX[ctxName];
+    filter = '';
+    sel = Math.max(0, entries().filter((e) => e.cmd).findIndex((e) => e.cmd === cmd));
+    if (FORMS[cmd.s]) {
+      const spec = FORMS[cmd.s], vals = {};
+      for (const f of spec.fields) if (f.def !== undefined) vals[f.k] = f.def;
+      screen = { mode: 'form', cmd, spec, vals, sel: 0, edit: null, sub: null };
+    } else if (VIEWS[cmd.s]) screen = { mode: 'result', cmd, title: cmd.t, lines: VIEWS[cmd.s](c), view: true };
+    else if (cmd.s === 'decidir') screen = { mode: 'decide', cmd, pending: ITEMS.filter((i) => i.st === 'humano' || i.st === 'aprovacao'), queue: [], idx: -1, sel: 0, done: [], edit: null };
+    else if (cmd.s === 'acompanhar') {
+      if (c.bg) return goFila();
+      screen = { mode: 'result', cmd, title: cmd.t, view: true, lines: [L('Nenhuma fila em segundo plano neste projeto.'), L('Para rodar sem prender o terminal: Rodar a fila, com "Em segundo plano" marcado.', 'd')] };
+    } else if (cmd.s === 'parar') {
+      screen = c.bg
+        ? { mode: 'form', cmd, spec: { fields: [{ k: 'i', type: 'info', lines: () => [L('A fila termina a etapa em andamento (#14 executar) e para.'), L('Nada se perde: o próximo rodar continua de onde parou.', 'd')] }], action: 'Parar depois da etapa', result: () => [L('Parada pedida.', 'b'), L('A fila encerra quando #14 terminar de executar.', 'd')] }, vals: {}, sel: 0, edit: null, sub: null }
+        : { mode: 'result', cmd, title: cmd.t, view: true, lines: [L('Nenhuma fila rodando neste projeto.')] };
+    }
+  }
+  function goFila() {
+    screen = { mode: 'menu' };
+    document.getElementById('tabbtn-fila').click();
+    document.querySelector('[data-sc="normal"]')?.click();
+  }
+
+  /* ---------- desenho das telas ---------- */
+  const sel_ = (segs, on) => (on ? segs.map(([tx, cl, f]) => [tx, (cl || '') + 's', f]) : segs);
+  /** Linha de shell quebrada em palavras, para caber na largura sem cortar. */
+  function shellRows(line, cls = '') {
+    const out = [], words = line.split(' ');
+    let cur = '';
+    for (const w of words) {
+      if (cur && cur.length + 1 + w.length > COLS - 8) { out.push(cur); cur = w; } else cur = cur ? `${cur} ${w}` : w;
+    }
+    out.push(cur);
+    return out.map((l, i) => [[i ? '      ' : '  $ ', 'd'], [l, cls]]);
+  }
+  const caretOn = () => Math.floor(performance.now() / 530) % 2 === 0;
+  function titleRows(title, sub, right) {
+    return [row([['  ‹ ', 'a'], [title, 'b', 1]], right ? [[right, 'd'], ['  ', '']] : []), ...(sub ? [row([['    ', ''], [sub, 'i', 1]])] : []), BLANK];
+  }
+  function valueOf(f, vals, editing) {
+    const v = vals[f.k];
+    if (editing) return [[editing.text, 'b'], [caretOn() ? '▏' : ' ', 'a']];
+    if (f.type === 'bool') return [[v ? '[x] sim' : '[ ] não', v ? '' : 'd']];
+    if (f.type === 'choice') return [['◂ ', 'd'], [f.options.find((o) => o[0] === (v ?? ''))?.[1] ?? '', ''], [' ▸', 'd']];
+    if (f.type === 'multi' || f.multiPick) {
+      const n = (v || []).length, noun = f.noun ?? ['item', 'itens'];
+      return [[n ? `${n} ${n === 1 ? noun[0] : noun[1]}` : 'nenhum', n ? '' : 'd']];
+    }
+    if (f.type === 'pick') {
+      const o = v ? f.src().find((x) => x.v === v) : null;
+      return o ? [[o.label, '']] : [[f.req ? 'escolher (obrigatório)' : 'escolher', 'd']];
+    }
+    return isEmpty(v) ? [[f.ph ?? '', 'd']] : [[v, '']];
+  }
+
+  function formBody(out) {
+    const { cmd, spec, vals, sub, edit } = screen;
+    const rows = rowsOf(spec, vals);
+    if (sub) return subBody(out, rows.find((f) => f.k === sub.k));
+    out.push(...titleRows(cmd.t, cmd.d, `mabel ${cmd.s}`));
+    let r = 0;
+    for (const f of visible(spec, vals)) {
+      if (f.type === 'info') { for (const l of f.lines(vals)) out.push(row([[' '.repeat(31), ''], ...l.map((x, i, a) => (i === a.length - 1 ? [x[0], x[1], 1] : x))])); if (f.lines(vals).length) out.push(BLANK); continue; }
+      const on = r === screen.sel;
+      const arrow = f.type === 'pick' || f.type === 'multi' ? [['▸', 'd'], ['  ', '']] : [];
+      out.push(sel_(row([[on ? '  › ' : '    ', on ? 'a' : ''], [f.label.padEnd(29), on ? 'b' : ''], ...valueOf(f, vals, on && edit && edit.k === f.k && edit.idx === undefined ? edit : null).map((s, i, a) => (i === a.length - 1 ? [...s, 1] : s))], arrow), on));
+      r++;
+    }
+    out.push(BLANK);
+    const miss = missing(spec, vals), on = screen.sel === rows.length;
+    const danger = typeof spec.danger === 'function' ? spec.danger(vals) : spec.danger;
+    out.push(sel_(row([[on ? '  › ' : '    ', on ? 'a' : ''], [`[ ${spec.action} ]`, miss.length ? 'd' : danger ? 'rb' : 'ab']], miss.length ? [[`falta: ${miss.map((f) => f.label).join(', ')}`, 'y'], ['  ', '']] : []), on));
+    out.push(BLANK);
+    out.push(...shellRows(cmdline(cmd, spec, vals)));
+  }
+
+  function subBody(out, f) {
+    const { cmd, sub, edit, vals } = screen;
+    out.push(...titleRows(`${cmd.t} › ${f.label}`, f.multiPick ? 'espaço marca, enter confirma' : f.type === 'multi' ? 'enter edita; deixe vazio para remover' : null));
+    if (f.type === 'multi') {
+      const list = vals[f.k] || [];
+      [...list, null].forEach((x, i) => {
+        const on = i === sub.sel, ed = on && edit && edit.idx === i;
+        const text = ed ? [[edit.text, 'b'], [caretOn() ? '▏' : ' ', 'a']] : x === null ? [['+ adicionar', 'a']] : [[x, '']];
+        out.push(sel_(row([[on ? '  › ' : '    ', on ? 'a' : ''], ...text]), on));
+      });
+      return;
+    }
+    const opts = f.src();
+    if (!opts.length) out.push(L('Nenhum item nesse estado agora.', 'd'));
+    opts.forEach((o, i) => {
+      const on = i === sub.sel;
+      const mark = f.multiPick ? [[sub.chosen.has(o.v) ? '[x] ' : '[ ] ', '']] : [];
+      const right = o.chip ? [[o.chip[0], o.chip[1]], ['  ', '']] : o.note ? [[o.note, 'd'], ['  ', '']] : [];
+      out.push(sel_(row([[on ? '  › ' : '    ', on ? 'a' : ''], ...mark, [o.label, on ? 'b' : '', 1]], right), on));
+    });
+  }
+
+  function decideBody(out) {
+    const s = screen;
+    if (s.idx < 0) {
+      // primeiro passo: escolher uma pendência ou passar por todas
+      out.push(...titleRows(s.cmd.t, s.cmd.d, 'mabel decidir'));
+      if (!s.pending.length) { out.push(L('Nenhuma pendência esperando você.', 'd')); return; }
+      const opts = [{ label: `Passar por todas (${s.pending.length})` }, ...s.pending.map((i) => ({ label: `#${i.n}  ${i.t}`, chip: ST[i.st] }))];
+      opts.forEach((o, i) => {
+        const on = i === s.sel;
+        out.push(sel_(row([[on ? '  › ' : '    ', on ? 'a' : ''], [o.label, on ? 'b' : '', 1]], o.chip ? [[o.chip[0], o.chip[1]], ['  ', '']] : []), on));
+        if (i === 0) out.push(BLANK);
+      });
+      return;
+    }
+    const it = s.queue[s.idx];
+    out.push(...titleRows(s.cmd.t, null, `${s.idx + 1} de ${s.queue.length}`));
+    out.push(row([['  ', ''], [`#${it.n}  ${it.t}`, 'b', 1]], [[ST[it.st][0], ST[it.st][1]], ['  ', '']]));
+    if (it.q) { out.push(L(it.q)); out.push(L(`sugestão: ${it.sug}`, 'd')); }
+    else { out.push(L('Critérios para aprovar:', 'd')); it.crit.forEach((c, i) => out.push(L(`  ${i + 1}. ${c}`))); }
+    out.push(BLANK);
+    decideOptions().forEach((o, i) => {
+      const on = i === s.sel;
+      const text = on && s.edit ? [[s.edit.text, 'b'], [caretOn() ? '▏' : ' ', 'a']] : [[o, on ? 'b' : '']];
+      out.push(sel_(row([[on ? '  › ' : '    ', on ? 'a' : ''], ...text]), on));
+    });
+  }
+  const decideOptions = () => (screen.queue[screen.idx]?.q
+    ? ['Aceitar a sugestão', 'Responder com outro texto', 'Replanejar o item', 'Pular por agora']
+    : ['Aprovar os critérios', 'Pular por agora']);
+
+  function resultBody(out) {
+    const s = screen;
+    out.push(...titleRows(s.view ? s.title : `✓ ${s.title}`, null, s.line ? null : `mabel ${s.cmd.s}`));
+    for (const l of s.lines) out.push(l);
+    if (s.line) { out.push(BLANK); out.push(...shellRows(s.line, 'd')); }
+  }
+
+  function render() {
+    const c = CTX[ctxName];
+    const facts = c.instance
+      ? [[`${c.ready} prontos`, ''], ...(c.pending ? [[' · ', 'd'], [`${c.pending} esperando você`, 'y']] : []), ...(c.units ? [[' · ', 'd'], [`${c.units} unidade pronta`, 'g']] : [])]
+      : [['sem Mabel neste diretório', 'y']];
+    const out = [BLANK, row([['  mabel', 'b'], ['  ', ''], [c.project, ''], [` · ${c.path}`, 'd', 1]]), [['  ', ''], ...facts], BLANK];
+    let hints;
+    if (screen.mode === 'menu') { menuBody(out, c); hints = [['↑↓', ' navegar'], ['enter', ' abrir'], ['digite', ' filtra'], ['esc', ' limpa']]; }
+    else {
+      if (screen.mode === 'form') formBody(out);
+      else if (screen.mode === 'decide') decideBody(out);
+      else resultBody(out);
+      hints = screen.edit ? [['enter', ' confirma'], ['esc', ' cancela']]
+        : screen.mode === 'form' && screen.sub ? [['↑↓', ' navegar'], ...(screen.spec.fields.find((f) => f.k === screen.sub.k)?.multiPick ? [['espaço', ' marca']] : []), ['enter', ' escolher'], ['esc', ' volta']]
+        : screen.mode === 'form' ? [['↑↓', ' campos'], ['enter', ' editar'], ['←→', ' opções'], ['esc', ' menu']]
+        : screen.mode === 'decide' ? [['↑↓', ' opções'], ['enter', ' decide'], ['esc', ' sai']]
+        : [['enter', ' volta ao menu']];
+      while (out.length < 34) out.push(BLANK);
+    }
+    if (flash && performance.now() < flash.until) out.push(row([['  ', ''], [flash.text, 'y', 1]]));
+    else out.push(BLANK);
+    out.push([['─'.repeat(COLS), 'd']]);
+    out.push(row(hints.flatMap(([k, t]) => [[' ' + k, 'a'], [t + ' ', 'd']]),
+      [['5h ', 'd'], [bar(c.h5), 'a'], [` ${c.h5}%  `, ''], ['7d ', 'd'], [bar(c.d7), 'a'], [` ${c.d7}% `, '']]));
+    document.getElementById('screen2').innerHTML = out
+      .map((l) => (Array.isArray(l) ? paint(l) : `<span class="pick" data-k="${l.k}">${paint(l.segs)}</span>`))
+      .join('\n');
+  }
+
+  function menuBody(out, c) {
+    const list = entries();
+    const cmdIdx = list.map((e, i) => (e.cmd ? i : -1)).filter((i) => i >= 0);
+    sel = clamp(sel, 0, Math.max(0, cmdIdx.length - 1));
+    const caret = caretOn() ? '▏' : ' ';
+    out.push(filter ? [['  › ', 'a'], [filter, 'b'], [caret, 'a']] : [['  › ', 'a'], [caret, 'a'], ['o que você quer fazer?', 'd']]);
+    out.push(BLANK);
+    const lines = list.map((e, i) => {
+      if (e.head) return { segs: [['  ', ''], [GROUPS[e.head].toUpperCase(), 'd']] };
+      const k = cmdIdx.indexOf(i), on = k === sel;
+      const badge = e.cmd.badge ? e.cmd.badge(c) : '';
+      const segs = row(
+        [[on ? '  › ' : '    ', on ? 'a' : ''], [e.cmd.t, on ? 'b' : '', 1]],
+        [...(badge ? [[badge, e.cmd.g === 'decidir' ? 'y' : 'g'], ['   ', '']] : []), [`mabel ${e.cmd.s}`, 'd'], ['  ', '']]
+      );
+      return { segs: sel_(segs, on), k };
+    });
+    const selLine = cmdIdx[sel] ?? 0;
+    if (selLine < scroll + 1) scroll = Math.max(0, selLine - 1);
+    if (selLine > scroll + LIST_ROWS - 1) scroll = selLine - LIST_ROWS + 1;
+    scroll = clamp(scroll, 0, Math.max(0, lines.length - LIST_ROWS));
+    out.push(scroll > 0 ? [['    ', ''], [`↑ mais ${scroll}`, 'd']] : BLANK);
+    const shown = lines.slice(scroll, scroll + LIST_ROWS);
+    for (const l of shown) out.push(l.k === undefined ? l.segs : { segs: l.segs, k: l.k });
+    for (let i = shown.length; i < LIST_ROWS; i++) out.push(BLANK);
+    const below = lines.length - scroll - LIST_ROWS;
+    out.push(below > 0 ? [['    ', ''], [`↓ mais ${below}`, 'd']] : BLANK);
+    const current = list[cmdIdx[sel]]?.cmd;
+    out.push(BLANK);
+    out.push(current ? row([['  ', ''], [current.d, 'i', 1]]) : row([['  ', ''], ['Nenhum comando com esse nome. esc limpa o filtro.', 'y', 1]]));
+  }
+
+  /* ---------- teclado ---------- */
+  const printable = (e) => e.key.length === 1 && !e.metaKey && !e.ctrlKey;
+  function editKey(e, ed, done, cancel) {
+    if (e.key === 'Enter') done(ed.text);
+    else if (e.key === 'Escape') cancel();
+    else if (e.key === 'Backspace') ed.text = ed.text.slice(0, -1);
+    else if (printable(e)) ed.text += e.key;
+    else return false;
+    return true;
+  }
+
+  function formKey(e) {
+    const s = screen, rows = rowsOf(s.spec, s.vals);
+    if (s.sub) {
+      const f = rows.find((x) => x.k === s.sub.k);
+      if (f.type === 'multi') {
+        const list = s.vals[f.k] || [];
+        if (s.edit) return editKey(e, s.edit, (text) => {
+          const next = [...list];
+          if (s.edit.idx === list.length) { if (text.trim()) next.push(text.trim()); } else if (text.trim()) next[s.edit.idx] = text.trim(); else next.splice(s.edit.idx, 1);
+          s.vals[f.k] = next; s.edit = null; s.sub.sel = Math.min(s.sub.sel, next.length);
+        }, () => (s.edit = null));
+        if (e.key === 'ArrowDown') s.sub.sel = (s.sub.sel + 1) % (list.length + 1);
+        else if (e.key === 'ArrowUp') s.sub.sel = (s.sub.sel - 1 + list.length + 1) % (list.length + 1);
+        else if (e.key === 'Enter') s.edit = { idx: s.sub.sel, text: list[s.sub.sel] ?? '' };
+        else if (e.key === 'Escape') s.sub = null;
+        return true;
+      }
+      const opts = f.src();
+      if (e.key === 'ArrowDown') s.sub.sel = (s.sub.sel + 1) % Math.max(1, opts.length);
+      else if (e.key === 'ArrowUp') s.sub.sel = (s.sub.sel - 1 + opts.length) % Math.max(1, opts.length);
+      else if (e.key === ' ' && f.multiPick && opts[s.sub.sel]) { const v = opts[s.sub.sel].v; s.sub.chosen.has(v) ? s.sub.chosen.delete(v) : s.sub.chosen.add(v); }
+      else if (e.key === 'Enter') {
+        if (f.multiPick) s.vals[f.k] = [...s.sub.chosen];
+        else if (opts[s.sub.sel]) s.vals[f.k] = opts[s.sub.sel].v;
+        s.sub = null;
+      } else if (e.key === 'Escape') s.sub = null;
+      return true;
+    }
+    const f = rows[s.sel];
+    if (s.edit) return editKey(e, s.edit, (text) => { s.vals[f.k] = text.trim(); s.edit = null; }, () => (s.edit = null));
+    if (e.key === 'ArrowDown') s.sel = (s.sel + 1) % (rows.length + 1);
+    else if (e.key === 'ArrowUp') s.sel = (s.sel - 1 + rows.length + 1) % (rows.length + 1);
+    else if (e.key === 'Escape') screen = { mode: 'menu' };
+    else if (!f) { if (e.key === 'Enter') runForm(); }
+    else if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'Enter') && f.type === 'choice') {
+      const i = f.options.findIndex((o) => o[0] === (s.vals[f.k] ?? ''));
+      s.vals[f.k] = f.options[(i + (e.key === 'ArrowLeft' ? -1 : 1) + f.options.length) % f.options.length][0];
+    } else if ((e.key === ' ' || e.key === 'Enter') && f.type === 'bool') s.vals[f.k] = !s.vals[f.k];
+    else if (e.key === 'Enter' && f.type === 'text') s.edit = { k: f.k, text: s.vals[f.k] ?? '' };
+    else if (e.key === 'Enter' && (f.type === 'pick' || f.type === 'multi')) {
+      const cur = s.vals[f.k];
+      s.sub = { k: f.k, sel: 0, chosen: new Set(f.multiPick ? cur || [] : []) };
+      if (f.type === 'pick' && !f.multiPick && cur) s.sub.sel = Math.max(0, f.src().findIndex((o) => o.v === cur));
+    } else if (printable(e) && f.type === 'text') s.edit = { k: f.k, text: (s.vals[f.k] ?? '') + e.key };
+    else return false;
+    return true;
+  }
+
+  function runForm() {
+    const s = screen, miss = missing(s.spec, s.vals);
+    if (miss.length) { flash = { text: `Preencha antes: ${miss.map((f) => f.label).join(', ')}.`, until: performance.now() + 2200 }; return; }
+    const problem = s.spec.check && s.spec.check(s.vals);
+    if (problem) { flash = { text: problem, until: performance.now() + 2600 }; return; }
+    const line = cmdline(s.cmd, s.spec, s.vals);
+    if (s.spec.run && s.spec.run(s.vals) === 'fila') return goFila();
+    screen = { mode: 'result', cmd: s.cmd, title: s.spec.action, lines: s.spec.result(s.vals), line };
+  }
+
+  function decideKey(e) {
+    const s = screen;
+    if (s.idx < 0) {
+      const n = s.pending.length + 1;
+      if (e.key === 'ArrowDown') s.sel = (s.sel + 1) % n;
+      else if (e.key === 'ArrowUp') s.sel = (s.sel - 1 + n) % n;
+      else if (e.key === 'Escape') screen = { mode: 'menu' };
+      else if (e.key === 'Enter' && s.pending.length) { s.queue = s.sel === 0 ? s.pending : [s.pending[s.sel - 1]]; s.idx = 0; s.sel = 0; }
+      else return false;
+      return true;
+    }
+    const opts = decideOptions();
+    const advance = (label) => {
+      s.done.push(`#${s.queue[s.idx].n}: ${label}`);
+      s.idx++; s.sel = 0; s.edit = null;
+      if (s.idx >= s.queue.length) screen = { mode: 'result', cmd: s.cmd, title: 'Pendências decididas', lines: [...s.done.map((d) => L(d)), BLANK, L('Os itens voltam para a fila na próxima vez que ela rodar.', 'd')] };
+    };
+    if (s.edit) return editKey(e, s.edit, (text) => advance(`respondido: ${text || '(vazio)'}`), () => (s.edit = null));
+    if (e.key === 'ArrowDown') s.sel = (s.sel + 1) % opts.length;
+    else if (e.key === 'ArrowUp') s.sel = (s.sel - 1 + opts.length) % opts.length;
+    else if (e.key === 'Escape') screen = { mode: 'menu' };
+    else if (e.key === 'Enter') {
+      const o = opts[s.sel];
+      if (o === 'Responder com outro texto') s.edit = { text: '' };
+      else advance(o === 'Aceitar a sugestão' ? 'sugestão aceita' : o === 'Replanejar o item' ? 'volta ao planejamento' : o === 'Aprovar os critérios' ? 'critérios aprovados' : 'pulado');
+    } else return false;
+    return true;
+  }
+
+  function open() {
+    const cmd = entries().filter((e) => e.cmd)[sel]?.cmd;
+    if (cmd) openCmd(cmd);
+  }
+
+  const term = document.getElementById('term2');
+  term.addEventListener('keydown', (e) => {
+    let handled = true;
+    if (screen.mode === 'form') handled = formKey(e);
+    else if (screen.mode === 'decide') handled = decideKey(e);
+    else if (screen.mode === 'result') { if (e.key === 'Enter' || e.key === 'Escape') screen = { mode: 'menu' }; else handled = false; }
+    else {
+      const n = entries().filter((x) => x.cmd).length;
+      if (e.key === 'ArrowDown') sel = (sel + 1) % Math.max(1, n);
+      else if (e.key === 'ArrowUp') sel = (sel - 1 + n) % Math.max(1, n);
+      else if (e.key === 'Home') sel = 0;
+      else if (e.key === 'End') sel = n - 1;
+      else if (e.key === 'Enter') open();
+      else if (e.key === 'Escape') { filter = ''; sel = 0; }
+      else if (e.key === 'Backspace') { filter = filter.slice(0, -1); sel = 0; }
+      else if (printable(e)) { filter += e.key; sel = 0; }
+      else handled = false;
+    }
+    if (handled) e.preventDefault();
+  });
+  term.addEventListener('click', (e) => {
+    const pick = e.target.closest('.pick');
+    if (!pick || screen.mode !== 'menu') return;
+    const k = Number(pick.dataset.k);
+    if (k === sel) open(); else sel = k;
+  });
+  document.querySelectorAll('[data-ctx]').forEach((b) => b.addEventListener('click', () => {
+    ctxName = b.dataset.ctx; filter = ''; sel = 0; scroll = 0; screen = { mode: 'menu' };
+    document.querySelectorAll('[data-ctx]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  }));
+  setInterval(() => { if (!document.getElementById('tab-comandos').hidden) render(); }, 100);
+  render();
+})();
+
+/* ---------- abas ---------- */
+(() => {
+  const tabs = document.querySelectorAll('[role="tab"]');
+  const show = (name) => {
+    tabs.forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === name)));
+    document.querySelectorAll('.tabpanel').forEach((p) => (p.hidden = p.id !== `tab-${name}`));
+  };
+  tabs.forEach((t) => t.addEventListener('click', () => { show(t.dataset.tab); try { history.replaceState(null, '', `#${t.dataset.tab}`); } catch {} }));
+  show(location.hash === '#fila' ? 'fila' : 'comandos');
+})();
+</script>
+</html>
