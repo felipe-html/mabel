@@ -11,6 +11,8 @@ jobs:
     # A suíte leva uns 2 min; um teste travado não pode queimar as 6 h do padrão.
     timeout-minutes: 10
     strategy:
+      # Uma versão falhando não cancela a outra: o resultado de cada uma interessa.
+      fail-fast: false
       matrix:
         # Versão mínima do `engines` e a LTS atual.
         node: ['22.18', '24']

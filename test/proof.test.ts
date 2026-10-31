@@ -223,7 +223,7 @@ test('P.2 critério 1: teste novo que falha na base e passa no item → provado,
   const dir = join(p.ctx.home, 'items', p.item().id);
   assert.deepEqual(p.gates(), [{ attempt: 1, passed: 1, detail: 'C1 provado' }]);
   assert.match(readFileSync(join(dir, 'prova-1', 'C1-base.log'), 'utf8'), /ERR_MODULE_NOT_FOUND[\s\S]*\[saída 1\]/);
-  assert.match(readFileSync(join(dir, 'prova-1', 'C1-item.log'), 'utf8'), /# pass 1[\s\S]*\[saída 0\]/);
+  assert.match(readFileSync(join(dir, 'prova-1', 'C1-item.log'), 'utf8'), /[#ℹ] pass 1[\s\S]*\[saída 0\]/);
   const saved = JSON.parse(readFileSync(join(dir, 'prova-1.json'), 'utf8'));
   assert.equal(saved.criteria[0].status, 'provado');
 });
