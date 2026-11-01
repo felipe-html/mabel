@@ -199,7 +199,7 @@ async function incompleteFlow(db: DatabaseSync, project: Project, io: InboxIO, i
   io.write(`${INDENT}motivo: ${item.pending?.reason ?? 'plano incompleto'}`);
   return chooseAction<Decision>(io, [
     { label: 'Orientar o plano', then: async () => answerWith(db, project, item, await textOrNull(io, 'Orientação')) },
-    cancelAction(db, project, io, item),
+    cancelAction(db, project, item),
     { label: SKIP_LABEL, then: async () => SKIP },
   ]);
 }
@@ -209,13 +209,12 @@ function answerWith(db: DatabaseSync, project: Project, item: Item, text: string
   return text ? respond(db, project, item, text, { replan, ...VIA }) : null;
 }
 
-/** "Cancelar o item", em vermelho, confirmado com "Voltar" selecionado. */
-function cancelAction(db: DatabaseSync, project: Project, io: InboxIO, item: Item): Action<Decision> {
+/** "Cancelar o item", em vermelho: o botão vermelho basta, sem confirmação. */
+function cancelAction(db: DatabaseSync, project: Project, item: Item): Action<Decision> {
   return {
     label: 'Cancelar o item',
     danger: true,
     then: async () => {
-      if (!(await confirmAction(io, `Cancelar o item #${item.number}`, { danger: true }))) return null;
       cancel(db, project, item, VIA);
       return 'cancelled';
     },
@@ -251,7 +250,7 @@ async function criticalFlow(
       },
     },
     { label: 'Ajustar os critérios', then: async () => answerWith(db, project, item, await textOrNull(io, 'Ajuste')) },
-    cancelAction(db, project, io, item),
+    cancelAction(db, project, item),
     { label: SKIP_LABEL, then: async () => SKIP },
   ]);
 }
@@ -284,7 +283,7 @@ async function exhaustedFlow(db: DatabaseSync, home: string, project: Project, i
   return chooseAction<Decision>(io, [
     { label: GUIDANCE[kind] as string, then: async () => answerWith(db, project, item, await textOrNull(io, 'Orientação')) },
     { label: 'Replanejar com uma orientação', then: async () => answerWith(db, project, item, await textOrNull(io, 'Orientação'), true) },
-    cancelAction(db, project, io, item),
+    cancelAction(db, project, item),
     { label: SKIP_LABEL, then: async () => SKIP },
   ]);
 }
@@ -307,21 +306,55 @@ function itemFlow(db: DatabaseSync, home: string, project: Project, io: InboxIO,
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
+export interface InboxOptions {
+  /** Só estas pendências (escolher uma decide só ela); o padrão é todas. */
+  items?: Item[];
+  /**
+   * Cabeçalho de cada pendência ("1 de 2" na tela cheia); sem ele, a linha do item. Na tela
+   * cheia também não sai o título do começo nem o resumo do fim, que ela mostra à parte.
+   */
+  onItem?: (item: Item, index: number, total: number) => void;
+  /** Cada decisão gravada, para o resumo da tela cheia. */
+  onDecision?: (item: Item, decision: string) => void;
+}
+
+/** O que foi decidido na pendência, para o resumo. */
+export function decisionLabel(status: ItemStatus): string {
+  switch (status) {
+    case 'planning':
+      return 'volta ao planejamento';
+    case 'planned':
+      return 'critérios aprovados';
+    case 'executing':
+      return 'volta à execução';
+    case 'cancelled':
+      return 'cancelado';
+    default:
+      return status;
+  }
+}
+
+/** Descrição da pendência: "perguntas do planejamento", "aprovação de item crítico"… */
+export const pendingLabel = (item: Item) => KIND_LABELS[item.pendingKind as PendingKind];
+
 /**
  * Percorre os itens em `needs_human`, um por vez. Cada item vira uma decisão só, gravada
  * ao final do item; ctrl+c descarta o item em andamento e mantém os já gravados.
  */
-export async function runInbox(db: DatabaseSync, home: string, project: Project, io: InboxIO): Promise<InboxResult> {
-  const items = pendingItems(db, project.id);
+export async function runInbox(db: DatabaseSync, home: string, project: Project, io: InboxIO, options: InboxOptions = {}): Promise<InboxResult> {
+  const items = options.items ?? pendingItems(db, project.id);
   const result: InboxResult = { answered: 0, skipped: 0, interrupted: false };
   if (items.length === 0) {
     io.write('Nada aguardando você.');
     return result;
   }
-  io.write(style.bold(`${plural(items.length, 'item aguardando', 'itens aguardando')} você`));
-  for (const item of items) {
-    io.write('');
-    io.write(`${style.bold(`#${item.number} ${item.title}`)}${style.dim(` · ${KIND_LABELS[item.pendingKind as PendingKind]}`)}`);
+  if (!options.onItem) io.write(style.bold(`${plural(items.length, 'item aguardando', 'itens aguardando')} você`));
+  for (const [index, item] of items.entries()) {
+    if (options.onItem) options.onItem(item, index, items.length);
+    else {
+      io.write('');
+      io.write(`${style.bold(`#${item.number} ${item.title}`)}${style.dim(` · ${KIND_LABELS[item.pendingKind as PendingKind]}`)}`);
+    }
     let decision: Decision;
     try {
       decision = await itemFlow(db, home, project, io, item);
@@ -334,12 +367,15 @@ export async function runInbox(db: DatabaseSync, home: string, project: Project,
     }
     if (decision === SKIP) {
       result.skipped++;
-      io.write(style.dim(`  #${item.number} pulado; continua aguardando você`));
+      options.onDecision?.(item, 'pulado');
+      if (!options.onItem) io.write(style.dim(`  #${item.number} pulado; continua aguardando você`));
     } else {
       result.answered++;
-      io.write(`  ✓ #${item.number} → ${decision}`);
+      options.onDecision?.(item, decisionLabel(decision));
+      if (!options.onItem) io.write(`  ✓ #${item.number} → ${decision}`);
     }
   }
+  if (options.onItem) return result;
   const skipped = result.skipped > 0 ? ` · ${plural(result.skipped, 'pulado', 'pulados')}` : '';
   io.write('');
   io.write(`Respostas registradas em ${plural(result.answered, 'item', 'itens')}${skipped}.`);

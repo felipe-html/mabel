@@ -116,7 +116,7 @@ export function request(home: string, message: SupervisorRequest, timeoutMs = 20
 // Filas ----------------------------------------------------------------------------------
 
 /** Última execução registrada no `queue_events` do projeto terminou (`stop`)? */
-function queueFinished(db: DatabaseSync, projectId: string): boolean {
+export function queueFinished(db: DatabaseSync, projectId: string): boolean {
   const row = db
     .prepare("SELECT kind FROM queue_events WHERE project_id = ? AND kind IN ('start', 'stop') ORDER BY id DESC LIMIT 1")
     .get(projectId) as { kind: string } | undefined;

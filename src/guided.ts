@@ -38,6 +38,8 @@ export interface GuidedIO {
   text: (label: string, settings?: TextSettings) => Promise<string | null>;
   /** Lista repetível: as entradas e "+ adicionar"; esc conclui com a lista editada. */
   list: (title: string, entries: string[], settings?: ListConfig) => Promise<string[]>;
+  /** Formulário; `null` quando o usuário volta. Sem ele, quem chama pede campo a campo. */
+  form?: (config: FormConfig, values?: FormValues) => Promise<FormValues | null>;
 }
 
 export interface ChooseSettings {
@@ -90,6 +92,7 @@ export const terminalGuided: GuidedIO = {
       render: (state, width) => [style.bold(`  ${title}`), ...renderList(settings, state, style, width)],
       summary: (result) => [style.bold(`  ${title}`), ...result.map((entry) => `    - ${entry}`)],
     }),
+  form: (config, values) => fillForm(config, values),
 };
 
 /**

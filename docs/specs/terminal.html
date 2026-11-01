@@ -719,7 +719,7 @@ render();
     adicionar: {
       fields: {
         titulo: F.text('Título', { req: true, ph: 'nome curto do item' }),
-        intencao: F.text('Intenção', { flag: '--intencao', ph: 'o que você quer e por quê' }),
+        intencao: F.text('Intenção', { flag: '--intencao', req: true, ph: 'o que você quer e por quê' }),
         criterio: F.multi('Critérios de aceite', '--criterio', ['critério', 'critérios']),
         fora: F.multi('Fora do escopo', '--fora-do-escopo', ['limite', 'limites']),
         ref: F.pick('Referências', () => [{ v: 'tela-checkout', label: 'tela-checkout', note: 'tela do Figma' }, { v: 'api-pedidos', label: 'api-pedidos', note: 'OpenAPI' }], { multiPick: true, flag: '--referencia', noun: ['referência', 'referências'] }),
@@ -743,15 +743,15 @@ render();
         acao: F.choice('O que fazer', [['', 'pedir a proposta ao agente'], ['--refazer', 'pedir outra proposta'], ['--aceitar', 'aceitar a proposta sem revisar'], ['--descartar', 'descartar a proposta pendente'], ['--referencias', 'só escolher referências, sem agente']], { asFlag: true }),
       },
       action: 'Refinar',
-      result: (v) => [L(`#${v.item} ${itemOf(v.item)?.t ?? ''}`, 'b'), L('O agente propõe critérios, decisões e limites. Você revisa um por um aqui:'), L('enter mantém · - remove · texto novo substitui', 'd')],
+      result: (v) => [L(`#${v.item} ${itemOf(v.item)?.t ?? ''}`, 'b'), L('O agente propõe critérios, decisões e limites. Você revisa um por um aqui:'), L('Manter, Editar ou Remover em cada parte.', 'd')],
     },
     capturar: {
       fields: {
         tipo: F.choice('Tipo', [['tela', 'tela do Figma'], ['api', 'API OpenAPI ou Swagger']]),
         nome: F.text('Nome', { req: true, ph: 'minúsculas, dígitos e hífen' }),
-        url: F.text('Endereço', { req: true, ph: 'URL do frame (com node-id) ou do OpenAPI' }),
-        escala: F.choice('Escala da imagem', [['', '2 (padrão)'], ['1', '1'], ['3', '3'], ['4', '4']], { flag: '--escala', when: (v) => v.tipo === 'tela' }),
-        png: F.text('PNG exportado', { flag: '--png', ph: 'opcional: usa este arquivo em vez de baixar', when: (v) => v.tipo === 'tela' }),
+        url: F.text('Endereço', { req: true, ph: 'URL do OpenAPI ou do Swagger', when: (v) => v.tipo === 'api' }),
+        origem: F.text('Link do Figma ou arquivo PNG', { req: true, ph: 'link do frame (com node-id) ou caminho do PNG', when: (v) => v.tipo === 'tela' }),
+        escala: F.choice('Escala da imagem', [['', '2 (padrão)'], ['1', '1'], ['3', '3'], ['4', '4']], { flag: '--escala', when: (v) => v.tipo === 'tela' && /^https?:\/\//.test(v.origem || '') }),
       },
       action: 'Capturar',
       result: (v) => [L(`.mabel/referencias/${v.nome}`, 'b'), L(v.tipo === 'tela' ? 'Imagem e estrutura do frame salvas.' : '14 operações salvas.'), L(`Os itens citam com: Referências: ${v.nome}`, 'd')],

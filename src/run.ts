@@ -35,11 +35,11 @@ import { checkDeliveries } from './delivery.ts';
 import { deleteBranch, isMerged, removeOrphanWorktrees, removeWorktree } from './worktree.ts';
 import { type OptionSpecs, jsonOption } from './options.ts';
 
-export const runUsage = 'mabel rodar [--item <n>] [--uma] [--sem-lote] [--fundo [--json]]';
+export const runUsage = 'mabel rodar [--item <n> | --limite <n>] [--sem-lote] [--fundo [--json]]';
 
 export const runOptions = {
   item: { type: 'string', value: '<n>', values: 'item', description: 'Processa só este item, do planejamento ao fim' },
-  uma: { type: 'boolean', description: 'Processa um item só, item a item, e para' },
+  limite: { type: 'string', value: '<n>', description: 'Processa no máximo <n> itens: depois deles, a fila não começa outro' },
   'sem-lote': { type: 'boolean', description: 'Item a item: cada um vai do planejamento ao fim antes do próximo' },
   fundo: { type: 'boolean', description: 'Entrega a fila ao supervisor e volta na hora; acompanhe com `mabel acompanhar`' },
   json: { ...jsonOption, description: 'Com --fundo: a confirmação da entrega em JSON' },
@@ -76,13 +76,14 @@ export interface QueueOptions {
   home: string;
   project: Project;
   itemNumber?: number;
-  once?: boolean;
+  /** Itens que a fila pode tomar nesta execução; depois deles, não começa outro. */
+  limit?: number;
   clock?: Clock;
   /** Perguntas no terminal (saldo, inbox); fora do TTY, a política decide sozinha. */
   interactive?: boolean;
   /**
-   * Planeja todos os itens `ready` antes de executar o primeiro (padrão). `--item` e `--uma`
-   * implicam item a item.
+   * Planeja todos os itens `ready` antes de executar o primeiro (padrão). `--item` implica
+   * item a item; com `limit`, o lote tem no máximo esse número de itens.
    */
   batch?: boolean;
   /**
@@ -200,7 +201,7 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; stop
   const clock = options.clock ?? systemClock;
   const interactive = options.interactive ?? false;
   const ask = options.confirm ?? confirmInTerminal;
-  const batch = (options.batch ?? true) && options.itemNumber === undefined && !options.once;
+  const batch = (options.batch ?? true) && options.itemNumber === undefined;
   const notify = options.notify ?? systemNotify;
   const title = notifyTitle(project);
   /** Pergunta no terminal: avisa antes, porque a fila fica parada até a resposta. */
@@ -382,11 +383,19 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; stop
   };
 
   let pausedUnits = new Set<string>();
+  /** Itens que esta execução já tomou, para o `--limite`. */
+  const taken = new Set<number>();
+  const full = () => options.limit !== undefined && taken.size >= options.limit;
 
   /** Próximo item da fila e se ele para em `planned`; `undefined` quando a fila acabou. */
   const pick = async (all: Item[]): Promise<{ target: Item; until?: 'planned' } | { end: QueueEnd; message?: string }> => {
     // Unidade pausada (a base conflita com a branch dela): as tarefas não iniciadas esperam.
-    const items = all.filter((item) => !(pausedUnits.has(unitOf(item)) && (item.status === 'ready' || item.status === 'planned')));
+    // Com o limite atingido, só seguem os itens já tomados.
+    const items = all.filter(
+      (item) =>
+        !(pausedUnits.has(unitOf(item)) && (item.status === 'ready' || item.status === 'planned')) &&
+        !(full() && !taken.has(item.number) && (item.status === 'ready' || item.status === 'planned')),
+    );
     const inProgress = items.find((item) => IN_PROGRESS.includes(item.status));
     if (options.itemNumber !== undefined && !inProgress) {
       if (finalStates.has(options.itemNumber)) return { end: 'once' };
@@ -400,13 +409,13 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; stop
     if (!batch) {
       // Item a item: o planejado (aprovado, por exemplo) antes do próximo `ready`.
       const target = inProgress ?? items.find((item) => item.status === 'planned') ?? items.find((item) => item.status === 'ready');
-      return target ? { target } : { end: 'empty' };
+      return target ? { target } : { end: full() ? 'once' : 'empty' };
     }
     const planning = inProgress ?? items.find((item) => item.status === 'ready');
     if (planning) return PLANNING.includes(planning.status) ? { target: planning, until: 'planned' } : { target: planning };
     if (await offerInbox()) return pick(listItems(db, project.id));
     const planned = items.find((item) => item.status === 'planned');
-    return planned ? { target: planned } : { end: 'empty' };
+    return planned ? { target: planned } : { end: full() ? 'once' : 'empty' };
   };
 
   /**
@@ -464,6 +473,7 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; stop
       const next = await pick(items);
       if ('end' in next) return next;
       const { target, until } = next;
+      taken.add(target.number);
       if (abort.signal.aborted) return { end: 'interrupted' };
       if (batch) enterPhase(until ? 'plan' : 'execute', listItems(db, project.id));
 
@@ -489,7 +499,7 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; stop
         continue;
       }
       if (stopping.signal.aborted) return { end: 'stopped', message: STOP_REQUESTED };
-      if (options.once || options.itemNumber !== undefined) return { end: 'once' };
+      if (options.itemNumber !== undefined) return { end: 'once' };
     }
   };
 
@@ -564,6 +574,12 @@ export async function run(args: string[]): Promise<number> {
     itemNumber = Number(values.item.replace(/^#/, ''));
     if (!Number.isInteger(itemNumber) || itemNumber < 1) return fail('argumento_invalido', '--item precisa ser o número de um item.', runUsage);
   }
+  let limit: number | undefined;
+  if (values.limite !== undefined) {
+    if (itemNumber !== undefined) return fail('argumento_invalido', 'Use --item ou --limite, não os dois.', runUsage);
+    limit = Number(values.limite);
+    if (!Number.isInteger(limit) || limit < 1) return fail('argumento_invalido', '--limite precisa ser um número inteiro maior que zero.', runUsage);
+  }
   // Em primeiro plano a saída é o acompanhamento da fila; JSON só na entrega ao supervisor.
   if (values.json && !values.fundo) return fail('argumento_invalido', '--json vale com --fundo.', runUsage);
 
@@ -614,7 +630,7 @@ export async function run(args: string[]): Promise<number> {
         home,
         project,
         itemNumber,
-        once: values.uma,
+        limit,
         batch: !values['sem-lote'],
         interactive,
         inbox: async () => {

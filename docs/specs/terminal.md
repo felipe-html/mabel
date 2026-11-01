@@ -81,7 +81,7 @@ Levantado no código em 2026-10-31; a implementação confere de novo antes de c
 | Tipos de tela | Formulário, escolha de item, vista e fluxo (seção "Telas"). Todo comando novo cabe em um deles. |
 | Painel da fila | Lista que se atualiza no lugar, uma linha por item, etapas do item ativo (seção "Painel da fila"). Só no TTY. |
 | Frase do agente | Padronizada, montada pelo Mabel a partir das ferramentas ("editando src/x.ts · 2 arquivos alterados"); não vem do texto do agente. |
-| Tela cheia | O menu e as telas abrem no buffer alternativo do terminal, como o vim. Ao sair de uma tela, o resultado é impresso no terminal comum, acima do menu, para ficar na rolagem (a validar no primeiro uso). |
+| Tela cheia | O menu e as telas abrem no buffer alternativo do terminal, como o vim. Ao sair de uma tela, o resultado é impresso no terminal comum, acima do menu, para ficar na rolagem (a validar no primeiro uso). Os fluxos que rodam no terminal comum (seção "Telas") esperam enter ou esc antes de a tela inicial voltar; não há menu "Voltar ao menu" / "Sair do Mabel" (esc com o filtro vazio sai). |
 | Volta da fila | Quando a fila termina, ou quando o usuário a solta com ctrl+c, a tela volta ao menu com o resumo da fila. |
 | Digitar | Na tela inicial, digitar filtra a lista. O `add` assistido, quando existir, vira um comando próprio. |
 | Ações que apagam | O botão vermelho basta para cancelar e rejeitar. Remover projeto pede o nome digitado no formulário ("Confirme o nome") e recusa se não conferir. |
@@ -141,11 +141,19 @@ Um campo por argumento ou opção do comando, na ordem do protótipo.
 - **Informação:** linhas só de leitura que dependem do que foi escolhido (critérios do
   item a retomar, critérios da pendência a aprovar).
 - **Campos condicionais:** só aparecem quando fazem sentido ("Item" em "Rodar a fila" no
-  modo "só um item"; "Escala" só para tela do Figma).
+  modo "só um item"; "Escala" só quando a tela vem de um link do Figma).
 - **Botão de ação:** "[ <ação> ]"; enquanto faltar campo obrigatório, fica esmaecido e
   mostra "falta: <campos>". Ações que apagam ou revertem têm o botão em vermelho.
 - **Linha de shell:** embaixo, "$ mabel …" com o comando equivalente, atualizado a cada
-  mudança e quebrado em linhas quando não cabe.
+  mudança e quebrado em linhas quando não cabe. Campo vazio não entra na linha.
+- **O botão** roda o comando com os argumentos da linha de shell. Nos comandos sem conversa
+  (adicionar, capturar, credenciar, retomar, cancelar, rejeitar, detalhar, auditar, rodar
+  em segundo plano e parar), roda sem perguntas, exatamente como a linha fora do TTY, e o
+  resultado aparece numa vista ("✓ <ação>", a saída do comando e a linha de shell). Criar,
+  preparar, especificar, refinar, rodar, entregar e pedir rodam no terminal comum, com as
+  rodadas, revisões e a saída de hoje; o entregar, sem perguntas (o formulário já
+  respondeu a entrega parcial).
+- **Valor longo** num campo é cortado com "…"; ao editar, o campo mostra o trecho do cursor.
 
 ### Escolha de item
 
@@ -156,14 +164,19 @@ Lista vazia mostra "Nenhum item nesse estado agora."
 ### Vista
 
 Saída só de leitura: "Conferir o estado", "Consultar as runs", "Listar os projetos",
-"Detalhar um item" e o resultado de cada formulário. Enter ou esc voltam ao menu.
+"Detalhar um item" e o resultado de cada formulário. Enter ou esc voltam ao menu. Vista mais
+alta que a tela rola com ↑ ↓ ("↑ mais N", "↓ mais N"), e o rodapé diz "↑↓ rola". "Acompanhar
+a fila" sem fila em segundo plano e "Parar a fila" sem fila rodando são vistas com o aviso.
 
 ### Fluxo
 
 - **Decidir as pendências:** abre com a lista das pendências e "Passar por todas"; depois,
-  uma decisão por vez ("1 de 2"), com o item, a pergunta ou os critérios e o menu de
-  opções; no fim, o resumo do que foi decidido.
-- **Rodar a fila** e **Acompanhar a fila:** abrem o painel da fila.
+  uma decisão por vez ("1 de 2"), com o item, o tipo da pendência ("perguntas do
+  planejamento", "tentativas esgotadas"…), a pergunta ou os critérios e o menu de opções da
+  inbox; no fim, o resumo do que foi decidido. Esc no menu de uma pendência sai do fluxo:
+  o que já foi decidido fica, e o resumo diz o que continua esperando você.
+- **Rodar a fila** e **Acompanhar a fila:** abrem o painel da fila (T.4); até lá, a saída de
+  hoje no terminal comum.
 - **Parar a fila:** com fila rodando, confirma com o botão "Parar depois da etapa"; sem
   fila, diz que não há fila rodando.
 - **Criar um projeto novo, Refinar, Especificar:** as rodadas e revisões de hoje, com o

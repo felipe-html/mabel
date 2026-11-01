@@ -101,9 +101,13 @@ início. A cópia é do item, entra na remoção do projeto com o resto de `item
 ```
 mabel capturar                       lista as referências e os itens que as citam
 mabel capturar api <nome> <url>      baixa o OpenAPI e grava o snapshot
-mabel capturar tela <nome> <url-figma> [--escala <n>]   exporta o frame do Figma
-mabel capturar tela <nome> --png <arquivo>              grava um PNG exportado à mão
+mabel capturar tela <nome> <link-ou-arquivo> [--escala <n>]   exporta o frame do Figma ou copia um PNG
 ```
+
+Na `tela`, o terceiro argumento é o link do frame do Figma (começa com `http://` ou
+`https://`), que é baixado, ou o caminho de um PNG exportado à mão, que é copiado. Com o
+arquivo local, o link do Figma não fica registrado, e `--escala` é recusado com mensagem
+clara. O antigo `--png <arquivo>` saiu (2026-11-01), sem apelido.
 
 ### `api`
 
@@ -120,7 +124,7 @@ mabel capturar tela <nome> --png <arquivo>              grava um PNG exportado �
 ### `tela` (Figma)
 
 - Lê o token de `FIGMA_TOKEN` (token pessoal do Figma, só leitura). Sem ele, erro dizendo
-  como criar e a alternativa `--png`.
+  como criar e a alternativa de passar o caminho de um PNG exportado no lugar do link.
 - Do link: chave do arquivo (`/design/<chave>/` ou `/file/<chave>/`) e `node-id`
   (`2696-108134` → `2696:108134`).
 - `GET /v1/images/<chave>?ids=<nó>&format=png&scale=<escala>` (padrão 2) e download do PNG
@@ -161,7 +165,7 @@ Decisão do usuário (2026-10-23): a data fica num comando do Mabel, não no arq
 6. `capturar api` grava o snapshot, converte a URL do swagger-ui do Quarkus, recusa
    resposta que não é OpenAPI JSON e relata operações novas e removidas.
 7. `capturar tela` com `FIGMA_TOKEN` grava `tela.png` e `tela.md`; sem token, erro com a
-   alternativa; `--png` funciona sem rede.
+   alternativa; com o caminho de um PNG local, funciona sem rede (e recusa `--escala`).
 8. `capturar` sem argumentos lista as referências e os itens que as citam.
 9. `credenciar figma --expira` registra a data; `conferir` e `capturar tela` avisam a 14
    dias do fim e depois do vencimento.

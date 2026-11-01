@@ -593,7 +593,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
     <div><b>1ª tentativa reprova</b><span>A 2ª retoma a mesma sessão do executor com o motivo da reprovação.</span></div>
     <div><b>2ª reprova</b><span>A 3ª abre sessão nova, com o resumo das tentativas, no modelo da camada acima (sonnet → opus).</span></div>
     <div><b>3ª reprova</b><span><code>needs_human · attempts_exhausted</code>, com o que reprovou em cada tentativa em português.</span></div>
-    <div><b>Falha da run</b><span>Erro do <code>claude</code> leva a <code>failed</code>. Saldo esgotado no meio: espera o reset e retoma pela mesma sessão.</span></div>
+    <div><b>Falha da run</b><span>Erro do <code>claude</code> leva a <code>failed</code>; <code>mabel retomar</code> o devolve a <code>ready</code>, e ele replaneja com o motivo e a sua orientação. Saldo esgotado no meio: espera o reset e retoma pela mesma sessão.</span></div>
   </div>
 </section>
 
@@ -675,7 +675,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
         <article class="cmd">
           <header><span class="name">mabel</span><span class="badge none">tela inicial</span></header>
           <p class="usage">mabel (sem argumentos, no terminal)</p>
-          <p>Tela cheia, no buffer alternativo do terminal: o projeto, o que espera por você (prontos, pendências, unidades prontas), o filtro “o que você quer fazer?” e os comandos agrupados (Começar, Planejar, Rodar, Decidir, Entregar, Acompanhar, Avulso). Decidir sobe com pendência e Rodar com itens prontos; Começar só onde o Mabel não foi preparado. O comando escolhido roda no terminal comum, e o resultado fica na rolagem; depois, “Voltar ao menu” ou “Sair do Mabel”. Fora do terminal, a lista de comandos em texto.</p>
+          <p>Tela cheia, no buffer alternativo do terminal: o projeto, o que espera por você (prontos, pendências, unidades prontas), o filtro “o que você quer fazer?” e os comandos agrupados (Começar, Planejar, Rodar, Decidir, Entregar, Acompanhar, Avulso). Decidir sobe com pendência e Rodar com itens prontos; Começar só onde o Mabel não foi preparado. Cada comando abre a tela dele, com as duas linhas do topo, “‹ título”, a descrição e o rodapé de teclas e saldo: formulário (um campo por opção, botão “[ ação ]” com “falta:”, vermelho no que apaga ou reverte, e a linha “$ mabel …” que faz o mesmo que o botão), vista (conferir, consultar, listar e o resultado de cada formulário; enter ou esc voltam) ou fluxo (decidir, parar). O botão roda o comando sem perguntas, como a linha de shell fora do TTY, e mostra o resultado numa vista, que fica também na rolagem do terminal comum. Criar, preparar, especificar, refinar, rodar, entregar e pedir rodam no terminal comum, com as rodadas e a saída de hoje, e esperam enter ou esc para voltar. Fora do terminal, a lista de comandos em texto.</p>
           <p class="writes"><b>Grava:</b> só a sincronização do <code>backlog.md</code> no SQLite, a mesma do <code>conferir</code>, para as contagens.</p>
 <pre class="term">  <b>mabel</b>  loja-api <span class="d">· ~/Pessoal/loja-api</span>
   2 prontos <span class="d">·</span> <span class="y">2 esperando você</span> <span class="d">·</span> <span class="g">1 unidade pronta</span>
@@ -719,6 +719,7 @@ stack node · 6 itens · 1 regra crítica
 <pre class="term">Item #4 adicionado: Desconto por volume · ready
     Refinar o item agora com um agente
 <span class="a">  › Agora não</span></pre>
+          <p>Pelo formulário da tela inicial, o resultado vem numa vista, com o próximo passo (“Refinar um item”) no lugar da pergunta.</p>
         </article>
         <article class="cmd">
           <header><span class="name">especificar</span><span class="badge agent">especificador</span></header>
@@ -746,7 +747,7 @@ Tamanho: 3 regras · 3 exemplos · 2 rodadas · 2 perguntas · 2 tarefas
         </article>
         <article class="cmd">
           <header><span class="name">capturar</span><span class="badge none">sem agente</span></header>
-          <p class="usage">mabel capturar [--json] · api nome url · tela nome url-figma · tela nome --png arquivo</p>
+          <p class="usage">mabel capturar [--json] · api nome url · tela nome link-figma|arquivo.png [--escala n]</p>
           <p>Guarda cópias de APIs e telas para os itens citarem em <code>Referências:</code>. Os agentes leem a cópia congelada, nunca o link.</p>
           <p class="writes"><b>Grava:</b> <code>.mabel/referencias/api/nome.openapi.json</code> + <code>.md</code>; <code>telas/nome/tela.png</code> + <code>tela.md</code>.</p>
         </article>
@@ -764,8 +765,8 @@ Tamanho: 3 regras · 3 exemplos · 2 rodadas · 2 perguntas · 2 tarefas
       <div class="cmds">
         <article class="cmd">
           <header><span class="name">rodar</span><span class="badge agent">planejador · executor · revisor</span></header>
-          <p class="usage">mabel rodar [--item n] [--uma] [--sem-lote] [--fundo [--json]]</p>
-          <p>Em lote: planeja todos os <code>ready</code>, oferece a inbox, depois executa os <code>planned</code> um a um até a fila acabar. <code>--sem-lote</code> leva cada item até o fim antes do próximo.</p>
+          <p class="usage">mabel rodar [--item n | --limite n] [--sem-lote] [--fundo [--json]]</p>
+          <p>Em lote: planeja todos os <code>ready</code>, oferece a inbox, depois executa os <code>planned</code> um a um até a fila acabar. <code>--sem-lote</code> leva cada item até o fim antes do próximo. <code>--limite n</code> (“Quantos itens” no formulário) toma no máximo n itens e não começa outro depois deles.</p>
           <p class="writes"><b>Grava:</b> estados e gates no SQLite; artefatos em <code>~/.mabel/items/&lt;id&gt;/</code>; runs em <code>~/.mabel/runs/</code>; commits na branch do item; merge na branch da unidade e dela em <code>mabel/integracao</code> (refeita a cada <code>rodar</code>); estado da integração (incluídas, conflitos, pausadas, verificação) no SQLite; <code>quadro.md</code> e <code>run.md</code> (reescrito ao fim de cada tarefa e no fim do <code>rodar</code>).</p>
 <pre class="term"><span class="a">  ▸ planejar · opus</span>
 <span class="d">    → Read src/pedidos.ts ✓</span>
@@ -798,7 +799,7 @@ Decididas pela sugestão (revise no merge):
         <article class="cmd">
           <header><span class="name">decidir</span><span class="badge human">você decide</span></header>
           <p class="usage">mabel decidir</p>
-          <p>Uma pendência por vez, em ordem de número, cada uma com o menu das opções dela: aceitar a sugestão do agente, responder com outro texto, deixar o agente decidir (fora de regra crítica), aprovar ou ajustar os critérios, replanejar, cancelar o item (em vermelho, confirmado com “Voltar” selecionado) ou pular por agora.</p>
+          <p>Uma pendência por vez, em ordem de número, cada uma com o menu das opções dela: aceitar a sugestão do agente, responder com outro texto, deixar o agente decidir (fora de regra crítica), aprovar ou ajustar os critérios, replanejar, cancelar o item (em vermelho, sem confirmação: o botão vermelho basta) ou pular por agora. Pela tela inicial, abre com a lista das pendências e “Passar por todas”; escolher uma decide só ela; uma decisão por vez (“1 de 2”) e, no fim, o resumo do que foi decidido.</p>
           <p class="writes"><b>Grava:</b> a decisão no item e o leva ao estado certo (tabela abaixo).</p>
 <pre class="term"><span class="h">#2 Exportar relatório · perguntas da execução</span>
 ? Incluir itens cancelados? <span class="d">[sugestão: não]</span>
@@ -820,6 +821,13 @@ Respostas registradas em 2 itens · 1 pulado.
           <p class="usage">mabel aprovar n · responder n "texto" | --respostas arquivo.json [--replanejar] · cancelar n</p>
           <p>Pela tela inicial, o cancelar abre um formulário com a lista só dos itens no estado em que ele faz sentido, com o botão em vermelho (o rejeitar também); aprovar e responder ficam só no shell, e a tela inicial decide pelo “Decidir as pendências”.</p>
           <p>Os mesmos efeitos do <code>decidir</code>, avulsos. <code>aprovar</code> leva um item crítico a <code>planned</code>; <code>responder</code> retoma a sessão certa ou replaneja; <code>cancelar</code> tira o item da fila.</p>
+        </article>
+        <article class="cmd">
+          <header><span class="name">retomar</span><span class="badge human">você decide</span></header>
+          <p class="usage">mabel retomar n [--orientacao "texto"] [--json]</p>
+          <p>Devolve à fila um item parado em <code>failed</code> (vai a <code>ready</code>) ou <code>blocked</code> (vai a <code>backlog</code>, e a <code>ready</code> quando o backlog permite). Na tela inicial, “Retomar um item” lista só os parados, com o motivo à vista. Bloqueio por formato no backlog não se retoma: some quando o backlog é corrigido.</p>
+          <p class="writes"><b>Grava:</b> a transição com <code>humano: retomar</code> e a orientação; zera tentativas, aprovação e replanejamentos; o planejamento recebe o motivo da parada, a orientação e o plano anterior.</p>
+<pre class="term">#10 voltou para pronto: replaneja no próximo `mabel rodar`, com o motivo e a sua orientação.</pre>
         </article>
       </div>
 

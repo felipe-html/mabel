@@ -96,7 +96,7 @@ test('aviso no fim da fila, com o resumo sem custo e tempo', async () => {
   assert.deepEqual(q.notices, [[`Mabel · ${name}`, 'fila vazia · awaiting_merge 1 · needs_human 1 · veja .mabel/run.md']]);
 
   const once = queue('\n## A\nprimeiro\n', DONE);
-  await once.start({ once: true });
+  await once.start({ limit: 1 });
   assert.deepEqual(once.notices.map(([, message]) => message), ['concluído · awaiting_merge 1 · veja .mabel/run.md']);
 });
 

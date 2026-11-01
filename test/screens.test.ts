@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { addForm, addShell, fieldsFromForm } from '../src/add.ts';
-import { cancelForm, rejectForm } from '../src/decide.ts';
+import { EMPTY_DATA, FORMS } from '../src/forms.ts';
 import { answerQuestion, confirmAction, reviewEntries } from '../src/guided.ts';
 import type { Key } from '../src/menu.ts';
 import { removalForm } from '../src/projects.ts';
@@ -251,8 +251,8 @@ test('Adicionar um item: campos do protótipo, linha de shell e os campos do bac
 test('ações que apagam: botão vermelho em cancelar e rejeitar; remover projeto confere o nome digitado', () => {
   const red = { ...plainStyle, red: (text: string) => `<r>${text}</r>` };
   const filled = (form: FormConfig, values: Record<string, string>) => renderForm(form, { ...formState(form, values), cursor: 9 }, red, 88).join('\n');
-  assert.match(filled(cancelForm([]), { item: '3' }), /<r>\[ Cancelar o item \]<\/r>/);
-  assert.match(filled(rejectForm([]), { item: '3', motivo: 'quebrou' }), /<r>\[ Rejeitar \]<\/r>/);
+  assert.match(filled(FORMS.cancelar!(EMPTY_DATA).config, { item: '3' }), /<r>\[ Cancelar o item \]<\/r>/);
+  assert.match(filled(FORMS.rejeitar!(EMPTY_DATA).config, { item: '3', motivo: 'quebrou' }), /<r>\[ Rejeitar \]<\/r>/);
   const removal = removalForm('loja-api');
   const wrong = formRun(removal, [{ name: 'return' }, ...typing('loja'), { name: 'return' }, { name: 'down' }, { name: 'return' }]) as FormState;
   assert.equal(wrong.message, 'O nome digitado não confere com o projeto escolhido.');

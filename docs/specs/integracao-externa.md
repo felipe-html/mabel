@@ -63,6 +63,19 @@ desconhecido". Campos e valores das saídas não mudaram.
 | `exec` | `pedir` |
 | `integracao` | sai; `entregar` sem unidade mostra o mesmo |
 
+### Novo terminal, telas dos comandos (2026-11-01)
+
+- `rodar --uma` saiu. No lugar, `rodar --limite <n>`: a fila toma no máximo `<n>` itens e
+  não começa outro depois deles (`--limite 1 --sem-lote` faz o que o `--uma` fazia). Não
+  combina com `--item`. Passa pelo supervisor como as outras opções (`rodar --fundo
+  --limite 2`).
+- Comando novo `retomar <n> [--orientacao <texto>] [--json]`: devolve à fila um item parado
+  em `failed` (vai a `ready`) ou `blocked` (vai a `backlog`, e a `ready` quando o backlog
+  permite); o planejamento recebe o motivo da parada e a orientação. Item bloqueado por
+  erro de formato no backlog é recusado com `estado_invalido` (volta sozinho quando o
+  backlog é corrigido). Com `--json`, `{"item": {"numero", "titulo", "estado"}}`, como
+  `aprovar` e `responder`. Aparece no `comandos --json`.
+
 ## Saídas `--json`
 
 Uma linha de JSON por chamada, com `"versao": 1` no topo.
@@ -98,7 +111,7 @@ Com `--json`, o erro sai no stderr numa linha, com código de saída diferente d
 | `interno` | Erro inesperado da CLI. |
 
 Código novo não muda a versão. As ações que o app roda também aceitam `--json`:
-`aprovar` e `responder` devolvem `{"item": {"numero", "titulo", "estado"}}`; `rodar --fundo`,
+`aprovar`, `responder` e `retomar` devolvem `{"item": {"numero", "titulo", "estado"}}`; `rodar --fundo`,
 `{"projeto": {...}, "pid"}`; `parar`, `{"parada_pedida", "pid"}`; `projeto remover <nome>
 --confirmar <nome>`, `{"removido": {"id", "nome", "raiz"}, "avisos"}`. `responder` aceita
 `--respostas <arquivo.json>`, uma resposta por pergunta (`docs/specs/inbox.md`).
@@ -148,8 +161,8 @@ local com o deslocamento, como nas saídas `--json`. Os campos exatos de cada ti
 ## Ações sem TTY
 
 Os comandos que um cliente roda precisam funcionar sem perguntas interativas: `mabel rodar
---fundo`, `mabel parar`, `mabel aprovar`, `mabel responder`, `mabel preparar` e `mabel
-projeto remover <nome> --confirmar <nome>` (que já existe). Sem TTY, um comando que
+--fundo`, `mabel parar`, `mabel aprovar`, `mabel responder`, `mabel retomar`, `mabel
+preparar` e `mabel auditar remover <nome> --confirmar <nome>` (que já existe). Sem TTY, um comando que
 precisaria perguntar sai com código diferente de 0 e diz qual argumento falta.
 
 ## `mabel criar`

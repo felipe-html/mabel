@@ -58,7 +58,7 @@ test('referencia --json: o catálogo para outros programas', () => {
   const json = JSON.parse(result.stdout);
   assert.equal(json.versao, 1);
   assert.deepEqual(json.referencias[0], { entrada: 'tela: cadastro', tipo: 'tela', nome: 'cadastro', detalhe: 'tela.md, tela.png', itens: [1] });
-  assert.equal(cli('capturar', 'tela', 'x', '--png', 'a.png', '--json').status, 1);
+  assert.equal(cli('capturar', 'tela', 'x', 'a.png', '--json').status, 1);
 });
 
 test('add --referencia grava o campo; referência que não existe avisa que o item fica no backlog', () => {

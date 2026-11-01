@@ -104,7 +104,7 @@ test('oferta recusada: a fila segue sem esperar e não pergunta de novo; fora do
   assert.deepEqual(headless.states(), [[1, 'awaiting_merge'], [2, 'needs_human'], [3, 'awaiting_merge']]);
 });
 
-test('--sem-lote, --item e --uma mantêm o item a item', async () => {
+test('--sem-lote e --item mantêm o item a item; --limite 1 leva um item até o fim', async () => {
   const noBatch = queue([PLAN_OK, EXEC, REVIEW, PLAN_Q, PLAN_OK, EXEC, REVIEW]);
   const run = noBatch.cli('rodar', '--sem-lote');
   assert.equal(run.status, 0, run.stderr);
@@ -117,7 +117,7 @@ test('--sem-lote, --item e --uma mantêm o item a item', async () => {
   assert.deepEqual(single.states(), [[1, 'ready'], [2, 'awaiting_merge'], [3, 'ready']]);
 
   const once = queue([PLAN_OK, EXEC, REVIEW]);
-  assert.equal((await once.start({ once: true })).end, 'once');
+  assert.equal((await once.start({ limit: 1 })).end, 'once');
   assert.deepEqual(once.stages(), ['plan#1', 'execute#1', 'review#1']);
 });
 

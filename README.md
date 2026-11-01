@@ -209,7 +209,7 @@ Para capturar:
 ```
 mabel capturar api wego-acessos https://…/q/swagger-ui/      # OpenAPI em JSON
 mabel capturar tela home-operador '<link do frame no Figma>'  # PNG e tela.md
-mabel capturar tela home-operador --png exportado.png         # sem token
+mabel capturar tela home-operador exportado.png              # sem token: o PNG exportado
 mabel capturar                                                # lista e quem cita
 ```
 
@@ -254,10 +254,11 @@ Todos funcionam no shell (`mabel <comando>`); os que têm título aparecem na te
 | Refinar um item | `refinar [<n>] [--refazer] [--aceitar \| --descartar]` | Proposta de refinamento de um item, por agente, para você revisar antes de gravar no backlog; `refinar <n> --referencias` só escolhe as referências, sem agente |
 | Capturar uma referência | `capturar [tela \| api] …` | Captura telas do Figma e APIs OpenAPI para os itens citarem em "Referências:"; sem argumentos, lista |
 | Credenciar um token | `credenciar [<nome>] [--expira <data>]` | Registra e mostra a validade dos tokens usados na captura |
-| Rodar a fila | `rodar [--item <n>] [--uma] [--sem-lote] [--fundo]` | Consome a fila. `--item` processa um item; `--uma` para no primeiro estado final; `--sem-lote` planeja e executa item a item; `--fundo` entrega a fila ao supervisor e volta na hora |
+| Rodar a fila | `rodar [--item <n> \| --limite <n>] [--sem-lote] [--fundo]` | Consome a fila. `--item` processa um item; `--limite <n>` toma no máximo n itens; `--sem-lote` planeja e executa item a item; `--fundo` entrega a fila ao supervisor e volta na hora |
 | Acompanhar a fila | `acompanhar` | Acompanha ao vivo a fila em segundo plano do projeto; Ctrl+C solta sem parar a fila |
 | Parar a fila | `parar` | Para a fila do projeto (em segundo plano ou num terminal) depois da etapa em andamento |
 | Decidir as pendências | `decidir` | Responde às decisões pendentes, uma por vez, com sugestão do agente |
+| Retomar um item | `retomar <n> [--orientacao <texto>]` | Devolve à fila um item parado por falha ou bloqueio; o planejamento recebe o motivo e a orientação |
 | Cancelar um item | `cancelar <n>` | Cancela um item |
 | Entregar uma unidade | `entregar [<slug> \| #<n>] [--com <unidade>] [--parcial] [--substituir] [--rascunho]` | Sem unidade, mostra as prontas para entregar, as em andamento e a integração; com ela, prova a unidade contra a base, abre o PR e volta o checkout para a base |
 | Rejeitar um item | `rejeitar <n> "<motivo>" [--cancelar]` | Reverte um item na unidade e o devolve ao planejamento (ou o cancela) |

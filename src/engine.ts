@@ -4,6 +4,7 @@ import { type CatalogEntry, chooseReferences } from './capture.ts';
 import { ToolLog, summaryLine } from './exec.ts';
 import { truncate } from './format.ts';
 import { type GuidedIO, answerQuestion, editList, terminalGuided } from './guided.ts';
+import { ENTRY_ACTIONS, type FormConfig } from './screens.ts';
 import { projectContext } from './hermetic.ts';
 import type { Item } from './items.ts';
 import { type Project, mabelPath, readCriticalRules } from './project.ts';
@@ -14,10 +15,10 @@ import type { Question, SpecifyOutput } from './schemas/stages.ts';
 import { validate } from './schemas/validate.ts';
 import {
   type RuleChange,
+  type RuleChangeAction,
   type Spec,
   type SpecExample,
   EDGE_MARK,
-  parseChange,
   parseExample,
   parseSpec,
   renderChange,
@@ -499,6 +500,70 @@ export async function reviewList(io: ReviewIO, title: string, entries: string[])
 
 export { editList };
 
+export const RULE_ACTIONS: [RuleChangeAction, string][] = [
+  ['incluir', 'incluir'],
+  ['alterar', 'alterar'],
+  ['remover', 'remover'],
+];
+
+/** Formulário de uma alteração nas regras vigentes: Assunto, Ação e Texto, sem sintaxe. */
+export function ruleChangeForm(title: string): FormConfig {
+  return {
+    title,
+    description: 'Gravada no formato de hoje e aplicada no .mabel/regras.md na entrega.',
+    fields: [
+      { type: 'text', key: 'assunto', label: 'Assunto', required: true, placeholder: 'o assunto em .mabel/regras.md' },
+      { type: 'choice', key: 'acao', label: 'Ação', options: RULE_ACTIONS },
+      { type: 'text', key: 'texto', label: 'Texto', required: true, placeholder: 'a regra; ao alterar, a regra antiga, literal' },
+    ],
+    action: 'Confirmar',
+  };
+}
+
+/** Uma alteração pelo formulário; `null` quando o usuário volta. Sem formulário (testes), campo a campo. */
+async function changeFromForm(io: ReviewIO, title: string, initial?: RuleChange): Promise<RuleChange | null> {
+  if (io.form) {
+    const values = await io.form(ruleChangeForm(title), initial ? { ...initial } : {});
+    if (!values) return null;
+    const text = (key: string) => (typeof values[key] === 'string' ? (values[key] as string).trim() : '');
+    return { assunto: text('assunto'), acao: (text('acao') || 'incluir') as RuleChangeAction, texto: text('texto') };
+  }
+  const assunto = await io.text('Assunto', { initial: initial?.assunto });
+  if (!assunto) return null;
+  const acao = RULE_ACTIONS[await io.choose(RULE_ACTIONS.map(([, label]) => label), { initial: Math.max(0, RULE_ACTIONS.findIndex(([value]) => value === initial?.acao)) })]?.[0] ?? 'incluir';
+  const texto = await io.text('Texto', { initial: initial?.texto });
+  return texto ? { assunto, acao, texto } : null;
+}
+
+/**
+ * Alterações nas regras vigentes: aceitar tudo, revisar uma a uma (Manter, Editar no
+ * formulário, Remover, e depois acrescentar outras) ou descartar.
+ */
+export async function reviewRuleChanges(io: ReviewIO, changes: RuleChange[]): Promise<RuleChange[]> {
+  if (changes.length === 0) return [];
+  io.write('');
+  io.write(style.bold('Alterações nas regras vigentes (aplicadas na entrega)'));
+  changes.forEach((change, i) => io.write(`${INDENT}${i + 1}. ${renderChange(change)}`));
+  const answer = await io.choose(REVIEW_OPTIONS);
+  if (answer === 0) return changes;
+  if (answer === 2) return [];
+  const kept: RuleChange[] = [];
+  for (const [i, change] of changes.entries()) {
+    io.write(`${INDENT}${i + 1}. ${renderChange(change)}`);
+    const action = ENTRY_ACTIONS[await io.choose([...ENTRY_ACTIONS.slice(0, 2), { label: 'Remover', danger: true }])];
+    if (action === 'Remover') continue;
+    kept.push(action === 'Editar' ? ((await changeFromForm(io, 'Editar a alteração', change)) ?? change) : change);
+  }
+  while ((await io.choose(['Seguir', 'Acrescentar uma alteração'])) === 1) {
+    const added = await changeFromForm(io, 'Nova alteração nas regras vigentes');
+    if (added) {
+      kept.push(added);
+      io.write(`${INDENT}+ ${renderChange(added)}`);
+    }
+  }
+  return kept;
+}
+
 async function reviewText(io: ReviewIO, title: string, text: string): Promise<string> {
   io.write('');
   io.write(style.bold(title));
@@ -621,13 +686,7 @@ export async function reviewOutput(io: ReviewIO, output: SpecifyOutput, options:
   const decisoes = await reviewList(io, 'Decisões', allDecisions(output, options.answers));
   const foraDoEscopo = await reviewList(io, 'Fora do escopo', output.foraDoEscopo);
   const conceitosCriticos = await reviewList(io, 'Regras críticas que a proposta toca', output.conceitosCriticos);
-  const changes = await reviewList(io, 'Alterações nas regras vigentes (aplicadas na entrega)', output.alteracoesRegrasVigentes.map(renderChange));
-  const alteracoesRegrasVigentes: RuleChange[] = [];
-  for (const line of changes) {
-    const change = parseChange(line);
-    if (change) alteracoesRegrasVigentes.push(change);
-    else io.write(style.dim(`${INDENT}ignorada (use assunto: incluir|alterar|remover "texto"): ${line}`));
-  }
+  const alteracoesRegrasVigentes = await reviewRuleChanges(io, output.alteracoesRegrasVigentes);
   const ids = new Set(regras.map((rule) => rule.id));
   let tarefas = output.tarefas.map((task) => ({ ...task, regras: task.regras.filter((id) => ids.has(id)) }));
   if (target.kind === 'spec') tarefas = await reviewTasks(io, tarefas, (options.firstNumber ?? 1) - 1);

@@ -52,7 +52,7 @@ const PLAN_RICH = {
 test('P.5 critério 1: relatório com as seções, regenerado a cada integração', async () => {
   const review2 = { structured_output: { ...REVIEW_OK, criterios: [...REVIEW_OK.criterios, { id: 'C2', atendido: true, evidencia: 'tela' }] } };
   const q = project('\n## A\nprimeiro\n\n## B\nsegundo\n', [PLAN_RICH, execFor(1), review2]);
-  const first = await q.start({ once: true, batch: false });
+  const first = await q.start({ limit: 1, batch: false });
   assert.equal(first.end, 'once');
   assert.match(q.report(), /\n## Integração\nmain \([0-9a-f]+\) \+ 1 unidade \(avulso-1\) · verificação: verde\n/);
 

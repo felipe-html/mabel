@@ -54,6 +54,49 @@ export function fit(text: string, width: number): string {
   return chars.length <= width ? text : `${chars.slice(0, Math.max(0, width - 1)).join('')}…`;
 }
 
+/**
+ * Quebra a linha em pedaços de até `width` colunas sem partir as sequências de cor; cada
+ * pedaço fecha a cor, e o seguinte a reabre.
+ */
+export function wrapLine(text: string, width: number, indent = ''): string[] {
+  if (visibleLength(text) <= width || width <= indent.length) return [text];
+  const out: string[] = [];
+  let current = '';
+  let columns = 0;
+  let open = '';
+  for (const token of text.match(/\x1b\[[0-9;?]*[A-Za-z]|[\s\S]/gu) ?? []) {
+    if (token.startsWith('\x1b[')) {
+      current += token;
+      open = token === '\x1b[0m' ? '' : open + token;
+      continue;
+    }
+    if (columns === width) {
+      out.push(open ? `${current}\x1b[0m` : current);
+      current = indent + open;
+      columns = indent.length;
+    }
+    current += token;
+    columns++;
+  }
+  out.push(current);
+  return out;
+}
+
+/** Corta o texto colorido em `width` colunas, com reticências, sem partir as sequências de cor. */
+export function clip(text: string, width: number): string {
+  if (visibleLength(text) <= width) return text;
+  let out = '';
+  let columns = 0;
+  for (const token of text.match(/\x1b\[[0-9;?]*[A-Za-z]|[\s\S]/gu) ?? []) {
+    if (token.startsWith('\x1b[')) out += token;
+    else if (columns < width - 1) {
+      out += token;
+      columns++;
+    }
+  }
+  return `${out}…${text.includes('\x1b[') ? '\x1b[0m' : ''}`;
+}
+
 /** Linha com `left` à esquerda e `right` encostado à direita em `width` colunas. */
 export function row(left: string, right: string, width: number): string {
   if (!right) return left;
@@ -144,11 +187,16 @@ export function textStep(state: TextState, key: Key): TextStep {
   return { state: { text: chars.join(''), cursor: cursor + added.length } };
 }
 
-/** Texto em edição: negrito, com o cursor marcado. */
-export function editingText(state: TextState, style: ScreenStyle): string {
+/** Texto em edição: negrito, com o cursor marcado; com `width`, a janela que mostra o cursor. */
+export function editingText(state: TextState, style: ScreenStyle, width = Infinity): string {
   const chars = [...state.text];
-  const before = chars.slice(0, state.cursor).join('');
-  const after = chars.slice(state.cursor).join('');
+  let before = chars.slice(0, state.cursor).join('');
+  let after = chars.slice(state.cursor).join('');
+  if (chars.length + 1 > width) {
+    const room = Math.max(2, width - 1);
+    if ([...before].length >= room) before = `…${[...before].slice(-(room - 1)).join('')}`;
+    after = fit(after, Math.max(1, room - [...before].length));
+  }
   return `${style.bold(before)}${style.accent('▏')}${style.bold(after)}`;
 }
 
@@ -400,7 +448,8 @@ export type FormValues = Record<string, FormValue | undefined>;
 interface FieldBase {
   key: string;
   label: string;
-  required?: boolean;
+  /** Obrigatório; a função decide pelo que já foi preenchido. */
+  required?: boolean | ((values: FormValues) => boolean);
   /** Campo condicional: só aparece quando faz sentido. */
   when?: (values: FormValues) => boolean;
 }
@@ -489,9 +538,11 @@ const inputFields = (config: FormConfig, values: FormValues) => visibleFields(co
 
 const blank = (value: FormValue | undefined) => value === undefined || value === '' || value === false || (Array.isArray(value) && value.length === 0);
 
+const isRequired = (field: InputField, values: FormValues) => (typeof field.required === 'function' ? field.required(values) : Boolean(field.required));
+
 /** Campos obrigatórios ainda vazios. */
 export function missingFields(config: FormConfig, values: FormValues): InputField[] {
-  return inputFields(config, values).filter((field) => field.required && blank(values[field.key]));
+  return inputFields(config, values).filter((field) => isRequired(field, values) && blank(values[field.key]));
 }
 
 /** Transição do formulário, como no protótipo: ↑ ↓ campos, enter edita ou abre, ← → trocam, esc volta. */
@@ -593,7 +644,7 @@ function fieldValue(field: InputField, values: FormValues, style: ScreenStyle): 
       const option = typeof value === 'string' && value ? field.options(values).find((o) => o.value === value) : undefined;
       if (option) return option.label;
       if (typeof value === 'string' && value) return value;
-      return style.dim(field.required ? 'escolher (obrigatório)' : 'escolher');
+      return style.dim(isRequired(field, values) ? 'escolher (obrigatório)' : 'escolher');
     }
     case 'text':
       return typeof value === 'string' && value ? value : style.dim(field.placeholder ?? '');
@@ -632,6 +683,12 @@ export function formHints(config: FormConfig, state: FormState): Hint[] {
   ];
 }
 
+/** Formulário sem o rodapé de teclas: o corpo que uma tela cheia emoldura. */
+export function formBody(config: FormConfig, state: FormState, style: ScreenStyle, width = 80): string[] {
+  const lines = renderForm(config, state, style, width);
+  return lines.slice(0, -2);
+}
+
 export function renderForm(config: FormConfig, state: FormState, style: ScreenStyle, width = 80): string[] {
   const fields = inputFields(config, state.values);
   const lines: string[] = [];
@@ -656,9 +713,11 @@ export function renderForm(config: FormConfig, state: FormState, style: ScreenSt
       }
       const on = position === state.cursor;
       const editing = state.edit?.key === field.key;
-      const value = editing ? editingText((state.edit as { text: TextState }).text, style) : fieldValue(field, state.values, style);
-      const label = on ? style.bold(field.label.padEnd(LABEL_WIDTH)) : field.label.padEnd(LABEL_WIDTH);
       const arrow = field.type === 'pick' || field.type === 'list' ? style.dim('▸') : '';
+      // O valor longo é cortado com "…", como no protótipo; a linha nunca quebra.
+      const room = Math.max(4, width - MARK_ON.length - LABEL_WIDTH - (arrow ? 4 : 1));
+      const value = editing ? editingText((state.edit as { text: TextState }).text, style, room) : clip(fieldValue(field, state.values, style), room);
+      const label = on ? style.bold(field.label.padEnd(LABEL_WIDTH)) : field.label.padEnd(LABEL_WIDTH);
       lines.push(listRow(on, `${label}${value}`, arrow, style, width));
       position++;
     }
@@ -689,6 +748,27 @@ export const VIEW_HINTS: Hint[] = [
   ['enter', 'volta'],
   ['esc', 'volta'],
 ];
+
+/** Vista mais alta que a tela: ↑ ↓ rolam, enter ou esc voltam. */
+export type ScrollStep = { state: number } | { done: true };
+
+export function scrollStep(scroll: number, key: Key, overflow: number): ScrollStep {
+  if (isEnter(key) || isEscape(key)) return { done: true };
+  if (key.name === 'up') return { state: Math.max(0, scroll - 1) };
+  if (key.name === 'down') return { state: Math.min(Math.max(0, overflow), scroll + 1) };
+  if (key.name === 'home') return { state: 0 };
+  if (key.name === 'end') return { state: Math.max(0, overflow) };
+  return { state: scroll };
+}
+
+/** Janela de `rows` linhas a partir de `scroll`, com "↑ mais N" e "↓ mais N" quando há o que rolar. */
+export function scrollWindow(lines: string[], scroll: number, rows: number, style: ScreenStyle): string[] {
+  if (lines.length <= rows) return lines;
+  const room = Math.max(1, rows - 2);
+  const start = Math.min(Math.max(0, scroll), lines.length - room);
+  const below = lines.length - start - room;
+  return [start > 0 ? `    ${style.dim(`↑ mais ${start}`)}` : '', ...lines.slice(start, start + room), below > 0 ? `    ${style.dim(`↓ mais ${below}`)}` : ''];
+}
 
 export function renderView(title: string, body: string[], style: ScreenStyle, width = 80, command = ''): string[] {
   return [...titleRows(title, style, width, command ? `mabel ${command}` : ''), ...body, '', ...renderKeys(VIEW_HINTS, style, width)];
