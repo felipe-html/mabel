@@ -16,7 +16,9 @@ consumidor conferir de forma mecânica ([felipe-html/mabel#28](https://github.co
 
 Os nomes dos comandos mudaram em 2026-10-31, sem apelidos para os antigos (`run` virou
 `rodar`, `projetos` virou `listar`…); a tabela da troca está em
-`docs/specs/integracao-externa.md`, e o catálogo atual sai em `mabel comandos --json`.
+`docs/specs/integracao-externa.md`, e o catálogo atual sai em `mabel comandos --json`. Em
+2026-11-01, com as telas dos comandos, `rodar --uma` virou `rodar --limite <n>` e entrou o
+`retomar` (mesma seção da spec).
 
 ## Pedidos
 

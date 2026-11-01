@@ -32,8 +32,23 @@ export interface Screen<S, R> {
   render: (state: S, width: number, height: number) => string[];
   /** Linhas que ficam na rolagem quando a tela fecha; sem elas, a tela some. */
   summary?: (result: R) => string[];
-  /** Abre no buffer alternativo do terminal, como o vim, desenhada a partir do topo. */
+  /**
+   * Abre no buffer alternativo do terminal, como o vim, desenhada a partir do topo. O buffer
+   * continua aberto quando a tela fecha (`leaveFullscreen` o fecha).
+   */
   fullscreen?: boolean;
+}
+
+/**
+ * O buffer alternativo fica aberto entre uma tela cheia e a próxima, para a troca de tela não
+ * piscar; quem abriu a sequência o fecha com `leaveFullscreen`.
+ */
+let alternate = false;
+
+export function leaveFullscreen(): void {
+  if (!alternate) return;
+  alternate = false;
+  process.stdout.write('\x1b[?1049l');
 }
 
 /** Linhas físicas que o texto ocupa, com a quebra do terminal. */
@@ -77,7 +92,6 @@ export function runScreen<S, R>(screen: Screen<S, R>): Promise<R> {
       stdout.off('resize', draw);
       stdin.setRawMode(false);
       stdin.pause();
-      if (screen.fullscreen) stdout.write('\x1b[?1049l');
       stdout.write('\x1b[?25h');
     };
     const onKey = (_: string, key: Key = {}) => {
@@ -102,7 +116,11 @@ export function runScreen<S, R>(screen: Screen<S, R>): Promise<R> {
     emitKeypressEvents(stdin);
     stdin.setRawMode(true);
     stdin.resume();
-    if (screen.fullscreen) stdout.write('\x1b[?1049h');
+    if (screen.fullscreen && !alternate) {
+      alternate = true;
+      stdout.write('\x1b[?1049h');
+    }
+    if (!screen.fullscreen) leaveFullscreen();
     stdout.write('\x1b[?25l');
     stdin.on('keypress', onKey);
     stdout.on('resize', draw);

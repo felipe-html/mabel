@@ -15,6 +15,9 @@ import {
   acknowledgeSpecChange,
   appendItemDecision,
   isStarted,
+  FORMAT_ERROR_PREFIX,
+  getItemById,
+  syncBacklog,
 } from './items.ts';
 import { attemptsSummary, sameAssumption } from './pipeline.ts';
 import { appendSpecDecision } from './specs.ts';
@@ -193,6 +196,36 @@ export function cancel(db: DatabaseSync, project: Project, item: Item, options: 
     throw new DecisionError(`#${item.number} não pode ser cancelado no estado ${item.status}.`);
   }
   decide(db, project, item, 'cancelled', via('cancelado', options), { nextInput: null });
+}
+
+/** Estados de onde o `mabel retomar` devolve o item à fila. */
+export const RESUMABLE: ItemStatus[] = ['failed', 'blocked'];
+
+/**
+ * Devolve à fila um item parado em `failed` (vai a `ready`) ou `blocked` (vai a `backlog`,
+ * e a `ready` quando o backlog permite). O ciclo recomeça do planejamento, com o motivo da
+ * parada e a orientação do humano. Bloqueio por erro de formato no backlog não se retoma:
+ * some sozinho quando o backlog é corrigido.
+ */
+export function resume(db: DatabaseSync, project: Project, item: Item, guidance = ''): ItemStatus {
+  if (!RESUMABLE.includes(item.status)) {
+    throw new DecisionError(`#${item.number} não está parado por falha ou bloqueio (estado: ${item.status}).`);
+  }
+  if (item.statusReason?.startsWith(FORMAT_ERROR_PREFIX)) {
+    throw new DecisionError(`#${item.number} está bloqueado pelo formato no backlog: ${item.statusReason.slice(FORMAT_ERROR_PREFIX.length)}. Corrija o .mabel/backlog.md; o item volta sozinho.`);
+  }
+  const why = item.statusReason ?? (item.status === 'failed' ? 'falhou' : 'bloqueado');
+  const text = guidance.trim();
+  const answer = [`O item parou (${item.status === 'failed' ? 'falha' : 'bloqueio'}): ${why}.`, ...(text ? [`Orientação do humano: ${text}`] : [])].join('\n');
+  decide(db, project, item, item.status === 'failed' ? 'ready' : 'backlog', `retomar${text ? `: ${truncate(text.replace(/\s+/g, ' '), 200)}` : ''}`, {
+    attempts: 0,
+    escalatedCycle: false,
+    approvedAt: null,
+    planRetries: 0,
+    nextInput: { answer, previousPlan: true, attemptsSummary: attemptsSummary(db, item.id) || undefined, resumed: true },
+  });
+  syncBacklog(db, project);
+  return getItemById(db, item.id).status;
 }
 
 export interface RejectResult {

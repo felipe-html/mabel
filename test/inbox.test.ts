@@ -102,14 +102,11 @@ test('pular o item, ctrl+c descarta só o item em andamento, plano incompleto e 
     listItems(p.db, p.project.id).map((item) => item.pendingKind),
     ['question_plan', 'plan_incomplete', 'critical_approval', 'question_plan'],
   );
-  // #1 pulado na 2ª pergunta; #2 cancelado depois de desistir uma vez; #3 ajustado; #4 interrompido.
+  // #1 pulado na 2ª pergunta; #2 cancelado sem confirmação (o botão vermelho basta); #3 ajustado; #4 interrompido.
   const { io } = scripted([
     'Aceitar a sugestão',
     'Pular por agora',
     'Cancelar o item',
-    'Voltar',
-    'Cancelar o item',
-    'Cancelar o item #2',
     'Ajustar os critérios',
     'Sem desconto acima de 10%.',
     'Aceitar a sugestão',

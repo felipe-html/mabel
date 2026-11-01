@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { addForm } from '../src/add.ts';
-import { approveForm, cancelForm, itemForm, rejectForm, respondForm } from '../src/decide.ts';
+import { ruleChangeForm } from '../src/engine.ts';
+import { EMPTY_DATA, FORMS, stopForm } from '../src/forms.ts';
 import { removalForm } from '../src/projects.ts';
 import {
   type FormConfig,
@@ -68,7 +68,12 @@ test('o teste acha os padrões antigos', () => {
   }
 });
 
-const FORMS: FormConfig[] = [addForm([], []), itemForm([]), approveForm([]), respondForm([]), cancelForm([]), rejectForm([]), removalForm('loja-api')];
+const ALL_FORMS: FormConfig[] = [
+  ...Object.values(FORMS).map((build) => build(EMPTY_DATA).config),
+  stopForm(EMPTY_DATA).config,
+  removalForm('loja-api'),
+  ruleChangeForm('Nova alteração nas regras vigentes'),
+];
 
 function assertUniversal(hints: Hint[]) {
   for (const [key] of hints) assert.ok((UNIVERSAL_KEYS as readonly string[]).includes(key), `tecla fora das universais: ${key}`);
@@ -82,7 +87,7 @@ test('rodapé de toda tela: só teclas universais, cada uma com o que faz', () =
   for (const state of [list, { ...list, actions: 0 }, { ...list, edit: { index: 0, text: textState('um') } }]) {
     assertUniversal(listHints({ entryActions: true }, state));
   }
-  for (const form of FORMS) {
+  for (const form of ALL_FORMS) {
     const state = formState(form);
     assertUniversal(formHints(form, state));
     assertUniversal(formHints(form, { ...state, edit: { key: 'x', text: textState() } }));
@@ -91,7 +96,7 @@ test('rodapé de toda tela: só teclas universais, cada uma com o que faz', () =
 
 test('telas desenhadas: sem padrões proibidos', () => {
   const screens = [
-    ...FORMS.map((form) => renderForm(form, formState(form), plainStyle)),
+    ...ALL_FORMS.map((form) => renderForm(form, formState(form), plainStyle)),
     renderChoice({ options: [{ label: 'Gravar' }, { label: 'Descartar a proposta', danger: true }], back: true }, choiceState(), plainStyle),
     renderChoice({ options: [], multi: true, filter: true }, choiceState(), plainStyle),
     renderList({ entryActions: true }, { ...listState(['um']), actions: 1 }, plainStyle),

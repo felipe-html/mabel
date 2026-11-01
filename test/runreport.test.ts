@@ -60,7 +60,7 @@ test('S.1 critério 1: o arquivo é reescrito ao fim de cada tarefa, com o run e
 
 test('S.1 critério 2: o segundo run sobrescreve o arquivo; run.md fica fora do git', async () => {
   const q = queue('\n## A\nprimeiro\n\n## B\nsegundo\n');
-  await q.start([PLAN_OK, EXEC, REVIEW], { once: true, batch: false });
+  await q.start([PLAN_OK, EXEC, REVIEW], { limit: 1, batch: false });
   const first = q.report();
   assert.match(first, /Fim: concluído/);
   assert.match(first, /\| 1 \| avulso-1 \| concluída/);

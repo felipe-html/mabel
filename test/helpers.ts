@@ -120,7 +120,7 @@ export const REVIEW_OK = {
 // Interface guiada ------------------------------------------------------------------------
 
 /** Resposta roteirizada: o começo do rótulo da opção, o texto do campo (`null` cancela) ou a lista final. */
-export type GuidedAnswer = string | string[] | null;
+export type GuidedAnswer = string | string[] | null | { form: Record<string, string> | null };
 
 /**
  * Terminal falso da interface guiada: devolve as respostas na ordem; sem respostas, simula
@@ -151,15 +151,21 @@ export function scriptedGuided(answers: GuidedAnswer[]): GuidedIO & { lines: str
     text: async (label) => {
       prompts.push(label);
       const answer = next();
-      if (Array.isArray(answer)) throw new Error(`lista ${JSON.stringify(answer)} para o campo ${label}`);
+      if (answer !== null && typeof answer !== 'string') throw new Error(`${JSON.stringify(answer)} para o campo ${label}`);
       return answer;
     },
     list: async (title, entries) => {
       prompts.push(title);
       const answer = next();
       if (answer === null) return entries;
-      if (!Array.isArray(answer)) throw new Error(`"${answer}" para a lista ${title}; use uma lista`);
+      if (!Array.isArray(answer)) throw new Error(`"${JSON.stringify(answer)}" para a lista ${title}; use uma lista`);
       return answer;
+    },
+    form: async (config, values = {}) => {
+      prompts.push(config.title);
+      const answer = next();
+      if (answer === null || typeof answer !== 'object' || Array.isArray(answer)) throw new Error(`${JSON.stringify(answer)} para o formulário ${config.title}; use { form }`);
+      return answer.form && { ...values, ...answer.form };
     },
   };
 }

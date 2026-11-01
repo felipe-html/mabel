@@ -4,16 +4,11 @@ import { referenceArgs, referenceCommand, referenceOptions, referenceUsage } fro
 import { credentialArgs, credentialCommand, credentialOptions, credentialUsage } from './credentials.ts';
 import { completionCommand, completionUsage, commandsCommand, commandsUsage } from './completion.ts';
 import { deliverArgs, deliverCommand, deliverOptions, deliverUsage } from './delivery.ts';
-import { askPrompt, exec, execArgs, execOptions, execUsage } from './exec.ts';
+import { exec, execArgs, execOptions, execUsage } from './exec.ts';
 import {
   approveCommand,
   approveOptions,
   approveUsage,
-  askApprove,
-  askCancel,
-  askItemNumber,
-  askReject,
-  askRespond,
   cancelCommand,
   cancelUsage,
   itemCommand,
@@ -26,6 +21,9 @@ import {
   respondCommand,
   respondOptions,
   respondUsage,
+  resumeCommand,
+  resumeOptions,
+  resumeUsage,
 } from './decide.ts';
 import { eventsCommand, eventsOptions, eventsUsage } from './events.ts';
 import { inboxCommand, inboxOptions, inboxUsage } from './inbox.ts';
@@ -72,8 +70,6 @@ export interface MenuEntry {
   /** Não depende do projeto: aparece também onde o Mabel não foi preparado. */
   global?: boolean;
   badge?: MenuBadge;
-  /** Aberto sem argumentos, mostra um formulário com o próprio título. */
-  form?: boolean;
 }
 
 export interface Command {
@@ -86,9 +82,8 @@ export interface Command {
   args?: ArgSpec[];
   /** Passo do plano em que o comando será implementado; ausente quando já está disponível. */
   plannedStep?: number;
+  /** Na tela inicial, o comando abre a tela dele (`src/forms.ts`), que roda isto com os argumentos. */
   run?: (args: string[]) => number | Promise<number>;
-  /** Pede os argumentos quando o comando é aberto sem eles na tela inicial; `null` quando o usuário volta. */
-  promptArgs?: () => string[] | null | Promise<string[] | null>;
   /** Lugar na tela inicial; sem ele, o comando fica só no shell. */
   menu?: MenuEntry;
 }
@@ -118,7 +113,7 @@ export const commands: Command[] = [
     options: addOptions,
     args: addArgs,
     run: add,
-    menu: { title: 'Adicionar um item', group: 'planejar', form: true },
+    menu: { title: 'Adicionar um item', group: 'planejar' },
   },
   {
     name: 'especificar',
@@ -191,7 +186,6 @@ export const commands: Command[] = [
     name: 'aprovar',
     description: 'Aprova os critérios de um item crítico',
     usage: approveUsage,
-    promptArgs: askApprove,
     options: approveOptions,
     args: [itemArg],
     run: approveCommand,
@@ -200,19 +194,26 @@ export const commands: Command[] = [
     name: 'responder',
     description: 'Responde a um item parado em needs_human',
     usage: respondUsage,
-    promptArgs: askRespond,
     options: respondOptions,
     args: respondArgs,
     run: respondCommand,
   },
   {
+    name: 'retomar',
+    description: 'Devolve à fila um item parado por falha ou bloqueio, com o motivo à vista.',
+    usage: resumeUsage,
+    options: resumeOptions,
+    args: [itemArg],
+    run: resumeCommand,
+    menu: { title: 'Retomar um item', group: 'decidir' },
+  },
+  {
     name: 'cancelar',
     description: 'Tira um item da fila de vez.',
     usage: cancelUsage,
-    promptArgs: askCancel,
     args: [itemArg],
     run: cancelCommand,
-    menu: { title: 'Cancelar um item', group: 'decidir', form: true },
+    menu: { title: 'Cancelar um item', group: 'decidir' },
   },
   {
     name: 'entregar',
@@ -227,11 +228,10 @@ export const commands: Command[] = [
     name: 'rejeitar',
     description: 'Desfaz um item na integração e o devolve ao planejamento.',
     usage: rejectUsage,
-    promptArgs: askReject,
     options: rejectOptions,
     args: rejectArgs,
     run: rejectCommand,
-    menu: { title: 'Rejeitar um item', group: 'entregar', form: true },
+    menu: { title: 'Rejeitar um item', group: 'entregar' },
   },
   {
     name: 'conferir',
@@ -245,10 +245,9 @@ export const commands: Command[] = [
     name: 'detalhar',
     description: 'Mostra estado, pendência, plano, custo e runs de um item.',
     usage: itemUsage,
-    promptArgs: askItemNumber,
     args: [itemArg],
     run: itemCommand,
-    menu: { title: 'Detalhar um item', group: 'acompanhar', form: true },
+    menu: { title: 'Detalhar um item', group: 'acompanhar' },
   },
   {
     name: 'consultar',
@@ -280,7 +279,6 @@ export const commands: Command[] = [
     name: 'pedir',
     description: 'Manda um prompt ao Claude Code fora da fila, com auditoria.',
     usage: execUsage,
-    promptArgs: askPrompt,
     options: execOptions,
     args: execArgs,
     run: exec,

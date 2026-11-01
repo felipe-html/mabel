@@ -43,8 +43,9 @@ test('opções usadas no uso de cada comando estão declaradas', () => {
 test('--help mostra argumentos e opções explicados', () => {
   const help = renderHelp(commands.find((command) => command.name === 'rodar') as (typeof commands)[number]);
   assert.match(help, /Uso: mabel rodar/);
-  assert.match(help, /Opções:\n {2}--item <n> {2}Processa só este item/);
-  assert.match(help, /--sem-lote {2}Item a item/);
+  assert.match(help, /Opções:\n {2}--item <n> +Processa só este item/);
+  assert.match(help, /--limite <n> +Processa no máximo <n> itens/);
+  assert.match(help, /--sem-lote +Item a item/);
 
   const result = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'adicionar', '--help'], { encoding: 'utf8' });
   assert.equal(result.status, 0);

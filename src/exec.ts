@@ -297,9 +297,3 @@ export async function exec(args: string[]): Promise<number> {
   });
   return 0;
 }
-
-/** Pede o pedido num campo de texto, para o `exec` escolhido no menu; `null` quando o usuário volta. */
-export async function askPrompt(): Promise<string[] | null> {
-  const prompt = await terminalGuided.text('Pedido', { placeholder: 'o que o agente deve fazer' });
-  return prompt ? [prompt] : null;
-}

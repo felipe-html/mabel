@@ -86,7 +86,7 @@ test('digitar filtra pelo título e pelo nome no shell, sem acento; esc limpa e,
 test('↑ ↓ passam pelos comandos, pulando os cabeçalhos; o último aberto volta selecionado', () => {
   const down = press(PENDING, [{ name: 'down' }, { name: 'return' }]);
   assert.ok('open' in down);
-  assert.equal(down.open.name, 'cancelar');
+  assert.equal(down.open.name, 'retomar');
   const up = press(PENDING, [{ name: 'up' }, { name: 'return' }]);
   assert.ok('open' in up);
   assert.equal(up.open.name, 'pedir');
@@ -134,7 +134,7 @@ test('terminal estreito: abaixo de 88 some o nome no shell; abaixo de 60, as con
 
 test('terminal baixo: a lista rola com o cursor e mostra quantos ficaram de fora', () => {
   let state = homeState(PENDING);
-  for (let i = 0; i < 14; i++) {
+  for (let i = 0; i < 15; i++) {
     const step = homeStep(PENDING, state, { name: 'down' });
     assert.ok('state' in step);
     state = step.state;

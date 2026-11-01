@@ -234,7 +234,7 @@ test('respostas às perguntas de saldo ficam gravadas: recusa espera, autorizaç
     home: yes.home,
     project: yes.project,
     interactive: true,
-    once: true,
+    limit: 1,
     notify: () => {},
     confirm: async () => true,
   }).done;

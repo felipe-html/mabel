@@ -27,7 +27,7 @@ atualizado e commit:
 | Tema | Decisão |
 |---|---|
 | Autonomia | Ligada por padrão: `autonomia: "sugestoes"` no `config.json`. O projeto pode escolher `"perguntar"` (comportamento atual). Config sem o campo vale `"sugestoes"`. |
-| Planejar em lote | Padrão do `mabel rodar`. `--sem-lote` volta ao item a item. `--item <n>` e `--uma` implicam item a item. |
+| Planejar em lote | Padrão do `mabel rodar`. `--sem-lote` volta ao item a item. `--item <n>` implica item a item; `--limite <n>` (antes `--uma`, que era um item, item a item) limita quantos itens a fila toma. |
 | Item planejado aguardando a vez | Novo estado `planned`, entre `planning` e `executing`. Muda o ciclo de vida do contrato (autorizado pelo usuário em 2026-10-12). |
 | Aviso | Entra nesta spec. macOS via `osascript`; desligável com `MABEL_NOTIFICAR=0`. |
 

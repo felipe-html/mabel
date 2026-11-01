@@ -1014,7 +1014,8 @@ export async function advanceItem(env: PipelineEnv, itemId: string, options: Adv
     let step: Step;
     switch (item.status) {
       case 'ready':
-        updateItem(env.db, item.id, { planRetries: 0, nextInput: null, attempts: 0 });
+        // A orientação do `mabel retomar` vai para o planejamento; o resto recomeça limpo.
+        updateItem(env.db, item.id, { planRetries: 0, nextInput: item.nextInput?.resumed ? item.nextInput : null, attempts: 0 });
         move(env, item, 'planning', 'início do planejamento');
         continue;
       case 'planning':

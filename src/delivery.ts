@@ -373,7 +373,7 @@ export function unitArg(unit: string): string {
   return /^avulso-(\d+)$/.exec(unit)?.[1] ? `#${unit.slice('avulso-'.length)}` : unit;
 }
 
-function unitLabel(unit: Unit): string {
+export function unitLabel(unit: Unit): string {
   return /^avulso-/.test(unit.name) ? `avulso ${unitArg(unit.name)} ${unit.items[0]?.title ?? ''}`.trimEnd() : `${unit.name} (${unit.items.length} ${unit.items.length === 1 ? 'tarefa' : 'tarefas'})`;
 }
 

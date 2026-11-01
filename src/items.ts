@@ -114,6 +114,8 @@ export interface NextInput {
   mergeOrigin?: boolean;
   /** Globs acrescentados ao escopo a pedido da execução; a mesma sessão retoma para concluir. */
   scopeExtended?: string[];
+  /** Retomado pelo humano (`mabel retomar`): o planejamento recebe o motivo e a orientação. */
+  resumed?: boolean;
 }
 
 interface ItemRow {
@@ -423,7 +425,7 @@ export interface SyncResult {
   assigned: number[];
 }
 
-const FORMAT_ERROR_PREFIX = 'formato: ';
+export const FORMAT_ERROR_PREFIX = 'formato: ';
 
 export function backlogPath(project: Project): string {
   return mabelPath(project.root, 'backlog.md');
