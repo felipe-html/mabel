@@ -5,12 +5,11 @@ import { dataDir, openDb } from './db.ts';
 import { type DecisionOptions, approve, cancel, respond } from './decisions.ts';
 import { renderItemDetail } from './decide.ts';
 import { fail } from './errors.ts';
-import { type GuidedIO, answerQuestion, confirmAction, terminalGuided } from './guided.ts';
+import { type GuidedIO, answerQuestion } from './guided.ts';
 import { type Item, type ItemStatus, type Pending, type PendingKind, listItems } from './items.ts';
 import { writeJson } from './json.ts';
 import { humanAttemptsSummary } from './pipeline.ts';
 import { type Project, ProjectError, resolveProject } from './project.ts';
-import { run } from './run.ts';
 import type { PlanOutput, Question } from './schemas/stages.ts';
 import { readArtifact } from './stages.ts';
 import { style } from './style.ts';
@@ -26,7 +25,6 @@ export const DELEGATE = 'decida e registre como suposição.';
 /** Entrada e saída da inbox; os testes trocam o terminal por respostas roteirizadas. */
 export type InboxIO = GuidedIO;
 
-export const terminalIO: InboxIO = terminalGuided;
 
 export interface InboxResult {
   answered: number;
@@ -382,28 +380,6 @@ export async function runInbox(db: DatabaseSync, home: string, project: Project,
   return result;
 }
 
-/**
- * Inbox seguida da pergunta de retomada. Devolve `true` quando a fila deve seguir.
- * `waiting` é avisado antes da pergunta de retomada (aviso do sistema no `run`).
- */
-export async function inboxSession(
-  db: DatabaseSync,
-  home: string,
-  project: Project,
-  io: InboxIO,
-  waiting?: (question: string) => void,
-): Promise<boolean> {
-  const result = await runInbox(db, home, project, io);
-  if (result.interrupted || result.answered === 0) return false;
-  try {
-    waiting?.('Retomar a esteira agora?');
-    return await confirmAction(io, 'Retomar a esteira agora', { back: 'Agora não', actionFirst: true });
-  } catch (error) {
-    if (error instanceof Interrupted) return false;
-    throw error;
-  }
-}
-
 const PENDING_VALUES: Record<PendingKind, string> = {
   question_plan: 'perguntas_planejamento',
   question_execute: 'perguntas_execucao',
@@ -464,7 +440,6 @@ export async function inboxCommand(args: string[]): Promise<number> {
   }
   const home = dataDir();
   const db = openDb(home);
-  let resume = false;
   try {
     const project = resolveProject(db);
     if (json) {
@@ -477,12 +452,13 @@ export async function inboxCommand(args: string[]): Promise<number> {
       for (const item of items) process.stdout.write(`${renderItemDetail(db, home, item).join('\n')}\n\n`);
       return 0;
     }
-    resume = await inboxSession(db, home, project, terminalIO);
   } catch (error) {
     if (error instanceof ProjectError) return fail(error.code, error.message);
     throw error;
   } finally {
     db.close();
   }
-  return resume ? run([]) : 0;
+  // No terminal, a mesma tela cheia de "Decidir as pendências" da tela inicial.
+  const { decideFlow, loadHomeContext, standalone } = await import('./home.ts');
+  return standalone(() => decideFlow(loadHomeContext()));
 }

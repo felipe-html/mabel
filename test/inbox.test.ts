@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { DELEGATE, type InboxIO, answerText, inboxSession, runInbox } from '../src/inbox.ts';
+import { DELEGATE, type InboxIO, answerText, runInbox } from '../src/inbox.ts';
 import { getItem, listItems } from '../src/items.ts';
 import { writeConfig } from '../src/project.ts';
 import { EXECUTION, EXECUTION_FILES, type GuidedAnswer, PLAN, guidedProblems, scriptedGuided, setupProject, useScenario } from './helpers.ts';
@@ -157,17 +157,6 @@ test('impedimento de ambiente: mostra o motivo e a orientação retoma a execuç
   assert.equal(prompts[0], 'Dizer o que mudou no ambiente e retomar | Replanejar com uma orientação | Cancelar o item | Pular por agora');
   assert.equal(p.item(1).status, 'executing');
   assert.equal(p.item(1).nextInput?.resumeSessionId, 'exec-1');
-});
-
-test('fim da inbox pergunta se retoma a esteira; sem respostas não pergunta', async () => {
-  const p = inboxProject('\n## A\nprimeiro\n\n## B\nsegundo\n', [QUESTIONS, QUESTIONS]);
-  const yes = scripted(['Aceitar a sugestão', 'Responder', 'x', 'Aceitar a sugestão', 'Pular por agora', 'Retomar a esteira agora']);
-  assert.equal(await inboxSession(p.db, p.home, p.project, yes.io), true);
-  assert.equal(yes.prompts.at(-1), 'Retomar a esteira agora | Agora não');
-
-  const none = scripted(['Pular por agora']);
-  assert.equal(await inboxSession(p.db, p.home, p.project, none.io), false);
-  assert.ok(!none.prompts.some((prompt) => prompt.startsWith('Retomar')));
 });
 
 test('pendência antiga com perguntas em texto continua legível', () => {

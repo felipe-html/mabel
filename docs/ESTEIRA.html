@@ -295,17 +295,17 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
         <!-- Preparar -->
         <rect class="box" x="20" y="30" width="290" height="200" rx="6"/>
         <text class="title" x="38" y="58">Preparar</text>
-        <text class="cmd" x="38" y="86">nascer</text><circle class="dot" cx="104" cy="82" r="4"/><text class="ag" x="114" y="86">agente nascer</text>
-        <text class="cmd" x="38" y="108">init</text><text class="note" x="104" y="108">cria o .mabel/</text>
-        <text class="cmd" x="38" y="130">add</text><text class="note" x="104" y="130">item no backlog.md</text>
+        <text class="cmd" x="38" y="86">criar</text><circle class="dot" cx="104" cy="82" r="4"/><text class="ag" x="114" y="86">agente nascer</text>
+        <text class="cmd" x="38" y="108">preparar</text><text class="note" x="124" y="108">cria o .mabel/</text>
+        <text class="cmd" x="38" y="130">adicionar</text><text class="note" x="124" y="130">item no backlog.md</text>
         <text class="cmd" x="38" y="152">refinar</text><circle class="dot" cx="104" cy="148" r="4"/><text class="ag" x="114" y="152">especificador</text>
-        <text class="cmd" x="38" y="174">referencia</text><text class="note" x="124" y="174">telas e APIs</text>
-        <text class="cmd" x="38" y="196">credencial</text><text class="note" x="124" y="196">validade do token</text>
+        <text class="cmd" x="38" y="174">capturar</text><text class="note" x="124" y="174">telas e APIs</text>
+        <text class="cmd" x="38" y="196">credenciar</text><text class="note" x="124" y="196">validade do token</text>
 
         <!-- Rodar -->
         <rect class="box run" x="405" y="30" width="290" height="200" rx="6"/>
         <text class="title" x="423" y="58">Rodar a fila</text>
-        <text class="cmd" x="423" y="86">run</text><text class="note" x="465" y="86">· anexar · parar · supervisor</text>
+        <text class="cmd" x="423" y="86">rodar</text><text class="note" x="475" y="86">· acompanhar · parar · supervisor</text>
         <circle class="dot" cx="427" cy="114" r="4"/><text class="ag" x="437" y="118">planejador</text>
         <text class="note" x="510" y="118">→ gate de início</text>
         <circle class="dot" cx="427" cy="138" r="4"/><text class="ag" x="437" y="142">executor</text>
@@ -318,7 +318,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
         <rect class="box" x="790" y="30" width="290" height="200" rx="6"/>
         <text class="title" x="808" y="58">Integrar e entregar</text>
         <text class="note" x="808" y="84">branch mabel/integracao</text>
-        <text class="cmd" x="808" y="112">integracao</text><text class="note" x="896" y="112">relatório</text>
+        <text class="cmd" x="808" y="112">entregar</text><text class="note" x="896" y="112">sem unidade: relatório</text>
         <text class="cmd" x="808" y="134">entregar</text><text class="note" x="896" y="134">snapshot + PR</text>
         <text class="cmd" x="808" y="156">rejeitar</text><text class="note" x="896" y="156">revert do item</text>
         <text class="hu" x="808" y="196">você faz o merge na base → done</text>
@@ -326,19 +326,19 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
         <!-- Decidir -->
         <rect class="box human" x="405" y="300" width="290" height="110" rx="6"/>
         <text class="title" x="423" y="328">Decidir</text>
-        <text class="cmd" x="423" y="354">inbox · item · aprovar</text>
+        <text class="cmd" x="423" y="354">decidir · detalhar · aprovar</text>
         <text class="cmd" x="423" y="376">responder · cancelar</text>
 
         <!-- Auditar -->
         <rect class="box quiet" x="20" y="300" width="290" height="110" rx="6"/>
         <text class="title" x="38" y="328">Auditar, a qualquer momento</text>
-        <text class="cmd" x="38" y="354">status · saldo · runs</text>
-        <text class="cmd" x="38" y="376">projetos · projeto · eventos</text>
+        <text class="cmd" x="38" y="354">conferir · saldo · consultar</text>
+        <text class="cmd" x="38" y="376">listar · auditar · eventos</text>
 
         <!-- Avulsos -->
         <rect class="box quiet" x="790" y="300" width="290" height="110" rx="6"/>
         <text class="title" x="808" y="328">Avulsos</text>
-        <text class="cmd" x="808" y="354">exec</text><text class="note" x="850" y="354">conversa auditada</text>
+        <text class="cmd" x="808" y="354">pedir</text><text class="note" x="856" y="354">conversa auditada</text>
         <text class="cmd" x="808" y="376">comandos · completion</text>
 
         <!-- Setas -->
@@ -456,7 +456,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
 
       <!-- 9 -->
       <div class="phase"><span class="st">planned</span></div>
-      <div class="phase-note">fim do lote de planejamento: o <code>rodar</code> oferece a inbox se houver pendências</div>
+      <div class="phase-note">fim do lote de planejamento; no terminal, item que espera você aparece com “Decidir agora” na barra do painel</div>
       <!-- 10 -->
       <div class="phase"><span class="st">executing</span></div>
       <div class="phase-note"></div>
@@ -675,7 +675,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
         <article class="cmd">
           <header><span class="name">mabel</span><span class="badge none">tela inicial</span></header>
           <p class="usage">mabel (sem argumentos, no terminal)</p>
-          <p>Tela cheia, no buffer alternativo do terminal: o projeto, o que espera por você (prontos, pendências, unidades prontas), o filtro “o que você quer fazer?” e os comandos agrupados (Começar, Planejar, Rodar, Decidir, Entregar, Acompanhar, Avulso). Decidir sobe com pendência e Rodar com itens prontos; Começar só onde o Mabel não foi preparado. Cada comando abre a tela dele, com as duas linhas do topo, “‹ título”, a descrição e o rodapé de teclas e saldo: formulário (um campo por opção, botão “[ ação ]” com “falta:”, vermelho no que apaga ou reverte, e a linha “$ mabel …” que faz o mesmo que o botão), vista (conferir, consultar, listar e o resultado de cada formulário; enter ou esc voltam) ou fluxo (decidir, parar). O botão roda o comando sem perguntas, como a linha de shell fora do TTY, e mostra o resultado numa vista, que fica também na rolagem do terminal comum. Criar, preparar, especificar, refinar, rodar, entregar e pedir rodam no terminal comum, com as rodadas e a saída de hoje, e esperam enter ou esc para voltar. Fora do terminal, a lista de comandos em texto.</p>
+          <p>Tela cheia, no buffer alternativo do terminal: o projeto, o que espera por você (prontos, pendências, unidades prontas), o filtro “o que você quer fazer?” e os comandos agrupados (Começar, Planejar, Rodar, Decidir, Entregar, Acompanhar, Avulso). Decidir sobe com pendência e Rodar com itens prontos; Começar só onde o Mabel não foi preparado. Cada comando abre a tela dele, com as duas linhas do topo, “‹ título”, a descrição e o rodapé de teclas e saldo: formulário (um campo por opção, botão “[ ação ]” com “falta:”, vermelho no que apaga ou reverte, e a linha “$ mabel …” que faz o mesmo que o botão), vista (conferir, consultar, listar e o resultado de cada formulário; enter ou esc voltam) ou fluxo (decidir, parar). O botão roda o comando sem perguntas, como a linha de shell fora do TTY, e mostra o resultado numa vista, que fica também na rolagem do terminal comum. Rodar a fila e Acompanhar a fila abrem o painel da fila. Criar, preparar, especificar, refinar, entregar e pedir rodam no terminal comum, com as rodadas e a saída de hoje, e esperam enter ou esc para voltar. Fora do terminal, a lista de comandos em texto.</p>
           <p class="writes"><b>Grava:</b> só a sincronização do <code>backlog.md</code> no SQLite, a mesma do <code>conferir</code>, para as contagens.</p>
 <pre class="term">  <b>mabel</b>  loja-api <span class="d">· ~/Pessoal/loja-api</span>
   2 prontos <span class="d">·</span> <span class="y">2 esperando você</span> <span class="d">·</span> <span class="g">1 unidade pronta</span>
@@ -766,29 +766,28 @@ Tamanho: 3 regras · 3 exemplos · 2 rodadas · 2 perguntas · 2 tarefas
         <article class="cmd">
           <header><span class="name">rodar</span><span class="badge agent">planejador · executor · revisor</span></header>
           <p class="usage">mabel rodar [--item n | --limite n] [--sem-lote] [--fundo [--json]]</p>
-          <p>Em lote: planeja todos os <code>ready</code>, oferece a inbox, depois executa os <code>planned</code> um a um até a fila acabar. <code>--sem-lote</code> leva cada item até o fim antes do próximo. <code>--limite n</code> (“Quantos itens” no formulário) toma no máximo n itens e não começa outro depois deles.</p>
+          <p>Em lote: planeja todos os <code>ready</code>, depois executa os <code>planned</code> um a um até a fila acabar. <code>--sem-lote</code> leva cada item até o fim antes do próximo. <code>--limite n</code> (“Quantos itens” no formulário) toma no máximo n itens e não começa outro depois deles.</p>
           <p class="writes"><b>Grava:</b> estados e gates no SQLite; artefatos em <code>~/.mabel/items/&lt;id&gt;/</code>; runs em <code>~/.mabel/runs/</code>; commits na branch do item; merge na branch da unidade e dela em <code>mabel/integracao</code> (refeita a cada <code>rodar</code>); estado da integração (incluídas, conflitos, pausadas, verificação) no SQLite; <code>quadro.md</code> e <code>run.md</code> (reescrito ao fim de cada tarefa e no fim do <code>rodar</code>).</p>
-<pre class="term"><span class="a">  ▸ planejar · opus</span>
-<span class="d">    → Read src/pedidos.ts ✓</span>
-#4 Desconto por volume: planning → planned
-<span class="a">  ▸ executar · sonnet</span>
-<span class="d">    → Edit src/pedidos.ts ✓</span>
-<span class="d">    → Bash npm test ✓</span>
-<span class="a">  ▸ revisar · opus</span>
-<span class="g">#4 Desconto por volume: reviewing → awaiting_merge</span>
-■ fila vazia · awaiting_merge 2 · needs_human 1 · US$ 4,10 · 18 min
+<p>No terminal, a fila roda num processo filho (a saída de hoje vai para o log da fila em <code>~/.mabel/filas/</code>) e a tela mostra o painel, lido do banco: a fase no cabeçalho, uma linha por item (✓ concluído com tempo e custo, ● em andamento, ◌ pendente, ⏸ esperando você), as etapas do item ativo com os gates em linhas próprias, a frase montada pelo Mabel a partir das ferramentas, ↻ na nova tentativa com a causa e “tentativa 2/3”, e o aviso da pausa por saldo com “faltam”. A barra de ações (← → e enter): Mostrar ferramentas, Mostrar concluídos, Decidir agora (com item esperando você) e Parar depois da etapa; a pergunta da política de saldo vira dois itens da barra. Terminal baixo recolhe ferramentas, pendentes e concluídos; abaixo do mínimo, volta o log. Ctrl+C interrompe a run e a fila; com a fila encerrada, “Voltar ao menu” (ou “Sair do painel”, pelo shell) deixa o resumo na rolagem. Fora do terminal, a saída de hoje:</p>
+<pre class="term"> mabel · loja-api · <b>execução</b>                                   <span class="d">fila 1/3 · 14:07</span>
+<span class="d">────────────────────────────────────────────────────────────────────</span>
+<span class="g"> ✓</span> <span class="d">#12</span>  Cupom de desconto no checkout                 <span class="d">7m12s · US$ 0,84</span>
+<span class="y"> ⏸</span> <span class="d">#13</span>  Frete grátis acima de R$ 200                   <span class="y">aguardando você</span>
 
-Decididas pela sugestão (revise no merge):
-  #4 Desconto acumula com cupom? → não
-<span class="h">1 item aguarda você.</span>
-<span class="a">  › Abrir a inbox agora</span>
-    Agora não</pre>
+<span class="a"> ●</span> <span class="d">#14</span>  <b>Histórico de pedidos</b>                          <span class="d">3m40s · US$ 0,12</span>
+<span class="g">    ✓</span> planejar           <span class="d">plano aceito · sonnet               41s · US$ 0,12</span>
+<span class="a">    ⠹</span> <b>executar</b>           <span class="d">opus · turno 9 · tentativa 2/3</span>          2m10s
+<span class="y">      ↻</span> <span class="d">tentativa 1 reprovada na verificação: `npm test` saiu com 1</span>
+      <i>editando src/orders/repository.ts · 2 arquivos alterados</i>  <span class="d">7 ferramentas ▸</span>
+<span class="d">    ◌ escopo             arquivos alterados × plano                     G4</span>
+<span class="d">────────────────────────────────────────────────────────────────────</span>
+ <span class="a"><b>[Mostrar ferramentas]</b></span>  <span class="d">Mostrar concluídos   Decidir agora   Parar depois da etapa</span></pre>
         </article>
         <article class="cmd">
           <header><span class="name">supervisor · acompanhar · parar</span><span class="badge none">sem agente</span></header>
           <p class="usage">mabel rodar --fundo · mabel acompanhar · mabel parar · mabel supervisor [instalar|remover|estado]</p>
           <p>A fila roda em segundo plano, sem depender do terminal. O supervisor (no launchd) retoma as filas depois de reiniciar.</p>
-          <p class="writes"><b>Devolve:</b> <code>acompanhar</code> segue o log da fila ao vivo (Ctrl+C solta sem parar); <code>parar</code> encerra depois da etapa em andamento.</p>
+          <p class="writes"><b>Devolve:</b> <code>acompanhar</code> mostra a fila em segundo plano no mesmo painel do <code>rodar</code>, com “Voltar ao menu” (ou Ctrl+C) para soltar sem parar; fora do terminal, segue o log ao vivo. <code>parar</code> encerra depois da etapa em andamento.</p>
         </article>
       </div>
     </div>
@@ -799,7 +798,7 @@ Decididas pela sugestão (revise no merge):
         <article class="cmd">
           <header><span class="name">decidir</span><span class="badge human">você decide</span></header>
           <p class="usage">mabel decidir</p>
-          <p>Uma pendência por vez, em ordem de número, cada uma com o menu das opções dela: aceitar a sugestão do agente, responder com outro texto, deixar o agente decidir (fora de regra crítica), aprovar ou ajustar os critérios, replanejar, cancelar o item (em vermelho, sem confirmação: o botão vermelho basta) ou pular por agora. Pela tela inicial, abre com a lista das pendências e “Passar por todas”; escolher uma decide só ela; uma decisão por vez (“1 de 2”) e, no fim, o resumo do que foi decidido.</p>
+          <p>Uma pendência por vez, em ordem de número, cada uma com o menu das opções dela: aceitar a sugestão do agente, responder com outro texto, deixar o agente decidir (fora de regra crítica), aprovar ou ajustar os critérios, replanejar, cancelar o item (em vermelho, sem confirmação: o botão vermelho basta) ou pular por agora. No terminal (pela tela inicial, pelo shell ou pelo “Decidir agora” do painel), abre em tela cheia com a lista das pendências e “Passar por todas”; escolher uma decide só ela; uma decisão por vez (“1 de 2”) e, no fim, o resumo do que foi decidido.</p>
           <p class="writes"><b>Grava:</b> a decisão no item e o leva ao estado certo (tabela abaixo).</p>
 <pre class="term"><span class="h">#2 Exportar relatório · perguntas da execução</span>
 ? Incluir itens cancelados? <span class="d">[sugestão: não]</span>

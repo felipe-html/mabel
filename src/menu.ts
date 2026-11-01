@@ -37,6 +37,13 @@ export interface Screen<S, R> {
    * continua aberto quando a tela fecha (`leaveFullscreen` o fecha).
    */
   fullscreen?: boolean;
+  /**
+   * Atualização periódica (o painel da fila): o estado novo é redesenhado; um resultado
+   * fecha a tela, como uma tecla.
+   */
+  tick?: { ms: number; update: (state: S) => { state: S } | { result: R } };
+  /** Ctrl+C tratado pela tela; sem isto, ela rejeita com `Interrupted`. */
+  interrupt?: (state: S) => { state: S } | { result: R };
 }
 
 /**
@@ -87,20 +94,16 @@ export function runScreen<S, R>(screen: Screen<S, R>): Promise<R> {
   };
 
   return new Promise((resolve, reject) => {
+    let timer: NodeJS.Timeout | undefined;
     const close = () => {
+      clearInterval(timer);
       stdin.off('keypress', onKey);
       stdout.off('resize', draw);
       stdin.setRawMode(false);
       stdin.pause();
       stdout.write('\x1b[?25h');
     };
-    const onKey = (_: string, key: Key = {}) => {
-      if (isInterrupt(key)) {
-        clear();
-        close();
-        return reject(new Interrupted());
-      }
-      const step = screen.step(state, key);
+    const apply = (step: { state: S } | { result: R }) => {
       if ('state' in step) {
         state = step.state;
         return draw();
@@ -111,6 +114,15 @@ export function runScreen<S, R>(screen: Screen<S, R>): Promise<R> {
       if (summary.length > 0) stdout.write(`${summary.join('\n')}\n`);
       redrawFooter();
       resolve(step.result);
+    };
+    const onKey = (_: string, key: Key = {}) => {
+      if (isInterrupt(key)) {
+        if (screen.interrupt) return apply(screen.interrupt(state));
+        clear();
+        close();
+        return reject(new Interrupted());
+      }
+      apply(screen.step(state, key));
     };
 
     emitKeypressEvents(stdin);
@@ -125,6 +137,10 @@ export function runScreen<S, R>(screen: Screen<S, R>): Promise<R> {
     stdin.on('keypress', onKey);
     stdout.on('resize', draw);
     draw();
+    if (screen.tick) {
+      const { ms, update } = screen.tick;
+      timer = setInterval(() => apply(update(state)), ms);
+    }
   });
 }
 

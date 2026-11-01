@@ -175,8 +175,7 @@ a fila" sem fila em segundo plano e "Parar a fila" sem fila rodando são vistas 
   planejamento", "tentativas esgotadas"…), a pergunta ou os critérios e o menu de opções da
   inbox; no fim, o resumo do que foi decidido. Esc no menu de uma pendência sai do fluxo:
   o que já foi decidido fica, e o resumo diz o que continua esperando você.
-- **Rodar a fila** e **Acompanhar a fila:** abrem o painel da fila (T.4); até lá, a saída de
-  hoje no terminal comum.
+- **Rodar a fila** e **Acompanhar a fila:** abrem o painel da fila (seção "Painel da fila").
 - **Parar a fila:** com fila rodando, confirma com o botão "Parar depois da etapa"; sem
   fila, diz que não há fila rodando.
 - **Criar um projeto novo, Refinar, Especificar:** as rodadas e revisões de hoje, com o
@@ -208,6 +207,32 @@ Conforme a aba "Fila (rodar)" do protótipo.
 - Fora do TTY, a saída de hoje sem mudança. O detalhe continua no banco e no transcript
   (G1).
 
+Decisões da implementação (T.4, registradas no histórico do `docs/PLANO.md`):
+
+- **Fonte do painel:** o banco, como o `mabel eventos` (transições, runs, ferramentas,
+  gates e eventos da fila desde o início dela), e não a saída do `rodar`. O `rodar` e o
+  `acompanhar` usam o mesmo painel.
+- **Processo da fila:** no TTY, o `rodar` roda a fila num processo filho, com a saída de
+  hoje no log da fila (`~/.mabel/filas/<projeto>.log`), e o painel neste. A verificação e
+  a prova bloqueiam o processo que as roda; assim o painel continua girando e respondendo.
+- **Ordem das etapas na execução:** escopo, verificação, prova, como o pipeline roda (o
+  protótipo mostra a verificação antes do escopo).
+- **Pergunta da política de saldo** (contrato: a fila pausa e pergunta): o aviso fica acima
+  da barra, e a barra mostra só as duas respostas, "Esperar o saldo" selecionado e
+  "Continuar mesmo assim".
+- **Sair do painel:** no `acompanhar`, a barra tem "Voltar ao menu" (a fila segue em
+  segundo plano); ctrl+c também solta. No `rodar`, ctrl+c interrompe a run e a fila, e a
+  tela volta quando a fila encerra. Com a fila encerrada: "Voltar ao menu" e, com item
+  esperando você, "Decidir agora".
+- **Aberto pelo shell** (`mabel rodar` ou `mabel acompanhar` direto no TTY): o mesmo painel
+  em tela cheia; com a fila encerrada, a barra diz "Sair do painel", e o resumo (uma linha
+  por item e o encerramento) fica na rolagem do terminal, como o resultado das telas do
+  T.3. Pela tela inicial, "Voltar ao menu" deixa o mesmo resumo e a tela inicial volta.
+- **"Decidir agora"** abre "Decidir as pendências" sobre o painel; a fila segue enquanto você
+  decide, e esc volta ao painel.
+- **`mabel decidir` pelo shell no TTY** abre a mesma tela cheia de "Decidir as pendências";
+  a pergunta "Retomar a esteira agora?" sai, como no menu.
+
 ## Mudanças em outros documentos
 
 - `docs/CONTRATO.md` cita `mabel nascer`, `mabel add`, `mabel run`, `mabel entregar`,
@@ -218,7 +243,8 @@ Conforme a aba "Fila (rodar)" do protótipo.
 - `docs/INTEGRACAO.md` e `docs/specs/integracao-externa.md`: nomes novos no catálogo do
   `comandos --json`.
 - `docs/specs/interface.md`: o incremento 2.4 passa a apontar para esta spec.
-- `docs/MENU.md`: atualizado ou aposentado no fim.
+- `docs/MENU.md`: aposentado no T.4. O levantamento era dos nomes e dos prompts antigos; o
+  menu está nesta spec e no protótipo, e os comandos, no `mabel comandos --json`.
 
 ## Incrementos
 

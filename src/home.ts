@@ -56,6 +56,7 @@ import {
   visibleLength,
   wrapLine,
 } from './screens.ts';
+import { queuePanel } from './queuepanel.ts';
 import { paint, style } from './style.ts';
 import { openUnits } from './units.ts';
 
@@ -383,12 +384,23 @@ export const RESULT_HINTS: Hint[] = [
   ['esc', 'volta ao menu'],
 ];
 
+/** Fora da tela inicial (o `decidir` aberto pelo shell), a vista só fecha. */
+const SHELL_RESULT_HINTS: Hint[] = [
+  ['enter', 'fecha'],
+  ['esc', 'fecha'],
+];
+
+/** A tela cheia foi aberta pelo shell (`standalone`), não pela tela inicial. */
+let fromShell = false;
+
+const resultHints = () => (fromShell ? SHELL_RESULT_HINTS : RESULT_HINTS);
+
 /** Desenha a vista com a rolagem; devolve as linhas e quanto dá para rolar. */
 export function renderResult(context: HomeContext, view: ResultView, scroll: number, style: ScreenStyle, width = 80, height = 24): { lines: string[]; overflow: number } {
   const body = viewBody(view, style, width).flatMap((line) => wrapLine(line, width, '    '));
   const rows = bodyRows(height);
   const overflow = body.length > rows ? body.length - Math.max(1, rows - 2) : 0;
-  const hints: Hint[] = overflow > 0 ? [['↑↓', 'rola'], ...RESULT_HINTS] : RESULT_HINTS;
+  const hints: Hint[] = overflow > 0 ? [['↑↓', 'rola'], ...resultHints()] : resultHints();
   return { lines: frame(context, scrollWindow(body, scroll, rows, style), hints, style, width, height), overflow };
 }
 
@@ -421,6 +433,25 @@ function restoreTerminal(): void {
   if (process.stdin.isTTY) process.stdin.setRawMode(false);
   leaveFullscreen();
   process.stdout.write('\x1b[?25h');
+}
+
+/**
+ * Tela cheia aberta pelo shell (o painel do `rodar` e do `acompanhar`, o `decidir`): o
+ * terminal volta ao normal no fim, e ctrl+c sai com 130.
+ */
+export async function standalone(open: () => Promise<number>): Promise<number> {
+  process.on('exit', restoreTerminal);
+  fromShell = true;
+  try {
+    return await open();
+  } catch (error) {
+    if (error instanceof Interrupted) return 130;
+    throw error;
+  } finally {
+    fromShell = false;
+    process.off('exit', restoreTerminal);
+    restoreTerminal();
+  }
 }
 
 type Write = typeof process.stdout.write;
@@ -531,6 +562,7 @@ export async function openScreen(command: Command, context: HomeContext): Promis
       await showResult(context, { title, command: command.name, lines: screen.lines.map((line) => `  ${line}`) });
       return 0;
     case 'terminal':
+      if (command.name === 'acompanhar') return queuePanel({ mode: 'acompanhar', args: [], origin: 'menu' });
       return terminalRun(command, screen.args);
     case 'decide':
       return decideFlow(context);
@@ -539,6 +571,8 @@ export async function openScreen(command: Command, context: HomeContext): Promis
       const values = await fillScreen(context, form.config);
       if (!values) return 0;
       const args = form.args(values);
+      // Rodar a fila (sem "Em segundo plano") abre o painel da fila.
+      if (command.name === 'rodar' && form.mode(values) === 'terminal') return queuePanel({ mode: 'rodar', args, origin: 'menu' });
       if (form.mode(values) === 'terminal') return terminalRun(command, args, { headless: form.headless });
       const { code, output } = await captureRun(command, args);
       const next = code === 0 ? (form.next?.(values) ?? []) : [];
@@ -653,7 +687,7 @@ export function pendingChoice(pending: Item[]): ChoiceConfig {
  * "Decidir as pendências": a lista com "Passar por todas"; depois, uma decisão por vez
  * ("1 de 2"), com o item e o menu de opções da inbox; no fim, o resumo do que foi decidido.
  */
-async function decideFlow(context: HomeContext): Promise<number> {
+export async function decideFlow(context: HomeContext): Promise<number> {
   const home = dataDir();
   const db = openDb(home);
   try {
@@ -683,7 +717,8 @@ async function decideFlow(context: HomeContext): Promise<number> {
         const body = renderChoice(config, state, style, width).slice(0, -2);
         // Uma linha entre "Passar por todas" e as pendências, como no protótipo.
         body.splice(1, 0, '');
-        return frame(context, [...titleRows(DECIDE.title, style, width, width >= WIDE ? 'mabel decidir' : '', DECIDE.description), ...body], choiceHints(config, 'menu'), style, width, height);
+        const back = fromShell ? 'sai' : 'menu';
+        return frame(context, [...titleRows(DECIDE.title, style, width, width >= WIDE ? 'mabel decidir' : '', DECIDE.description), ...body], choiceHints(config, back), style, width, height);
       },
     });
     if (chosen === null) return 0;
