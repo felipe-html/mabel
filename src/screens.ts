@@ -65,7 +65,7 @@ const MARK_ON = '  › ';
 const MARK_OFF = '    ';
 
 /** Linha de uma lista: marcador, faixa de seleção na escolhida. */
-function listRow(on: boolean, left: string, right: string, style: ScreenStyle, width: number): string {
+export function listRow(on: boolean, left: string, right: string, style: ScreenStyle, width: number): string {
   const line = row(`${on ? style.accent(MARK_ON) : MARK_OFF}${left}`, right ? `${right}  ` : '', width);
   if (!on) return line;
   return style.selected(`${line}${' '.repeat(Math.max(0, width - visibleLength(line)))}`);
@@ -614,6 +614,9 @@ export function shellRows(line: string, style: ScreenStyle, width = 80): string[
   return out.map((text, i) => `${style.dim(i ? '      ' : '  $ ')}${text}`);
 }
 
+/** O que o esc faz no nível de cima do formulário: "menu" quando a tela inicial está aberta. */
+export const formExit = { action: 'volta' };
+
 export function formHints(config: FormConfig, state: FormState): Hint[] {
   if (state.edit) return TEXT_HINTS;
   const fields = inputFields(config, state.values);
@@ -625,7 +628,7 @@ export function formHints(config: FormConfig, state: FormState): Hint[] {
     ['enter', 'editar'],
     ...(fields.some((f) => f.type === 'choice') ? ([['←→', 'opções']] as Hint[]) : []),
     ...(fields.some((f) => f.type === 'bool') ? ([['espaço', 'marca']] as Hint[]) : []),
-    ['esc', 'volta'],
+    ['esc', formExit.action],
   ];
 }
 

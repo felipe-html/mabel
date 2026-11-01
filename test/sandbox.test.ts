@@ -73,7 +73,7 @@ test('5.2: run recusa iniciar sem sandbox, salvo "sandbox": false com aviso', ()
   const ctx = setupProject('');
   const env = ctx.env;
   const run = () =>
-    spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', join(import.meta.dirname, '../src/cli.ts'), 'run'], {
+    spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', join(import.meta.dirname, '../src/cli.ts'), 'rodar'], {
       cwd: ctx.root,
       encoding: 'utf8',
       env: { ...env(), MABEL_SANDBOX_INDISPONIVEL: 'sandbox-exec não encontrado' },

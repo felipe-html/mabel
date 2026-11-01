@@ -10,7 +10,7 @@ import { toolTarget } from './stream.ts';
 import { style } from './style.ts';
 import type { ArgSpec, OptionSpecs } from './options.ts';
 
-export const runsUsage = 'mabel runs [--limite <n>] | mabel runs <id>';
+export const runsUsage = 'mabel consultar [--limite <n>] | mabel consultar <id>';
 
 export const runsOptions = {
   limite: { type: 'string', value: '<n>', description: 'Quantas runs listar (padrão 20)' },
@@ -63,7 +63,7 @@ export function findRun(db: DatabaseSync, query: string): RunRow {
   const exact = matches.find((run) => run.id === query);
   if (exact) return exact;
   if (matches.length === 1) return matches[0] as RunRow;
-  if (matches.length === 0) throw new RunNotFoundError(`Run não encontrada: ${query}. Veja a lista com \`mabel runs\`.`);
+  if (matches.length === 0) throw new RunNotFoundError(`Run não encontrada: ${query}. Veja a lista com \`mabel consultar\`.`);
   throw new RunNotFoundError(
     [
       `O prefixo ${query} é ambíguo. Candidatas:`,

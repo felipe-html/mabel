@@ -13,7 +13,7 @@ import { writeJson } from './json.ts';
 import { type Item, type PendingKind, TRANSITIONS, TransitionError, getItem, itemCost, listItems } from './items.ts';
 import { LockError, acquireLock } from './lock.ts';
 import { autonomousDecisions, humanAttemptsSummary } from './pipeline.ts';
-import { unitSections, writeRunReport } from './runreport.ts';
+import { writeRunReport } from './runreport.ts';
 import { type Project, ProjectError, resolveProject } from './project.ts';
 import type { PlanOutput, Question } from './schemas/stages.ts';
 import { type FormConfig, type FormField, type FormValues, shellLine } from './screens.ts';
@@ -93,7 +93,7 @@ export function renderItemDetail(db: DatabaseSync, home: string, item: Item): st
     if (item.pendingKind === 'attempts_exhausted') {
       lines.push(...humanAttemptsSummary(db, home, item).map((line) => (line ? `  ${line}` : '')));
     }
-    lines.push('', 'Comandos:', '  mabel inbox   (responde tudo, uma pergunta por vez)');
+    lines.push('', 'Comandos:', '  mabel decidir   (responde tudo, uma pergunta por vez)');
     lines.push(...SUGGESTIONS[item.pendingKind](item.number).map((command) => `  ${command}`));
   }
 
@@ -176,7 +176,7 @@ export function renderDenials(db: DatabaseSync, itemId: string): string[] {
   return lines;
 }
 
-export const itemUsage = 'mabel item <n>';
+export const itemUsage = 'mabel detalhar <n>';
 
 export const approveOptions = { json: jsonOption } satisfies OptionSpecs;
 export const respondOptions = {
@@ -194,8 +194,6 @@ export const approveUsage = 'mabel aprovar <n> [--json]';
 export const respondUsage = 'mabel responder <n> "<resposta>" [--replanejar] [--json]\n       mabel responder <n> --respostas <arquivo.json> [--replanejar] [--json]';
 export const cancelUsage = 'mabel cancelar <n>';
 export const rejectUsage = 'mabel rejeitar <n> "<motivo>" [--cancelar]';
-export const integrationUsage = 'mabel integracao';
-
 export function itemCommand(args: string[]): Promise<number> {
   return withItem(args[0], itemUsage, (db, _project, item) => {
     process.stdout.write(`${renderItemDetail(db, dataDir(), item).join('\n')}\n`);
@@ -219,7 +217,7 @@ export function approveCommand(args: string[]): Promise<number> {
   return withItem(parsed.positionals[0], approveUsage, (db, project, item) => {
     approve(db, project, item);
     if (parsed.values.json) decisionJson(db, project, item);
-    else process.stdout.write(`#${item.number} aprovado: segue para a execução no próximo \`mabel run\`.\n`);
+    else process.stdout.write(`#${item.number} aprovado: segue para a execução no próximo \`mabel rodar\`.\n`);
     return 0;
   });
 }
@@ -271,7 +269,7 @@ export function respondCommand(args: string[]): Promise<number> {
     if (!answer) return fail('argumento_faltando', 'Informe a resposta.', respondUsage);
     const to = respond(db, project, item, answer, { replan: values.replanejar });
     if (values.json) decisionJson(db, project, item);
-    else process.stdout.write(`#${item.number} → ${to}: retomado no próximo \`mabel run\`.\n`);
+    else process.stdout.write(`#${item.number} → ${to}: retomado no próximo \`mabel rodar\`.\n`);
     return 0;
   });
 }
@@ -299,7 +297,7 @@ export function rejectCommand(args: string[]): Promise<number> {
       process.stderr.write(`Informe o motivo.\nUso: ${rejectUsage}\n`);
       return 1;
     }
-    // A rejeição escreve na branch da unidade: não pode correr junto com um `mabel run`.
+    // A rejeição escreve na branch da unidade: não pode correr junto com um `mabel rodar`.
     const home = dataDir();
     const release = acquireLock(home, project.id);
     try {
@@ -309,7 +307,7 @@ export function rejectCommand(args: string[]): Promise<number> {
       process.stdout.write(
         result.to === 'cancelled'
           ? `#${item.number} ${where} e cancelado.\n`
-          : `#${item.number} ${where}: volta ao planejamento com o motivo no próximo \`mabel run\`.\n`,
+          : `#${item.number} ${where}: volta ao planejamento com o motivo no próximo \`mabel rodar\`.\n`,
       );
       if (result.dependents.length > 0) {
         const list = result.dependents.map((n) => `#${n}`).join(', ');
@@ -326,25 +324,6 @@ export function rejectCommand(args: string[]): Promise<number> {
       release();
     }
   });
-}
-
-export async function integrationCommand(): Promise<number> {
-  const home = dataDir();
-  const db = openDb(home);
-  try {
-    const project = resolveProject(db);
-    writeRunReport(db, home, project);
-    process.stdout.write(`${unitSections(db, home, project).join('\n')}\n`);
-    return 0;
-  } catch (error) {
-    if (error instanceof ProjectError) {
-      process.stderr.write(`${error.message}\n`);
-      return 1;
-    }
-    throw error;
-  } finally {
-    db.close();
-  }
 }
 
 // Argumentos pedidos no menu interativo ----------------------------------------------------
@@ -375,10 +354,10 @@ export function itemForm(items: Item[]): FormConfig {
   return {
     title: 'Detalhar um item',
     description: 'Mostra estado, pendência, plano, custo e runs de um item.',
-    command: 'item',
+    command: 'detalhar',
     fields: [itemField(items)],
     action: 'Detalhar',
-    shell: (values) => shellLine(['mabel', 'item', value(values, 'item') || '<n>']),
+    shell: (values) => shellLine(['mabel', 'detalhar', value(values, 'item') || '<n>']),
   };
 }
 

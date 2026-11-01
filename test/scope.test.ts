@@ -165,7 +165,7 @@ test('5.3: escopoAdicional em caminho crítico vai para critical_approval', asyn
   assert.deepEqual(p.gates('autonomy'), []);
 });
 
-test('5.3: decisões do hook viram eventos da run, runs.denials preenchido e mabel item mostra as negações', async () => {
+test('5.3: decisões do hook viram eventos da run, runs.denials preenchido e mabel detalhar mostra as negações', async () => {
   const p = scopeProject([]);
   syncBacklog(p.db, p.project);
   const { startRun } = await import('../src/runner.ts');

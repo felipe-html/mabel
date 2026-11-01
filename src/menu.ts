@@ -29,9 +29,11 @@ export interface Style {
 export interface Screen<S, R> {
   state: S;
   step: (state: S, key: Key) => { state: S } | { result: R };
-  render: (state: S, width: number) => string[];
+  render: (state: S, width: number, height: number) => string[];
   /** Linhas que ficam na rolagem quando a tela fecha; sem elas, a tela some. */
   summary?: (result: R) => string[];
+  /** Abre no buffer alternativo do terminal, como o vim, desenhada a partir do topo. */
+  fullscreen?: boolean;
 }
 
 /** Linhas físicas que o texto ocupa, com a quebra do terminal. */
@@ -40,21 +42,29 @@ function physicalRows(lines: string[], width: number): number {
 }
 
 /**
- * Desenha a tela abaixo do cursor, redesenha a cada tecla e resolve com o resultado.
- * Ctrl+C rejeita com `Interrupted`. Exige stdin e stdout interativos.
+ * Desenha a tela abaixo do cursor (ou na tela cheia, com `fullscreen`), redesenha a cada
+ * tecla e quando o terminal muda de tamanho, e resolve com o resultado. Ctrl+C rejeita com
+ * `Interrupted`. Exige stdin e stdout interativos.
  */
 export function runScreen<S, R>(screen: Screen<S, R>): Promise<R> {
   const { stdin, stdout } = process;
   let state = screen.state;
   let drawn = 0;
   const width = () => stdout.columns ?? 80;
+  const height = () => stdout.rows ?? 24;
 
   const clear = () => {
+    if (screen.fullscreen) return;
     if (drawn > 0) stdout.write(`\x1b[${drawn}A\r`);
     stdout.write('\x1b[0J');
   };
   const draw = () => {
-    const lines = screen.render(state, width());
+    const lines = screen.render(state, width(), height());
+    if (screen.fullscreen) {
+      // Linha a linha a partir do topo, sem passar da última: o buffer alternativo não rola.
+      stdout.write(`\x1b[H${lines.slice(0, height()).map((line) => `${line}\x1b[K`).join('\r\n')}\x1b[J`);
+      return;
+    }
     clear();
     stdout.write(`${lines.join('\n')}\n`);
     redrawFooter();
@@ -64,8 +74,10 @@ export function runScreen<S, R>(screen: Screen<S, R>): Promise<R> {
   return new Promise((resolve, reject) => {
     const close = () => {
       stdin.off('keypress', onKey);
+      stdout.off('resize', draw);
       stdin.setRawMode(false);
       stdin.pause();
+      if (screen.fullscreen) stdout.write('\x1b[?1049l');
       stdout.write('\x1b[?25h');
     };
     const onKey = (_: string, key: Key = {}) => {
@@ -80,18 +92,20 @@ export function runScreen<S, R>(screen: Screen<S, R>): Promise<R> {
         return draw();
       }
       clear();
+      close();
       const summary = screen.summary?.(step.result) ?? [];
       if (summary.length > 0) stdout.write(`${summary.join('\n')}\n`);
       redrawFooter();
-      close();
       resolve(step.result);
     };
 
     emitKeypressEvents(stdin);
     stdin.setRawMode(true);
     stdin.resume();
+    if (screen.fullscreen) stdout.write('\x1b[?1049h');
     stdout.write('\x1b[?25l');
     stdin.on('keypress', onKey);
+    stdout.on('resize', draw);
     draw();
   });
 }

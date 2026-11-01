@@ -17,17 +17,17 @@ commit.
 | Interface | Comandos no terminal (`mabel` e modo Mabel), com menu num TTY. Sem página web. |
 | Remover | Apaga de verdade e grava um registro mínimo em `removals`. Não há arquivamento. |
 | Alcance | Só os dados do Mabel: banco e `~/.mabel`. O repositório do projeto (`.mabel/`, branches `mabel/*`) fica intocado; o Mabel mostra os comandos git para quem quiser limpar. |
-| Runs sem item | `exec` e probe não pertencem a projeto: ficam fora da auditoria do projeto e da remoção. O `cwd` não é usado para atribuir. |
-| Ordem | Depois do 2.3 (`mabel runs`), antes do passo 5. |
+| Runs sem item | `pedir` e probe não pertencem a projeto: ficam fora da auditoria do projeto e da remoção. O `cwd` não é usado para atribuir. |
+| Ordem | Depois do 2.3 (`mabel consultar`), antes do passo 5. |
 
 ## Comandos
 
-### `mabel projetos`
+### `mabel listar`
 
 Tabela com nome, raiz, itens por estado, runs, custo e última atividade. Num TTY, abre o
-menu e o projeto escolhido mostra o detalhe de `mabel projeto`.
+menu e o projeto escolhido mostra o detalhe de `mabel auditar`.
 
-### `mabel projeto <nome>`
+### `mabel auditar <nome>`
 
 Auditoria do projeto. `<nome>` aceita o nome ou um prefixo único do id; nome repetido
 lista os candidatos e encerra com erro.
@@ -40,10 +40,10 @@ lista os candidatos e encerra com erro.
   que retomam sozinhas e respostas do humano às perguntas da política de saldo.
 - Últimas 20 transições de estado.
 
-### `mabel projeto remover <nome>`
+### `mabel auditar remover <nome>`
 
 ```
-mabel projeto remover ferias-planner
+mabel auditar remover ferias-planner
   ferias-planner · /Users/felipe/Pessoal/ferias-planner
   3 itens · 18 runs · US$ 4,65
   banco: items, item_transitions, gate_results, runs, events, tool_calls, rate_limits, queue_events
@@ -87,7 +87,7 @@ CREATE TABLE removals (
 );
 ```
 
-Sem chave estrangeira: o projeto já não existe. `mabel projetos --removidos` lista essa
+Sem chave estrangeira: o projeto já não existe. `mabel listar --removidos` lista essa
 tabela.
 
 ## Critério de remoção para tabelas novas
@@ -105,10 +105,10 @@ se ela entra na remoção. O mesmo vale para diretórios novos em `~/.mabel` (`d
 
 ## Critérios de aceite
 
-- [ ] `mabel projetos` e `mabel projeto <nome>` com saída em texto simples fora do TTY,
+- [ ] `mabel listar` e `mabel auditar <nome>` com saída em texto simples fora do TTY,
       estável para testes.
 - [ ] Remoção apaga todas as linhas do projeto nas tabelas `project` e preserva as
-      runs sem item e as de outros projetos (teste com dois projetos e uma run de `exec`).
+      runs sem item e as de outros projetos (teste com dois projetos e uma run do `pedir`).
 - [ ] Remoção recusada com run em andamento, trava ativa ou worktree sujo.
 - [ ] Remoção grava a linha em `removals` e apaga `runs/<id>`, `items/<id>`,
       `worktrees/<projectId>` e `locks/<projectId>.lock`.

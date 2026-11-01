@@ -58,7 +58,7 @@ quando o humano o rejeita, a `planning` ou `cancelled`.
 | G7 | **Ambiguidade em regra crítica para o item.** Suposição declarada sobre regra crítica leva o item a `needs_human`. Suposição que o humano já confirmou no item vira decisão registrada e não para o item de novo. | Saída estruturada (`--json-schema`) com campo `suposicoes`, validada pelo runner. |
 | G8 | **Contexto hermético.** O agente recebe apenas as regras do Mabel (versionadas), a configuração do projeto-alvo e os artefatos da etapa anterior. Nada da configuração pessoal do usuário. | `--restricted`, `--strict-mcp-config`, `--disable-slash-commands`, `--tools` por etapa e `--settings` por run; contexto do projeto (`CLAUDE.md`, `AGENTS.md`, regras críticas) injetado pelo Mabel, com orçamento; o runner confere o `init` de cada run e interrompe a que trouxer memória, MCP, skills ou ferramentas fora das pedidas. |
 | G9 | **Estado sobrevive à sessão.** Interromper o Mabel a qualquer momento e reiniciá-lo retoma do último estado gravado. | Estado no banco e em arquivos; sessão nova por etapa. |
-| G10 | **A unidade só recebe tarefa com "done" calculado.** O Mabel faz o merge da tarefa na branch da unidade só depois do G3 e da revisão. A integração é derivada: refeita pelo Mabel a partir da base a cada `run`, com o merge de cada unidade aberta, só para teste; nunca é origem nem entrega, e conflito ou verificação vermelha nela é aviso. A base só recebe o merge feito pelo humano, o commit do que o humano escreveu no `.mabel/` e o do que ele aceitou na revisão do `mabel nascer`. | O runner cria os commits de merge (na unidade e na integração, com `rerere`); o agente continua sem git de escrita (G4). No início do `run`, com a raiz na base, o Mabel commita nela o que está pendente no `.mabel/` (só esse diretório; o resto do índice fica como está), para os worktrees dos itens nascerem com as tarefas e as specs. No aceite do `mabel nascer`, o Mabel commita na branch atual só o `.mabel/` e o `CLAUDE.md` que acabou de criar (o resto do índice fica como está). A pedido do humano (`mabel entregar <unidade>`), o Mabel prova a entrega (base + snapshot da unidade num worktree temporário, com a verificação do projeto; conflito ou vermelho recusam) e publica o snapshot da branch da unidade (`mabel/entrega/<unidade>`) com um commit dele só com o documento de entrega (`.mabel/entregas/`) e as alterações da unidade no `.mabel/regras.md`, na branch de entrega e nunca na base, e abre o PR; não faz merge nem push na base. A integração nunca é entregue. Os commits de merge e de rejeição do Mabel levam os trailers `Mabel-Item` e `Mabel-Unidade`; o da entrega, `Mabel-Entrega`. |
+| G10 | **A unidade só recebe tarefa com "done" calculado.** O Mabel faz o merge da tarefa na branch da unidade só depois do G3 e da revisão. A integração é derivada: refeita pelo Mabel a partir da base a cada `rodar`, com o merge de cada unidade aberta, só para teste; nunca é origem nem entrega, e conflito ou verificação vermelha nela é aviso. A base só recebe o merge feito pelo humano, o commit do que o humano escreveu no `.mabel/` e o do que ele aceitou na revisão do `mabel criar`. | O runner cria os commits de merge (na unidade e na integração, com `rerere`); o agente continua sem git de escrita (G4). No início do `rodar`, com a raiz na base, o Mabel commita nela o que está pendente no `.mabel/` (só esse diretório; o resto do índice fica como está), para os worktrees dos itens nascerem com as tarefas e as specs. No aceite do `mabel criar`, o Mabel commita na branch atual só o `.mabel/` e o `CLAUDE.md` que acabou de criar (o resto do índice fica como está). A pedido do humano (`mabel entregar <unidade>`), o Mabel prova a entrega (base + snapshot da unidade num worktree temporário, com a verificação do projeto; conflito ou vermelho recusam) e publica o snapshot da branch da unidade (`mabel/entrega/<unidade>`) com um commit dele só com o documento de entrega (`.mabel/entregas/`) e as alterações da unidade no `.mabel/regras.md`, na branch de entrega e nunca na base, e abre o PR; não faz merge nem push na base. A integração nunca é entregue. Os commits de merge e de rejeição do Mabel levam os trailers `Mabel-Item` e `Mabel-Unidade`; o da entrega, `Mabel-Entrega`. |
 
 ## Política de saldo
 
@@ -87,7 +87,7 @@ quando, somado ao consumo estimado da etapa, passa do ritmo em mais de 10 pontos
 | Leitura de saldo ausente, vencida ou com mais de 30 minutos | Antes da etapa, o Mabel faz uma chamada mínima para obter a leitura. Sem leitura, a fila pausa e registra o motivo. |
 
 As situações são avaliadas nessa ordem. A leitura vem do `rate_limit_event` da run mais
-recente, de qualquer projeto. A interface do Mabel (modo Mabel e `mabel run` num terminal) mantém um rodapé
+recente, de qualquer projeto. A interface do Mabel (tela inicial e `mabel rodar` num terminal) mantém um rodapé
 fixo com as duas janelas: saldo, horário de reset, ritmo da janela de 7 dias e idade da
 leitura. O mesmo saldo aparece dentro de um projeto e fora dele.
 
@@ -95,18 +95,18 @@ leitura. O mesmo saldo aparece dentro de um projeto e fora dele.
 
 | Arquivo | Conteúdo | Quem escreve | Versionado |
 |---|---|---|---|
-| `.mabel/backlog.md` | Itens: título, descrição, critérios de aceite. | Humano (e `mabel add`) | Sim |
+| `.mabel/backlog.md` | Itens: título, descrição, critérios de aceite. | Humano (e `mabel adicionar`) | Sim |
 | `.mabel/specs/<slug>.md` | Spec: história, regras com exemplos, decisões, fora do escopo, regras críticas e alterações nas regras vigentes. Tarefa com `Spec:` só fica `ready` com a spec aceita, válida e com as regras citadas; o trecho citado entra no hash da tarefa. Respostas do humano a uma tarefa de spec entram nas decisões dela; no avulso, nas `Decisões:` do item. | Humano (e o Mabel, nas decisões) | Sim |
 | `.mabel/regras.md` | Regras de negócio vigentes, por assunto (`## <assunto>`, `- regra`). Lido pelo especificador, com orçamento. Muda só pela entrega: as alterações da spec ou do avulso entram no commit da branch de entrega e chegam à base pelo merge do humano. | Humano (e o Mabel, na branch de entrega) | Sim |
 | `.mabel/quadro.md` | Kanban gerado: colunas por etapa, custo, pendências. | Só o Mabel | Não |
 | `.mabel/entregas/<data>-<unidade>.md` | Documento de entrega: resumo, olhe primeiro, decisões, suposições, critérios e prova, desvios e tarefas. | Só o Mabel, na branch de entrega | Sim (pelo merge da entrega) |
-| `.mabel/run.md` | Relatório do último `run`: o que precisa do humano, o que está pronto para entregar, a integração e as tarefas do run. Reescrito ao fim de cada tarefa e no fim do `run`. | Só o Mabel | Não |
+| `.mabel/run.md` | Relatório do último `rodar`: o que precisa do humano, o que está pronto para entregar, a integração e as tarefas do run. Reescrito ao fim de cada tarefa e no fim do `rodar`. | Só o Mabel | Não |
 | Banco SQLite | Estado de execução e auditoria. | Só o Mabel | Não |
 
 O backlog é a fonte da verdade do conteúdo dos itens. O banco é a fonte da verdade do
 estado. O quadro é uma visão, regenerada a cada transição; editá-lo não tem efeito.
 
-Dados do banco só são removidos por comando explícito do humano (`mabel projeto remover`),
+Dados do banco só são removidos por comando explícito do humano (`mabel auditar remover`),
 com confirmação, e cada remoção fica registrada em `removals`. A remoção alcança só os
 dados do Mabel; o repositório do projeto não é alterado.
 
@@ -142,7 +142,7 @@ O projeto-alvo declara em `.mabel/regras-criticas.md` o que exige decisão human
 
 ## Projeto sem testes
 
-- `mabel init` detecta a ausência de infraestrutura de testes e cria como primeiro item
+- `mabel preparar` detecta a ausência de infraestrutura de testes e cria como primeiro item
   do backlog o estabelecimento da base de testes (framework e comando de teste).
 - Antes de alterar código sem testes, o executor escreve testes de caracterização do
   comportamento atual, que precisam passar antes da mudança.

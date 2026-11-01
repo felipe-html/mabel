@@ -10,7 +10,7 @@ import { getSpecRecord, listSpecFiles } from './specs.ts';
 import { STACKS } from './stacks.ts';
 
 /**
- * Valores que uma fonte oferece agora, para o autocompletar do zsh e a lista do modo Mabel.
+ * Valores que uma fonte oferece agora, para o autocompletar do zsh.
  * Falha (fora de projeto, banco ausente) vira lista vazia: sugerir é conveniência.
  * `arquivo` e `diretorio` ficam com o shell.
  */

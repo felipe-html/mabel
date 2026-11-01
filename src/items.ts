@@ -87,7 +87,7 @@ export type PendingKind =
   | 'environment_block'
   | 'integration_conflict';
 
-/** Detalhes da parada em `needs_human`, mostrados pelo `mabel item`. */
+/** Detalhes da parada em `needs_human`, mostrados pelo `mabel detalhar`. */
 export interface Pending {
   sessionId?: string | null;
   questions?: Question[];

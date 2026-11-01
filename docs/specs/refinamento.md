@@ -119,7 +119,7 @@ Critérios propostos
 
 (o mesmo para fora do escopo e regras críticas)
 
-Quebra sugerida (não é aplicada; crie os itens com /add se concordar)
+Quebra sugerida (não é aplicada; crie os itens com `mabel adicionar` se concordar)
   - Exportar pedidos filtrados por data: …
 
 Como fica o item
@@ -138,7 +138,7 @@ Gravar no backlog? [S/n/d]   (n deixa a proposta pendente · d descarta)
   campos o que foi aceito (sem repetir entradas iguais), regrava só o trecho do item e
   sincroniza. Comentários HTML no meio do bloco do item se perdem; os de fora ficam.
 
-### `add`
+### `adicionar`
 
 - Opção nova `--fora-do-escopo <texto>`, repetível; no TTY, pergunta "Fora do escopo".
 - No TTY, depois de gravar: `Refinar o item agora? [s/N]`.
@@ -153,8 +153,8 @@ Por item, calculado das runs auditadas:
   runs retomadas repetem o plano inteiro; somar contaria duas vezes).
 - **Replanejamentos**: entradas em `planning` além da primeira.
 
-`mabel item <n>` mostra a linha "Refinamento" (situação, perguntas, suposições,
-replanejamentos). `mabel projeto <nome>` ganha as colunas `perg.` e `sup.` na tabela de
+`mabel detalhar <n>` mostra a linha "Refinamento" (situação, perguntas, suposições,
+replanejamentos). `mabel auditar <nome>` ganha as colunas `perg.` e `sup.` na tabela de
 itens e o bloco "Refinamento" com a média de perguntas, suposições e replanejamentos dos
 itens planejados refinados e não refinados.
 
@@ -174,15 +174,15 @@ itens planejados refinados e não refinados.
    altera só o bloco do item e sincroniza.
 7. `--aceitar` e `--descartar` funcionam fora do TTY; item iniciado é recusado.
 8. `refinar` sem argumentos lista os itens refináveis com a situação.
-9. `mabel item` e `mabel projeto` mostram os sinais de refinamento.
+9. `mabel detalhar` e `mabel auditar` mostram os sinais de refinamento.
 
 ## Fora desta entrega (vai para o `BACKLOG.md`)
 
 - Aplicar a quebra sugerida (criar os itens novos e ajustar o original).
 - Reescrita da intenção pelo agente.
 - Respostas da inbox gravadas de volta no `backlog.md` (caminho B da discussão).
-- Aviso no `run` sobre itens `ready` nunca refinados.
+- Aviso no `rodar` sobre itens `ready` nunca refinados.
 - Template do backlog orientado ao risco a partir das métricas.
-- `add` com `--decisao` e `--regra-critica`.
+- `adicionar` com `--decisao` e `--regra-critica`.
 - Refinar em lote (`--todos`).
 - Preservar comentários HTML no meio do bloco do item.

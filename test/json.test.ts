@@ -14,7 +14,7 @@ const BACKLOG = '\n## Casa\ncômodos\n\n## Moeda\nreal\n';
 
 function jsonProject() {
   const ctx = setupProject(BACKLOG);
-  assert.equal(ctx.cli('status').status, 0);
+  assert.equal(ctx.cli('conferir').status, 0);
   const item = (number: number) => getItem(ctx.db, ctx.project.id, number)!;
   /** Roda o comando com `--json` e devolve a linha parseada. */
   const json = (...args: string[]) => {
@@ -59,7 +59,7 @@ test('isoLocal escreve o horário local com o deslocamento', () => {
 
 test('projetos --json: campos, versão e estados da fila', () => {
   const p = jsonProject();
-  let out = p.json('projetos');
+  let out = p.json('listar');
   assert.equal(out.versao, 1);
   assert.equal(out.projetos.length, 1);
   const project = out.projetos[0];
@@ -85,7 +85,7 @@ test('projetos --json: campos, versão e estados da fila', () => {
 
   // Item parado esperando o humano.
   p.db.prepare("UPDATE items SET status = 'needs_human', pending_kind = 'question_plan', pending = '{}' WHERE id = ?").run(p.item(1).id);
-  out = p.json('projetos');
+  out = p.json('listar');
   assert.equal(out.projetos[0].fila, 'aguardando_humano');
   assert.equal(out.projetos[0].inbox, 1);
 
@@ -93,7 +93,7 @@ test('projetos --json: campos, versão e estados da fila', () => {
   p.holdLock();
   p.db.prepare("UPDATE items SET status = 'executing' WHERE id = ?").run(p.item(2).id);
   const runId = insertRun(p.db, p.item(2).id, 'execute', 'sonnet', 0, 'running');
-  out = p.json('projetos');
+  out = p.json('listar');
   assert.equal(out.projetos[0].fila, 'rodando');
   assert.deepEqual(out.projetos[0].em_andamento, {
     item: 2,
@@ -116,7 +116,7 @@ test('projetos --json: campos, versão e estados da fila', () => {
     detail: 'ritmo de 7 dias acima do esperado',
     until: new Date(Date.now() + 3600_000),
   });
-  out = p.json('projetos');
+  out = p.json('listar');
   assert.equal(out.projetos[0].fila, 'pausada_por_saldo');
   assert.equal(out.projetos[0].pausa.tipo, 'espera');
   assert.equal(out.projetos[0].pausa.causa, 'ritmo_7d');
@@ -126,13 +126,13 @@ test('projetos --json: campos, versão e estados da fila', () => {
 test('pausa por saldo vale até a fila voltar a rodar', () => {
   const p = jsonProject();
   recordQueueEvent(p.db, p.project.id, { at: new Date(Date.now() - 1000), kind: 'pause', cause: 'seven_day', detail: 'saldo de 7 dias abaixo do piso' });
-  assert.equal(p.json('projetos').projetos[0].fila, 'pausada_por_saldo');
+  assert.equal(p.json('listar').projetos[0].fila, 'pausada_por_saldo');
   const saldo = p.json('saldo');
   assert.equal(saldo.pausa.projeto, p.project.name);
   assert.equal(saldo.pausa.causa, 'saldo_7d');
 
   insertRun(p.db, p.item(1).id, 'plan', 'sonnet', 0.1);
-  assert.equal(p.json('projetos').projetos[0].fila, 'parada');
+  assert.equal(p.json('listar').projetos[0].fila, 'parada');
   assert.equal(p.json('saldo').pausa, null);
 });
 
@@ -141,7 +141,7 @@ test('um run novo encerra a pausa por saldo, mesmo sem etapa', () => {
   recordQueueEvent(p.db, p.project.id, { at: new Date(Date.now() - 2000), kind: 'pause', cause: 'five_hour', detail: 'saldo de 5h abaixo do piso' });
   recordQueueEvent(p.db, p.project.id, { at: new Date(Date.now() - 1000), kind: 'start', cause: 'queue', detail: '' });
   recordQueueEvent(p.db, p.project.id, { at: new Date(), kind: 'stop', cause: 'queue', detail: 'empty' });
-  assert.equal(p.json('projetos').projetos[0].fila, 'parada');
+  assert.equal(p.json('listar').projetos[0].fila, 'parada');
 });
 
 test('saldo --json: as duas janelas, com ritmo só na de 7 dias', () => {
@@ -173,7 +173,7 @@ test('saldo --json: as duas janelas, com ritmo só na de 7 dias', () => {
 test('status --json: fila por estado, etapas em andamento e saldo', () => {
   const p = jsonProject();
   p.db.prepare("UPDATE items SET status = 'planned' WHERE id = ?").run(p.item(2).id);
-  const out = p.json('status');
+  const out = p.json('conferir');
   assert.deepEqual(Object.keys(out), ['versao', 'projeto', 'fila', 'pausa', 'por_estado', 'itens', 'etapas', 'saldo', 'avisos']);
   assert.deepEqual(out.projeto, { id: p.project.id, nome: p.project.name, raiz: p.project.root });
   assert.equal(out.fila, 'parada');
@@ -195,7 +195,7 @@ test('status --json: fila por estado, etapas em andamento e saldo', () => {
 
 test('status --json fora de um projeto: só o saldo', () => {
   const p = jsonProject();
-  const outside = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'status', '--json'], {
+  const outside = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'conferir', '--json'], {
     cwd: p.home,
     encoding: 'utf8',
     env: p.env(),
@@ -218,7 +218,7 @@ test('inbox --json: perguntas, sugestões e opções de cada pendência', () => 
     .prepare("UPDATE items SET status = 'needs_human', pending_kind = 'critical_approval', pending = ? WHERE id = ?")
     .run(JSON.stringify({ reason: 'regra crítica: Desconto' }), p.item(2).id);
 
-  const out = p.json('inbox');
+  const out = p.json('decidir');
   assert.deepEqual(Object.keys(out), ['versao', 'projeto', 'resposta_decidir', 'pendencias']);
   assert.equal(out.pendencias.length, 2);
   const [questions, critical] = out.pendencias;
@@ -253,7 +253,7 @@ test('projeto <nome> --json: custo e uso das janelas por etapa, modelo e item', 
   reading(p.db, 'seven_day', 0.3, reset, execute);
   reading(p.db, 'seven_day', 0.32, reset, execute);
 
-  const out = p.json('projeto', p.project.name);
+  const out = p.json('auditar', p.project.name);
   assert.deepEqual(Object.keys(out), ['versao', 'projeto', 'total', 'por_etapa', 'por_modelo', 'por_item']);
   assert.deepEqual(Object.keys(out.total), ['runs', 'custo_usd', 'tokens', 'uso']);
   assert.equal(out.total.runs, 2);
@@ -277,7 +277,7 @@ test('projeto <nome> --json: custo e uso das janelas por etapa, modelo e item', 
     ],
   );
 
-  const missing = p.cli('projeto', '--json');
+  const missing = p.cli('auditar', '--json');
   assert.equal(missing.status, 1);
 });
 
@@ -296,7 +296,7 @@ test('projetos --json: tentativa e revisões do item em andamento desde o plano 
   p.db.prepare("UPDATE items SET status = 'executing', attempts = 1 WHERE id = ?").run(item.id);
   insertRun(p.db, item.id, 'execute', 'sonnet', 0, 'running');
 
-  const running = p.json('projetos').projetos[0].em_andamento;
+  const running = p.json('listar').projetos[0].em_andamento;
   assert.equal(running.tentativa, 2);
   assert.equal(running.reprovacoes, 1);
   assert.equal(running.ultima_revisao.resultado, 'reprovada');
@@ -320,12 +320,12 @@ test('erros com --json: uma linha no stderr com código e mensagem, saída difer
   assert.equal(error('responder').codigo, 'argumento_faltando');
   assert.equal(error('aprovar', '99').codigo, 'nao_encontrado');
   assert.equal(error('aprovar', '1').codigo, 'estado_invalido');
-  assert.equal(error('projeto', 'nenhum').codigo, 'nao_encontrado');
-  assert.equal(error('projeto', 'remover', p.project.name).codigo, 'argumento_faltando');
-  assert.equal(error('inbox', '--outra').codigo, 'argumento_invalido');
-  assert.equal(error('run').codigo, 'argumento_invalido');
+  assert.equal(error('auditar', 'nenhum').codigo, 'nao_encontrado');
+  assert.equal(error('auditar', 'remover', p.project.name).codigo, 'argumento_faltando');
+  assert.equal(error('decidir', '--outra').codigo, 'argumento_invalido');
+  assert.equal(error('rodar').codigo, 'argumento_invalido');
 
-  const outside = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'inbox', '--json'], {
+  const outside = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'decidir', '--json'], {
     cwd: p.home,
     encoding: 'utf8',
     env: p.env(),

@@ -51,7 +51,7 @@ export function setupProject(backlog?: string, options: { integracao?: string } 
       encoding: 'utf8',
       env: env(),
     });
-  assert.equal(cli('init').status, 0);
+  assert.equal(cli('preparar').status, 0);
   const path = join(root, '.mabel', 'backlog.md');
   if (backlog !== undefined) writeFileSync(path, BACKLOG_TEMPLATE + backlog);
   // Os testes do pipeline usam arquivos de teste falsos: a prova roda no modo por item e,

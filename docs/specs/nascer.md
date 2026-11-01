@@ -1,68 +1,68 @@
-# Especificação — `mabel nascer`
+# Especificação — `mabel criar`
 
 Incremento 5 de `docs/specs/integracao-externa.md`. Hoje um projeto entra no Mabel pelo
-`mabel init`, que detecta a stack e cria o `.mabel/` com um backlog vazio (mais o item
+`mabel preparar`, que detecta a stack e cria o `.mabel/` com um backlog vazio (mais o item
 "Estabelecer base de testes", quando falta teste). Tudo o que dá forma ao projeto —
 `CLAUDE.md`, regras críticas, backlog inicial — fica para o usuário escrever do zero.
 
-O `nascer` é uma conversa curta com um agente que termina numa **proposta revisável**:
+O `criar` é uma conversa curta com um agente que termina numa **proposta revisável**:
 stack, `CLAUDE.md`, regras críticas e backlog inicial. O usuário revisa como no `refinar`
-e o `init` grava. Serve a dois começos:
+e o `preparar` grava. Serve a dois começos:
 
 - **Diretório vazio**: a ideia em texto livre ("um app de controle de férias do time").
 - **Repositório sem `.mabel/`**: o agente lê o código para propor o resto.
 
-Parente do "`mabel add` assistido" no `BACKLOG.md`: o motor que propõe itens com critérios
-é o mesmo, e o `add` assistido pode reusá-lo depois.
+Parente do "`mabel adicionar` assistido" no `BACKLOG.md`: o motor que propõe itens com critérios
+é o mesmo, e o `adicionar` assistido pode reusá-lo depois.
 
 Regra que orienta o resto: **o agente propõe, o humano decide, o Mabel grava.** A run é só
 leitura; nada entra no repositório antes da revisão.
 
 ## Contrato
 
-O `nascer` é um comando avulso, como o `refinar`: sem item e fora do ciclo de vida. A run é
+O `criar` é um comando avulso, como o `refinar`: sem item e fora do ciclo de vida. A run é
 auditada (G1), hermética (G8) e passa pela política de saldo (G6). O agente não escreve
 nada (G4): quem grava é o Mabel, depois da revisão.
 
 Um ponto mexe no contrato, **autorizado pelo usuário em 2026-10-24** (pergunta 1): o
-commit do `CLAUDE.md` que o `nascer` criou. O G10 passa a incluir, além do que o humano
-escreveu no `.mabel/`, o que ele aceitou na revisão do `mabel nascer`.
+commit do `CLAUDE.md` que o `criar` criou. O G10 passa a incluir, além do que o humano
+escreveu no `.mabel/`, o que ele aceitou na revisão do `mabel criar`.
 
 ## Decisões (aceitas pelo usuário em 2026-10-24)
 
 | Tema | Decisão |
 |---|---|
-| Forma | Comando `mabel nascer`, rodadas de pergunta e resposta na mesma sessão (`--resume`), proposta no fim. |
+| Forma | Comando `mabel criar`, rodadas de pergunta e resposta na mesma sessão (`--resume`), proposta no fim. |
 | Rodadas | No máximo 3 rodadas de perguntas, com até 5 perguntas cada, todas com sugestão. Na terceira, o agente propõe com suposições. |
-| Gravação | Pelo caminho do `init`, com a stack escolhida e os arquivos aceitos. Sem revisão, nada é gravado. |
+| Gravação | Pelo caminho do `preparar`, com a stack escolhida e os arquivos aceitos. Sem revisão, nada é gravado. |
 | `CLAUDE.md` existente | Nunca é sobrescrito. Entra como contexto da run; o agente pode sugerir acréscimos, que aparecem na revisão e não são gravados. |
-| Diretório vazio sem git | O `nascer` roda `git init -b main` antes de gravar e avisa (pergunta 2). Diretório com arquivos e sem git é recusado, como no `init`. |
-| Projeto Mabel | Recusado: "já é um projeto Mabel; use `mabel add` ou `mabel refinar`". |
-| Base de testes | Continua com o `init`: sem testes, "Estabelecer base de testes" é o item 1 e os itens propostos sem dependência passam a depender dele. |
+| Diretório vazio sem git | O `criar` roda `git init -b main` antes de gravar e avisa (pergunta 2). Diretório com arquivos e sem git é recusado, como no `preparar`. |
+| Projeto Mabel | Recusado: "já é um projeto Mabel; use `mabel adicionar` ou `mabel refinar`". |
+| Base de testes | Continua com o `preparar`: sem testes, "Estabelecer base de testes" é o item 1 e os itens propostos sem dependência passam a depender dele. |
 | Sem TTY | Mesmo fluxo em passos (`--responder`, `--aceitar`), com `--json`, para o `mabel-ui`. |
 
 ## Comando
 
 ```
-mabel nascer ["<descrição>"] [--stack <id>] [--modelo <m>] [--json]
-mabel nascer --responder <id> --respostas <arquivo.json> [--json]
-mabel nascer --aceitar <id> [--proposta <arquivo.json>] [--json]
-mabel nascer --descartar <id>
-mabel nascer --lista [--json]
+mabel criar ["<descrição>"] [--stack <id>] [--modelo <m>] [--json]
+mabel criar --responder <id> --respostas <arquivo.json> [--json]
+mabel criar --aceitar <id> [--proposta <arquivo.json>] [--json]
+mabel criar --descartar <id>
+mabel criar --lista [--json]
 ```
 
 | Forma | TTY | Fora de TTY |
 |---|---|---|
-| `nascer` sem descrição | Pergunta "O que é o projeto?" (num repositório com código, enter vazio deixa o agente partir do código). | Num diretório vazio, sai com código 1 pedindo a descrição; num repositório com código, roda sem ela. |
-| `nascer "<descrição>"` | Roda a primeira rodada; perguntas uma a uma (enter aceita a sugestão, texto responde, `d` decide você); próxima rodada; no fim, a revisão. | Roda a primeira rodada e escreve as perguntas ou a proposta (texto ou `--json`), com o id. |
+| `criar` sem descrição | Pergunta "O que é o projeto?" (num repositório com código, enter vazio deixa o agente partir do código). | Num diretório vazio, sai com código 1 pedindo a descrição; num repositório com código, roda sem ela. |
+| `criar "<descrição>"` | Roda a primeira rodada; perguntas uma a uma (enter aceita a sugestão, texto responde, `d` decide você); próxima rodada; no fim, a revisão. | Roda a primeira rodada e escreve as perguntas ou a proposta (texto ou `--json`), com o id. |
 | `--responder <id>` | — | Retoma a sessão com as respostas e escreve a próxima rodada. `--respostas` é uma lista JSON na ordem das perguntas: texto responde, `null` aceita a sugestão. |
 | `--aceitar <id>` | — | Grava a proposta inteira, ou a de `--proposta` (a proposta editada pelo cliente, validada pelo mesmo esquema). |
 | `--descartar <id>` | Descarta sem gravar. | Igual. |
 | `--lista` | Nascimentos em aberto (perguntas ou proposta pendente) com raiz e data. | Igual. |
 | `--stack <id>` | Fixa a stack do catálogo; o agente não a propõe. | Igual. |
 
-Ctrl+C no TTY deixa o nascimento em aberto: `mabel nascer --lista` mostra, e
-`mabel nascer` na mesma raiz pergunta se retoma.
+Ctrl+C no TTY deixa o nascimento em aberto: `mabel criar --lista` mostra, e
+`mabel criar` na mesma raiz pergunta se retoma.
 
 ## Run de nascimento
 
@@ -72,7 +72,7 @@ Ctrl+C no TTY deixa o nascimento em aberto: `mabel nascer --lista` mostra, e
   tem a descrição.
 - Contexto: o `CLAUDE.md` e o `AGENTS.md` da raiz, se existirem (como nas outras etapas);
   o catálogo de stacks (ids, nomes, comandos detectados) e, num repositório com código, a
-  detecção do `init` (stacks e comandos).
+  detecção do `preparar` (stacks e comandos).
 - Modelo padrão `sonnet`, 40 turnos e US$ 2 por rodada. Não há `config.json` ainda: os
   padrões ficam no código, e `--modelo` troca o modelo.
 - Prompt de sistema `prompts/nascer.md`. O que ele pede ao agente:
@@ -136,7 +136,7 @@ interface BirthProposal {
 | `project_id` | Projeto criado no aceite. |
 | `created_at`, `decided_at` | Horários. |
 
-As runs são de etapa, sem item, como o `exec`; o `births` liga o nascimento a elas pela
+As runs são de etapa, sem item, como o `pedir`; o `births` liga o nascimento a elas pela
 sessão. Classificação para a remoção: `project`, onde `project_id = ?`. Nascimento
 descartado ou abandonado fica fora de qualquer projeto, como as runs sem item.
 
@@ -179,7 +179,7 @@ Gravar? [S/n/d]   (n deixa a proposta pendente · d descarta)
 
 ## Gravação
 
-Pelo `init`, com a stack aceita (como `--stack`; `outra` segue sem stack, com "Stack: a
+Pelo `preparar`, com a stack aceita (como `--stack`; `outra` segue sem stack, com "Stack: a
 definir" no item da base de testes) e:
 
 - `regras-criticas.md` do modelo com os caminhos e os conceitos aceitos;
@@ -188,9 +188,9 @@ definir" no item da base de testes) e:
 - `CLAUDE.md` na raiz, se aceito e se ainda não existir (conferido de novo na gravação);
 - `births.status = accepted`, com a proposta gravada e o projeto.
 
-Depois, um commit "mabel nascer" na branch atual só com o `.mabel/` e o `CLAUDE.md` criado
+Depois, um commit "mabel criar" na branch atual só com o `.mabel/` e o `CLAUDE.md` criado
 (o resto do índice fica como está, como no `commitMabelDir`), e o resumo: arquivos criados, itens, regras críticas, custo
-das rodadas e o próximo passo (`mabel refinar` para os itens críticos, depois `mabel run`).
+das rodadas e o próximo passo (`mabel refinar` para os itens críticos, depois `mabel rodar`).
 
 ## Saída `--json`
 
@@ -209,32 +209,32 @@ vem `projeto` (`id`, `nome`, `raiz`) e `arquivos`.
 
 1. **Rodadas**: etapa `birth`, prompt, esquema, validação, tabela `births`, saldo e as
    perguntas no TTY; no fim, a proposta é mostrada, sem gravar.
-2. **Revisão e gravação**: revisão no TTY, gravação pelo `init`, `git init` no diretório
+2. **Revisão e gravação**: revisão no TTY, gravação pelo `preparar`, `git init` no diretório
    vazio, o commit do `.mabel/` e do `CLAUDE.md` e o G10 atualizado no contrato.
 3. **Sem TTY**: `--responder`, `--aceitar` (com `--proposta`), `--descartar`, `--lista`
    e `--json`.
 
 ## Critérios de aceite
 
-1. `nascer "<descrição>"` num diretório vazio roda a etapa `birth` (auditada, hermética, só
+1. `criar "<descrição>"` num diretório vazio roda a etapa `birth` (auditada, hermética, só
    leitura) e grava o nascimento; com perguntas, a rodada seguinte retoma a mesma sessão
    com as respostas.
 2. Na terceira rodada, a proposta vem sem perguntas; a validação recusa conceito
    inexistente e dependência para frente, e a correção roda na mesma sessão.
-3. A revisão aceita, edita e descarta cada parte; a gravação cria o `.mabel/` pelo `init`,
+3. A revisão aceita, edita e descarta cada parte; a gravação cria o `.mabel/` pelo `preparar`,
    com as regras críticas e o backlog aceitos, e o `CLAUDE.md` só se ele não existir.
 4. Sem testes, "Estabelecer base de testes" é o item 1 e os itens propostos sem dependência
    dependem dele.
-5. Num repositório com código, o agente recebe a detecção do `init` e o `CLAUDE.md`
+5. Num repositório com código, o agente recebe a detecção do `preparar` e o `CLAUDE.md`
    existente, que não é sobrescrito.
-6. Fora do TTY, `nascer`, `--responder`, `--aceitar` e `--descartar` não perguntam nada e
+6. Fora do TTY, `criar`, `--responder`, `--aceitar` e `--descartar` não perguntam nada e
    escrevem uma linha de JSON com `"versao": 1` em `--json`; o que falta sai com código 1.
 7. Projeto Mabel e diretório com arquivos sem git são recusados.
 8. A tabela `births` está classificada para a remoção.
 
 ## Fora desta entrega (vai para o `BACKLOG.md`)
 
-- `mabel add --assistido`, reusando o motor de proposta de itens.
+- `mabel adicionar --assistido`, reusando o motor de proposta de itens.
 - Acrescentar ao `CLAUDE.md` existente.
 - `setup` e `verify` propostos pelo agente para stack fora do catálogo.
 - Nascer a partir de um documento (`--de <arquivo>`) em vez da descrição.
@@ -243,10 +243,10 @@ vem `projeto` (`id`, `nome`, `raiz`) e `arquivos`.
 ## Perguntas para o usuário (respondidas em 2026-10-24: todas as recomendações aceitas)
 
 1. **Commit do `CLAUDE.md`** (muda o G10). Recomendo: o aceite na revisão autoriza um
-   commit "mabel nascer" com o `.mabel/` e o `CLAUDE.md` criado (só esses caminhos), e o
-   G10 passa a incluir "e o que o humano aceitou no `mabel nascer`". Sem o commit, os
-   worktrees dos itens nascem sem o `CLAUDE.md` até o usuário commitar, e o `run` não o
-   commita (só o `.mabel/`). Alternativa: não commitar e avisar, como o `init` faz sem TTY.
+   commit "mabel criar" com o `.mabel/` e o `CLAUDE.md` criado (só esses caminhos), e o
+   G10 passa a incluir "e o que o humano aceitou no `mabel criar`". Sem o commit, os
+   worktrees dos itens nascem sem o `CLAUDE.md` até o usuário commitar, e o `rodar` não o
+   commita (só o `.mabel/`). Alternativa: não commitar e avisar, como o `preparar` faz sem TTY.
 2. **`git init` no diretório vazio**. Recomendo fazer sem perguntar, porque não há nada a
    perder, e avisar no resumo. Alternativa: perguntar no TTY e exigir `--git-init` fora dele.
 3. **Limite de rodadas**. Recomendo 3, com até 5 perguntas cada. Alternativa: uma rodada

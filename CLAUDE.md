@@ -43,4 +43,3 @@ com agentes, de forma auditável e com intervenção humana só em regras de neg
 - `npm run check` (typecheck + testes) precisa passar antes de qualquer commit.
 - Tabela nova no banco ou diretório novo em `~/.mabel`: classifique em `src/projects.ts`
   se entra na remoção de projeto (`docs/specs/projetos.md`).
-- `assets/*.txt` são grids editáveis pelo usuário: `#` aceso, `.` apagado.

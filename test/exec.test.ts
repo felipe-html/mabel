@@ -28,7 +28,7 @@ function setup(extra: Record<string, string> = {}) {
     ...extra,
   };
   const exec = (...args: string[]) =>
-    spawnSync(process.execPath, [...NODE_ARGS, 'exec', ...args], { encoding: 'utf8', env, cwd: root });
+    spawnSync(process.execPath, [...NODE_ARGS, 'pedir', ...args], { encoding: 'utf8', env, cwd: root });
   return { root, home, marker, env, exec };
 }
 
@@ -171,7 +171,7 @@ test('claude saindo com código diferente de 0 resulta em failed com error', () 
 
 test('SIGINT marca a run como interrupted e encerra o claude', async () => {
   const { home, marker, env, root } = setup({ FAKE_CLAUDE_HANG: '1' });
-  const child = spawn(process.execPath, [...NODE_ARGS, 'exec', 'oi'], { env, cwd: root });
+  const child = spawn(process.execPath, [...NODE_ARGS, 'pedir', 'oi'], { env, cwd: root });
   let stdout = '';
   await new Promise<void>((resolve) => {
     child.stdout.on('data', (chunk: Buffer) => {

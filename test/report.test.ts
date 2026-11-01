@@ -71,8 +71,8 @@ test('P.5 critério 1: relatório com as seções, regenerado a cada integraçã
   );
   // Não versionado: ignorado no repositório (projeto novo, pelo .gitignore do init).
   assert.ok(tryGit(q.root, 'check-ignore', '-q', '.mabel/run.md') !== undefined);
-  // `mabel integracao` mostra as seções de unidade do run.md.
-  const cli = q.cli('integracao');
+  // `mabel entregar` sem unidade mostra as seções de unidade do run.md.
+  const cli = q.cli('entregar');
   assert.equal(cli.status, 0, cli.stderr);
   assert.match(cli.stdout, /^## Prontas para entregar\n- avulso #1 A · mabel entregar #1\n- avulso #2 B · mabel entregar #2\n/);
   assert.match(cli.stdout, /main \([0-9a-f]+\) \+ 2 unidades/);

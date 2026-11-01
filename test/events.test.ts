@@ -61,7 +61,7 @@ test('critério 2: um run produz etapa iniciou, ferramenta, gate e etapa termino
         .run(new Date().toISOString(), reset),
   );
 
-  const run = ctx.cli('run');
+  const run = ctx.cli('rodar');
   assert.equal(run.status, 0, run.stderr);
   await stream.waitFor((event) => event.tipo === 'fila' && event.estado === 'parada');
   assert.equal(await stream.close(), 0);
@@ -168,7 +168,7 @@ test('fila: espera por saldo, retomada na próxima etapa e fim pausado por saldo
   queue(9, 'pause', 'integration', 'integração em conflito');
   queue(10, 'stop', 'queue', 'paused');
   assert.deepEqual(states(pollEvents(ctx.db, cursor)), ['fila rodando', 'fila parada']);
-  // O início e o fim não entram na auditoria do `mabel projeto`.
+  // O início e o fim não entram na auditoria do `mabel auditar`.
   assert.deepEqual(listQueueEvents(ctx.db, ctx.project.id).map((e) => e.kind), ['wait', 'answer', 'pause', 'pause']);
 
   // Motivo da falha: ctrl+c e limite de uso.

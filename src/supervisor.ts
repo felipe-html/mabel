@@ -15,7 +15,7 @@ import { type ArgSpec, type OptionSpecs, jsonOption } from './options.ts';
 
 /**
  * Supervisor (`docs/specs/integracao-externa.md`): um processo por máquina que inicia as
- * filas em segundo plano. Cada fila é um `mabel run` destacado, com a saída num log por
+ * filas em segundo plano. Cada fila é um `mabel rodar` destacado, com a saída num log por
  * projeto e a trava de sempre; o supervisor pode cair e voltar sem levar as filas junto.
  */
 
@@ -71,7 +71,7 @@ export function markQueueStopped(home: string, projectId: string, pid?: number):
 }
 
 /** Cabeçalho que separa as execuções no log; o `anexar` começa pelo último. */
-export const LOG_HEADER = '── mabel run';
+export const LOG_HEADER = '── mabel rodar';
 
 // Protocolo ------------------------------------------------------------------------------
 
@@ -149,13 +149,13 @@ async function launch(db: DatabaseSync, home: string, root: string, args: string
     throw error;
   }
   const holder = lockHolder(home, project.id);
-  if (holder !== undefined) return { ok: false, erro: `Já há um \`mabel run\` neste projeto (pid ${holder}).` };
+  if (holder !== undefined) return { ok: false, erro: `Já há um \`mabel rodar\` neste projeto (pid ${holder}).` };
 
   mkdirSync(queuesDir(home), { recursive: true });
   const logPath = queueLogPath(home, project.id);
   const fd = openSync(logPath, 'a');
   writeFileSync(fd, `\n${LOG_HEADER} ${args.join(' ')} · ${new Date().toISOString()} ──\n`);
-  const child = spawn(process.execPath, [...NODE_ARGS, CLI, 'run', ...args], {
+  const child = spawn(process.execPath, [...NODE_ARGS, CLI, 'rodar', ...args], {
     cwd: project.root,
     detached: true,
     stdio: ['ignore', fd, fd],
@@ -185,7 +185,7 @@ async function launch(db: DatabaseSync, home: string, root: string, args: string
   const outcome = await Promise.race([started, exited, timeout]);
   if (outcome === 'started' || outcome === 'timeout') return { ok: true, pid };
   const tail = lastSection(logPath).split('\n').slice(1).join('\n').trim();
-  return { ok: false, erro: tail || `o \`mabel run\` saiu com código ${outcome}` };
+  return { ok: false, erro: tail || `o \`mabel rodar\` saiu com código ${outcome}` };
 }
 
 /** Filas que o supervisor mantém: as `rodando` cujo processo segue vivo. */
@@ -439,7 +439,7 @@ async function state(home: string): Promise<number> {
 
 // anexar e parar -------------------------------------------------------------------------
 
-export const attachUsage = 'mabel anexar';
+export const attachUsage = 'mabel acompanhar';
 export const stopUsage = 'mabel parar [--json]';
 
 export const stopOptions = { json: jsonOption } satisfies OptionSpecs;
@@ -495,7 +495,7 @@ export async function attachCommand(args: string[]): Promise<number> {
   }
   const path = queueLogPath(home, project.id);
   if (!existsSync(path)) {
-    process.stdout.write('Nenhuma fila em segundo plano neste projeto. Inicie com `mabel run --fundo`.\n');
+    process.stdout.write('Nenhuma fila em segundo plano neste projeto. Inicie com `mabel rodar --fundo`.\n');
     return 0;
   }
   const section = lastSection(path);
@@ -528,11 +528,11 @@ export async function attachCommand(args: string[]): Promise<number> {
       }
     }, 200);
   });
-  if (detached) process.stdout.write(style.dim('\nSolto; a fila continua. `mabel anexar` volta a acompanhar.\n'));
+  if (detached) process.stdout.write(style.dim('\nSolto; a fila continua. `mabel acompanhar` volta a acompanhar.\n'));
   return 0;
 }
 
-/** Pede ao `mabel run` do projeto (em segundo plano ou num terminal) que pare depois da etapa. */
+/** Pede ao `mabel rodar` do projeto (em segundo plano ou num terminal) que pare depois da etapa. */
 export function stopCommand(args: string[]): number {
   const json = args.length === 1 && args[0] === '--json';
   if (args.length > 0 && !json) return fail('argumento_invalido', `Argumento inesperado: ${args.join(' ')}.`, stopUsage);

@@ -162,7 +162,7 @@ test('trava: segundo processo no mesmo projeto falha com mensagem clara; lock ó
   writeFileSync(lockPath(home, 'p'), `${holder.pid}\n`);
   assert.throws(() => acquireLock(home, 'p'), (error: Error) => {
     assert.ok(error instanceof LockError);
-    assert.match(error.message, new RegExp(`Já há um \`mabel run\` neste projeto \\(pid ${holder.pid}\\)`));
+    assert.match(error.message, new RegExp(`Já há um \`mabel rodar\` neste projeto \\(pid ${holder.pid}\\)`));
     return true;
   });
 

@@ -220,13 +220,13 @@ function colorFor(balance: number, paint: Paint): (text: string) => string {
 export function renderBalanceHeader(readings: BalanceReading[], now: Date, paint: Paint = plainPaint): string[] {
   const byWindow = new Map(readings.map((reading) => [reading.window, reading]));
   if (BALANCE_WINDOWS.every((window) => !byWindow.has(window))) {
-    return [paint.dim(' saldo desconhecido · mabel status --atualizar')];
+    return [paint.dim(' saldo desconhecido · mabel conferir --atualizar')];
   }
 
   const lines = BALANCE_WINDOWS.map((window) => {
     const label = ` ${LABELS[window]}  `;
     const reading = byWindow.get(window);
-    if (!reading) return `${label}${paint.dim('sem leitura · mabel status --atualizar')}`;
+    if (!reading) return `${label}${paint.dim('sem leitura · mabel conferir --atualizar')}`;
 
     const balance = balanceOf(reading);
     const filled = Math.round(balance * 10);
@@ -258,7 +258,7 @@ function visibleLength(text: string): number {
 export function renderBalanceFooter(readings: BalanceReading[], now: Date, width: number, paint: Paint = plainPaint): string {
   const byWindow = new Map(readings.map((reading) => [reading.window, reading]));
   if (BALANCE_WINDOWS.every((window) => !byWindow.has(window))) {
-    return paint.dim(' saldo desconhecido · /status --atualizar'.slice(0, width));
+    return paint.dim(' saldo desconhecido · mabel conferir --atualizar'.slice(0, width));
   }
   const newest = Math.max(...readings.map((reading) => reading.observedAt.getTime()));
   const age = paint.dim(formatAge(new Date(newest), now));

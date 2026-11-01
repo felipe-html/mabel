@@ -30,7 +30,7 @@ function twoProjects() {
   const a = setupProject('\n## A\nprimeiro\n');
   prepare(a.root);
   const rootB = makeRepo({ 'src/index.js': '', 'package.json': JSON.stringify({ scripts: { test: 'node --test' } }) });
-  assert.equal(node(['init'], rootB, a.env()).status, 0);
+  assert.equal(node(['preparar'], rootB, a.env()).status, 0);
   writeFileSync(join(rootB, '.mabel', 'backlog.md'), `${BACKLOG_TEMPLATE}\n## B\nsegundo\n`);
   prepare(rootB);
   const b = resolveProject(a.db, rootB);
@@ -122,7 +122,7 @@ test('mabel parar num run em primeiro plano; sem fila, avisa que não está roda
   assert.equal(idle.status, 0);
   assert.match(idle.stdout, /não está rodando/);
 
-  const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'run'], { cwd: p.root, env: p.env() });
+  const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'rodar'], { cwd: p.root, env: p.env() });
   let stdout = '';
   child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString('utf8')));
   await until(() => stdout.includes('▸ planejar'), 'etapa iniciada');
@@ -143,7 +143,7 @@ test('mabel parar num run em primeiro plano; sem fila, avisa que não está roda
 
 test('run --fundo sem supervisor diz como iniciá-lo', () => {
   const p = setupProject('\n## A\nprimeiro\n');
-  const result = p.cli('run', '--fundo');
+  const result = p.cli('rodar', '--fundo');
   assert.equal(result.status, 1);
   assert.match(result.stderr, /supervisor não está rodando.*mabel supervisor instalar/);
 });
@@ -154,7 +154,7 @@ test('supervisor: duas filas seguem depois que o terminal sai; anexar mostra ao 
   const supervisor = await startSupervisor(p.home, p.env());
   try {
     for (const project of [p.a, p.b]) {
-      const result = p.cliIn(project, 'run', '--fundo');
+      const result = p.cliIn(project, 'rodar', '--fundo');
       assert.equal(result.status, 0, result.stderr);
       assert.match(result.stdout, /em segundo plano \(pid \d+\)/);
     }
@@ -162,14 +162,14 @@ test('supervisor: duas filas seguem depois que o terminal sai; anexar mostra ao 
       await until(() => existsSync(queueLogPath(p.home, project.id)) && readFileSync(queueLogPath(p.home, project.id), 'utf8').includes('▸ planejar'), `planejar em ${project.name}`);
       assert.ok(lockHolder(p.home, project.id) !== undefined);
     }
-    const json = JSON.parse(p.cliIn(p.a, 'projetos', '--json').stdout);
+    const json = JSON.parse(p.cliIn(p.a, 'listar', '--json').stdout);
     assert.deepEqual(json.projetos.map((project: { fila: string }) => project.fila), ['rodando', 'rodando']);
     const state = p.cliIn(p.a, 'supervisor', 'estado');
     assert.equal(state.status, 0, state.stderr);
     assert.equal(state.stdout.match(/pid \d+ · desde/g)?.length, 2);
 
     for (const project of [p.a, p.b]) {
-      const attach = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'anexar'], { cwd: project.root, env: p.env() });
+      const attach = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'acompanhar'], { cwd: project.root, env: p.env() });
       let out = '';
       attach.stdout.on('data', (chunk: Buffer) => (out += chunk.toString('utf8')));
       await until(() => out.includes('▸ planejar'), `anexar em ${project.name}`);
@@ -198,7 +198,7 @@ test('supervisor: saldo abaixo do piso pausa as duas filas, com o evento fila de
   const cursor = eventCursor(p.db);
   const supervisor = await startSupervisor(p.home, p.env());
   try {
-    for (const project of [p.a, p.b]) assert.equal(p.cliIn(project, 'run', '--fundo').status, 0);
+    for (const project of [p.a, p.b]) assert.equal(p.cliIn(project, 'rodar', '--fundo').status, 0);
     for (const project of [p.a, p.b]) {
       await until(() => lastStartStop(p.db, project.id)?.[0] === 'stop', `fim da fila de ${project.name}`);
       assert.ok(listQueueEvents(p.db, project.id).some((e) => e.kind === 'pause' && e.cause === 'seven_day'));
@@ -211,7 +211,7 @@ test('supervisor: saldo abaixo do piso pausa as duas filas, com o evento fila de
     .map((e) => e.projeto)
     .sort();
   assert.deepEqual(paused, [p.a.name, p.b.name].sort());
-  const json = JSON.parse(p.cliIn(p.a, 'projetos', '--json').stdout);
+  const json = JSON.parse(p.cliIn(p.a, 'listar', '--json').stdout);
   assert.deepEqual(json.projetos.map((project: { fila: string }) => project.fila), ['pausada_por_saldo', 'pausada_por_saldo']);
 });
 
@@ -291,12 +291,12 @@ test('sem TTY, nenhum comando de cliente espera resposta; o que falta vira códi
     });
 
   const cases: [string, string[], number, RegExp][] = [
-    [p.root, ['run', '--fundo'], 1, /mabel supervisor instalar/],
+    [p.root, ['rodar', '--fundo'], 1, /mabel supervisor instalar/],
     [p.root, ['parar'], 0, /não está rodando/],
     [p.root, ['aprovar'], 1, /Informe o número do item/],
     [p.root, ['responder', '1'], 1, /Informe a resposta/],
-    [p.root, ['projeto', 'remover', p.project.name], 1, /--confirmar/],
-    [empty, ['init'], 0, /\.mabel\/ criado/],
+    [p.root, ['auditar', 'remover', p.project.name], 1, /--confirmar/],
+    [empty, ['preparar'], 0, /\.mabel\/ criado/],
   ];
   for (const [cwd, args, code, output] of cases) {
     const result = await run(cwd, ...args);

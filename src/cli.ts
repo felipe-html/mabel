@@ -1,11 +1,10 @@
 #!/usr/bin/env -S node --disable-warning=ExperimentalWarning
 import { readFileSync } from 'node:fs';
-import { banner } from './banner.ts';
 import { type Command, commands, findCommand } from './commands.ts';
 import { Interrupted } from './ask.ts';
 import { renderHelp } from './completion.ts';
 import { fail, setJsonErrors } from './errors.ts';
-import { repl } from './repl.ts';
+import { home as homeScreen } from './home.ts';
 import { style } from './style.ts';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
@@ -32,18 +31,11 @@ function menu(): string {
   ].join('\n');
 }
 
+/** Sem argumentos: a tela inicial no terminal; fora dele, a lista de comandos. */
 async function home(): Promise<number> {
-  if (process.env.MABEL_BANNER !== '0') {
-    process.stdout.write(`\n${banner(process.stdout.columns ?? 80)}\n\n`);
-  }
-  process.stdout.write(`${style.dim(`v${pkg.version} · harness para frotas de agentes`)}\n\n`);
-
-  if (!interactive) {
-    process.stdout.write(`${menu()}\n`);
-    return 0;
-  }
-
-  return repl();
+  if (interactive) return homeScreen();
+  process.stdout.write(`${style.dim(`v${pkg.version} · harness para frotas de agentes`)}\n\n${menu()}\n`);
+  return 0;
 }
 
 async function main(argv: string[]): Promise<number> {

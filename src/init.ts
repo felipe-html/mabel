@@ -39,7 +39,7 @@ import type { OptionSpecs } from './options.ts';
 
 export const TEST_BASE_TITLE = 'Estabelecer base de testes';
 
-export const initUsage = `mabel init [--stack ${STACKS.map((stack) => stack.id).join('|')}]`;
+export const initUsage = `mabel preparar [--stack ${STACKS.map((stack) => stack.id).join('|')}]`;
 
 export const initOptions = {
   stack: { type: 'string', value: '<id>', values: 'stack', description: 'Fixa a stack em vez de detectar pelo código' },
@@ -292,7 +292,7 @@ export async function init(args: string[]): Promise<number> {
   }
   const root = gitRoot(process.cwd());
   if (!root) {
-    process.stderr.write('Não é um repositório git. Rode `git init` aqui e depois `mabel init`.\n');
+    process.stderr.write('Não é um repositório git. Rode `git init` aqui e depois `mabel preparar`.\n');
     return 1;
   }
 
@@ -333,7 +333,7 @@ export async function init(args: string[]): Promise<number> {
         ? await chooseStack('Projeto sem código. Qual stack o projeto vai usar?', true)
         : await chooseStack('Não reconheci a stack do projeto. Qual é?', false);
       if (choice === null) {
-        process.stdout.write('init cancelado. Nada foi alterado.\n');
+        process.stdout.write('Preparação cancelada. Nada foi alterado.\n');
         return 1;
       }
       if ('stack' in choice) stack = choice.stack;
@@ -381,12 +381,12 @@ async function offerCommit(root: string): Promise<void> {
     commitMabelDir(root);
     process.stdout.write('Commit criado.\n');
   } else {
-    process.stdout.write('Commite com `git add .mabel && git commit -m "mabel init" -- .mabel` antes do `mabel run`.\n');
+    process.stdout.write('Commite com `git add .mabel && git commit -m "mabel preparar" -- .mabel` antes do `mabel rodar`.\n');
   }
 }
 
 /** Commita só o `.mabel/`, sem levar o que o usuário tiver no índice. */
 export function commitMabelDir(root: string): void {
   git(root, 'add', MABEL_DIR);
-  git(root, 'commit', '-q', '-m', 'mabel init', '--', MABEL_DIR);
+  git(root, 'commit', '-q', '-m', 'mabel preparar', '--', MABEL_DIR);
 }

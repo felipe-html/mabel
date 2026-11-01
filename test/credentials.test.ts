@@ -34,7 +34,7 @@ test('validade: sem aviso longe do fim; aviso a 14 dias, no dia e depois de venc
   assert.match(String(expiryWarning(home, 'figma', at('2027-01-06'))), /FIGMA_TOKEN vence em 14 dias \(20\/01\/2027\)/);
   assert.match(String(expiryWarning(home, 'figma', at('2027-01-19'))), /vence amanhã/);
   assert.match(String(expiryWarning(home, 'figma', at('2027-01-20'))), /vence hoje/);
-  assert.match(String(expiryWarning(home, 'figma', at('2027-01-21'))), /venceu em 20\/01\/2027: crie outro .*mabel credencial figma --expira/);
+  assert.match(String(expiryWarning(home, 'figma', at('2027-01-21'))), /venceu em 20\/01\/2027: crie outro .*mabel credenciar figma --expira/);
   assert.equal(expired(home, 'figma', at('2027-01-20')), false);
   assert.equal(expired(home, 'figma', at('2027-01-21')), true);
   assert.equal(expiryWarnings(home, at('2027-01-21')).length, 1);
@@ -44,14 +44,14 @@ test('validade: sem aviso longe do fim; aviso a 14 dias, no dia e depois de venc
 
 test('credencial pelo CLI: registra, recusa data inválida e o status avisa perto do fim', () => {
   const { cli, env } = setupProject();
-  assert.equal(cli('credencial', 'figma', '--expira', '2027-02-30').status, 1);
-  assert.equal(cli('credencial', 'github', '--expira', '2027-01-20').status, 1);
+  assert.equal(cli('credenciar', 'figma', '--expira', '2027-02-30').status, 1);
+  assert.equal(cli('credenciar', 'github', '--expira', '2027-01-20').status, 1);
   const soon = new Date(Date.now() + 3 * 86_400_000);
   const date = `${soon.getFullYear()}-${String(soon.getMonth() + 1).padStart(2, '0')}-${String(soon.getDate()).padStart(2, '0')}`;
-  const result = cli('credencial', 'figma', '--expira', date);
+  const result = cli('credenciar', 'figma', '--expira', date);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Validade de figma registrada: .* \(3 dias\)\.\nFIGMA_TOKEN vence em 3 dias/);
-  assert.match(cli('credencial').stdout, /figma · FIGMA_TOKEN (definido|ausente) · vence em/);
-  assert.match(cli('status').stdout, /FIGMA_TOKEN vence em 3 dias/);
+  assert.match(cli('credenciar').stdout, /figma · FIGMA_TOKEN (definido|ausente) · vence em/);
+  assert.match(cli('conferir').stdout, /FIGMA_TOKEN vence em 3 dias/);
   assert.ok(env().MABEL_HOME);
 });

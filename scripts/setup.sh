@@ -109,7 +109,7 @@ else
   hint "Instale com: curl -fsSL https://claude.ai/install.sh | bash"
 fi
 
-# Sandbox do Claude Code no terminal do agente (G4): sem ele, o `mabel run` não inicia.
+# Sandbox do Claude Code no terminal do agente (G4): sem ele, o `mabel rodar` não inicia.
 case "$(uname -s)" in
   Darwin)
     if [[ -x /usr/bin/sandbox-exec ]]; then

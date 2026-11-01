@@ -1,6 +1,6 @@
 /**
  * Opções e argumentos dos comandos, com a explicação de cada um. A mesma declaração vai para
- * o `parseArgs`, o `--help`, o autocompletar do zsh, a lista do modo Mabel e o
+ * o `parseArgs`, o `--help`, o autocompletar do zsh e o
  * `mabel comandos --json`: ninguém precisa decorar uma opção para usá-la.
  */
 
@@ -20,7 +20,7 @@ export interface OptionSpec {
 /** Repassado tal como está ao `parseArgs`, que ignora os campos de descrição. */
 export type OptionSpecs = Record<string, OptionSpec>;
 
-/** Palavra fixa numa posição, como `remover` em `mabel projeto remover`. */
+/** Palavra fixa numa posição, como `remover` em `mabel auditar remover`. */
 export interface Choice {
   name: string;
   description: string;

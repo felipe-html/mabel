@@ -35,12 +35,6 @@ import { guidedProblems } from './helpers.ts';
 
 const SRC = join(import.meta.dirname, '..', 'src');
 
-/**
- * Saem no T.2, com o modo Mabel com `/` (`docs/specs/terminal.md`, incrementos): o laço de
- * prompt e o autocompletar dele ainda usam tab e a linha de comando.
- */
-const LEAVING = new Set(['repl.ts', 'line.ts']);
-
 /** Textos entre aspas de um arquivo, sem os comentários. */
 function literals(source: string): string[] {
   const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
@@ -49,7 +43,7 @@ function literals(source: string): string[] {
 
 test('nenhum texto do código pede tecla com significado próprio, [s/N] ou sintaxe', () => {
   const problems: string[] = [];
-  for (const file of readdirSync(SRC).filter((name) => name.endsWith('.ts') && !LEAVING.has(name))) {
+  for (const file of readdirSync(SRC).filter((name) => name.endsWith('.ts'))) {
     for (const text of literals(readFileSync(join(SRC, file), 'utf8'))) {
       for (const problem of guidedProblems(text)) problems.push(`${file}: ${problem}`);
     }

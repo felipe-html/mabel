@@ -91,7 +91,7 @@ function projectSummary(db: DatabaseSync): string[] {
   ];
 }
 
-/** `mabel status --json`: a fila do projeto atual por estado, as etapas em andamento e o saldo. */
+/** `mabel conferir --json`: a fila do projeto atual por estado, as etapas em andamento e o saldo. */
 export function statusJson(db: DatabaseSync, home: string, now: Date): Record<string, unknown> {
   const saldo = balanceJson(db, home, latestReadings(db), now);
   const project = currentProject(db);
@@ -122,7 +122,7 @@ export function statusJson(db: DatabaseSync, home: string, now: Date): Record<st
   };
 }
 
-export const statusUsage = 'mabel status [--atualizar] [--json]';
+export const statusUsage = 'mabel conferir [--atualizar] [--json]';
 export const balanceUsage = 'mabel saldo [--atualizar] [--json]';
 
 export const balanceOptions = {
@@ -192,6 +192,8 @@ export function status(args: string[]): Promise<number> {
       return;
     }
     const lines = [...renderBalanceHeader(latestReadings(db), new Date(), paint), ''];
+    const pause = balancePause(db, home, new Date());
+    if (pause) lines.push(paint.warn(`${pause.tipo === 'pausa' ? 'Fila pausada' : 'Fila esperando'} (${pause.projeto}): ${pause.motivo}`), '');
     const credentials = expiryWarnings(home);
     if (credentials.length > 0) lines.push(...credentials.map((warning) => paint.warn(warning)), '');
     const summary = projectSummary(db);
