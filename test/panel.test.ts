@@ -109,6 +109,22 @@ test('planejamento: fase no cabeçalho, planejar girando, G2 em linha própria, 
   assert.deepEqual(lines.flatMap(guidedProblems), []);
 });
 
+test('sem item em andamento: a abertura da fila gira com a última linha do log', () => {
+  // Item já planejado numa fila anterior: a fila abre (integração, branches) e vai direto à execução.
+  const panel = state([item(4, 'Moldura e CSS', 'planned')], [start(s(0))], { phase: 'execute' });
+  const log = ['── mabel rodar  · 2026-11-01T17:02:00.000Z · neste terminal ──', 'main trazida para a mabel/spec/tema-login', ''];
+  const lines = draw(panel, view(), 40, { log, now: s(24) });
+  assert.match(lines[0] ?? '', / execução +fila 0\/1/);
+  assert.ok(has(lines, /^ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] abrindo a fila {8}main trazida para a mabel\/spec\/tema-login +24s$/));
+  assert.ok(has(lines, /^ ◌ #4 {2}Moldura e CSS +planejado$/));
+
+  // Entre um item e outro, a linha volta como "próximo item"; com um item ativo, some.
+  const between = reducePanel(reducePanel(panel, tr(s(30), 4, 'planned', 'executing')), tr(s(40), 4, 'executing', 'needs_human'));
+  assert.ok(has(draw(between, view(), 40, { now: s(52) }), /^ . próximo item +12s$/));
+  assert.ok(!has(draw(reducePanel(panel, tr(s(30), 4, 'planned', 'executing'))), /abrindo a fila|próximo item/));
+  assert.ok(!has(draw(reducePanel(panel, { kind: 'queue', at: s(50), event: 'stop', detail: 'empty' })), /abrindo a fila/));
+});
+
 test('execução: plano aceito numa linha, executar com modelo e turno, gates e merge na unidade', () => {
   const lines = draw(executing());
   assert.match(lines[0] ?? '', / execução +fila 0\/2/);

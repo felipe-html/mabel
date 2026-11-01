@@ -102,6 +102,8 @@ export interface PanelState {
   wait: { at: number; detail: string; until: number | null } | null;
   /** Motivo da última pausa (a fila encerra pausada). */
   pause: string | null;
+  /** Último registro da fila (evento, transição, run ou gate), para o tempo da preparação. */
+  lastAt: number | null;
 }
 
 export type PanelEvent =
@@ -132,6 +134,7 @@ export function panelState(base: PanelBase): PanelState {
     ended: null,
     wait: null,
     pause: null,
+    lastAt: null,
   };
 }
 
@@ -141,7 +144,8 @@ const EXECUTION: ItemStatus[] = ['executing', 'verifying', 'reviewing'];
 
 /** Um evento a mais no estado. Não muda o estado recebido. */
 export function reducePanel(state: PanelState, event: PanelEvent): PanelState {
-  const next: PanelState = { ...state, items: state.items };
+  const latest = event.kind === 'run' ? Math.max(event.at, event.run.endedAt ?? 0) : event.at;
+  const next: PanelState = { ...state, items: state.items, lastAt: Math.max(state.lastAt ?? 0, latest) };
   const touch = (number: number, change: (item: PanelItem) => PanelItem) => {
     next.items = next.items.map((item) => (item.number === number ? change(item) : item));
   };
@@ -223,7 +227,8 @@ export function loadPanel(db: DatabaseSync, home: string, project: Project, scop
     integration: Boolean(project.config.integracao),
     verify: project.config.verify.map(({ name, command }) => ({ name, command })),
     scope,
-    phase: batch ? 'plan' : 'execute',
+    // Em lote, só há planejamento se algum item está pronto: com todos planejados, a fila executa.
+    phase: batch && items.some((item) => item.status === 'ready' || item.status === 'planning') ? 'plan' : 'execute',
   };
 
   const events: PanelEvent[] = [];
@@ -696,8 +701,38 @@ export interface PanelFrame {
   now: number;
 }
 
+/**
+ * O que a fila faz sem item em andamento: a abertura (commit do `.mabel/`, a base trazida
+ * para as branches, a integração refeita) ou a escolha do próximo item. O texto é a última
+ * linha do log da fila; o tempo conta do último registro no banco.
+ */
+interface Preparing {
+  label: string;
+  hint: string;
+  since: number;
+}
+
+/** Última linha com texto do log, sem o cabeçalho da fila nem as cores. */
+function lastLogLine(log: string[]): string {
+  for (let i = log.length - 1; i >= 0; i--) {
+    const text = (log[i] ?? '').replace(/\x1b\[[0-9;]*m/g, '').trim();
+    if (text && !text.startsWith('── mabel ')) return text;
+  }
+  return '';
+}
+
+function preparing(state: PanelState, view: PanelView, frame_: PanelFrame): Preparing | null {
+  if (state.ended || view.question || state.items.some((item) => IN_PROGRESS.includes(item.status))) return null;
+  const opening = !state.items.some((item) => item.touched);
+  return {
+    label: opening ? 'abrindo a fila' : 'próximo item',
+    hint: lastLogLine(frame_.log),
+    since: state.lastAt ?? state.started ?? frame_.now,
+  };
+}
+
 /** Corpo do painel (entre o cabeçalho e o rodapé) num layout. */
-function body(state: PanelState, layout: Layout, style: ScreenStyle, width: number, now: number): string[] {
+function body(state: PanelState, layout: Layout, style: ScreenStyle, width: number, now: number, prep: Preparing | null = null): string[] {
   const spin = SPINNER[Math.floor(now / 100) % SPINNER.length] as string;
   const items = panelItems(state);
   const done = items.filter((item) => CONCLUDED.includes(item.status) && item.doneAt !== null).sort((a, b) => (a.doneAt as number) - (b.doneAt as number));
@@ -711,6 +746,11 @@ function body(state: PanelState, layout: Layout, style: ScreenStyle, width: numb
     if (layout.doneStages) {
       for (const stage of stageRows(state, item, now)) out.push(...stageLines(stage, style, width, now, spin, false));
     }
+  }
+
+  if (prep) {
+    const elapsed = formatDuration(Math.max(0, now - prep.since));
+    out.push(line(` ${style.accent(spin)} ${style.bold(prep.label.padEnd(LABEL_WIDTH + 3))}`, prep.hint, style.dim, elapsed, width));
   }
 
   const rest = items.filter((item) => !done.includes(item));
@@ -808,8 +848,9 @@ export function renderPanel(state: PanelState, view: PanelView, frame_: PanelFra
   layouts.push({ tools: false, doneStages: false, pending: 0, done: 0, humanDetail: false, blanks: true });
   layouts.push({ tools: false, doneStages: false, pending: 0, done: 0, humanDetail: false, blanks: false });
 
+  const prep = preparing(state, view, frame_);
   for (const layout of layouts) {
-    const lines = body(state, layout, style, width, now);
+    const lines = body(state, layout, style, width, now, prep);
     if (lines.length <= room) return [...header, ...lines, ...Array.from({ length: room - lines.length }, () => ''), ...foot];
   }
 
