@@ -12,6 +12,7 @@ import { lockHolder } from './lock.ts';
 import { ProjectError, resolveProject } from './project.ts';
 import { style } from './style.ts';
 import { type ArgSpec, type OptionSpecs, jsonOption } from './options.ts';
+import { interactive } from './ask.ts';
 
 /**
  * Supervisor (`docs/specs/integracao-externa.md`): um processo por máquina que inicia as
@@ -19,8 +20,8 @@ import { type ArgSpec, type OptionSpecs, jsonOption } from './options.ts';
  * projeto e a trava de sempre; o supervisor pode cair e voltar sem levar as filas junto.
  */
 
-const CLI = fileURLToPath(new URL('./cli.ts', import.meta.url));
-const NODE_ARGS = ['--disable-warning=ExperimentalWarning'];
+export const CLI = fileURLToPath(new URL('./cli.ts', import.meta.url));
+export const NODE_ARGS = ['--disable-warning=ExperimentalWarning'];
 
 export function socketPath(home: string): string {
   return join(home, 'supervisor.sock');
@@ -498,13 +499,19 @@ export async function attachCommand(args: string[]): Promise<number> {
     process.stdout.write('Nenhuma fila em segundo plano neste projeto. Inicie com `mabel rodar --fundo`.\n');
     return 0;
   }
-  const section = lastSection(path);
-  process.stdout.write(section);
-  let offset = statSync(path).size;
   const running = () => {
     const state = readQueueState(home, project.id);
     return state !== undefined && state.desired === 'rodando' && processAlive(state.pid);
   };
+  // No terminal, a fila rodando aparece no painel; fora dele, o log de hoje.
+  if (interactive() && running()) {
+    const { queuePanel } = await import('./queuepanel.ts');
+    const { standalone } = await import('./home.ts');
+    return standalone(() => queuePanel({ mode: 'acompanhar', args: [], origin: 'shell' }));
+  }
+  const section = lastSection(path);
+  process.stdout.write(section);
+  let offset = statSync(path).size;
   if (!running()) {
     process.stdout.write(style.dim('\nA fila não está rodando em segundo plano.\n'));
     return 0;
@@ -532,6 +539,27 @@ export async function attachCommand(args: string[]): Promise<number> {
   return 0;
 }
 
+/**
+ * Pede ao `mabel rodar` do projeto que pare depois da etapa e marca a fila em segundo plano
+ * como parada. Devolve o pid avisado, ou `undefined` sem fila rodando.
+ */
+export function requestStop(home: string, projectId: string, db?: DatabaseSync): number | undefined {
+  const pid = lockHolder(home, projectId);
+  // A trava também é usada pela remoção do projeto: só a fila iniciada recebe o pedido.
+  const own = db ?? openDb(home);
+  try {
+    if (pid === undefined || queueFinished(own, projectId)) {
+      markQueueStopped(home, projectId);
+      return undefined;
+    }
+  } finally {
+    if (!db) own.close();
+  }
+  markQueueStopped(home, projectId, pid);
+  process.kill(pid, 'SIGUSR2');
+  return pid;
+}
+
 /** Pede ao `mabel rodar` do projeto (em segundo plano ou num terminal) que pare depois da etapa. */
 export function stopCommand(args: string[]): number {
   const json = args.length === 1 && args[0] === '--json';
@@ -540,16 +568,12 @@ export function stopCommand(args: string[]): number {
   const db = openDb(home);
   try {
     const project = resolveProject(db);
-    const pid = lockHolder(home, project.id);
-    // A trava também é usada pela remoção do projeto: só a fila iniciada recebe o pedido.
-    if (pid === undefined || queueFinished(db, project.id)) {
-      markQueueStopped(home, project.id);
+    const pid = requestStop(home, project.id, db);
+    if (pid === undefined) {
       if (json) writeJson({ parada_pedida: false, pid: null });
       else process.stdout.write('A fila deste projeto não está rodando.\n');
       return 0;
     }
-    markQueueStopped(home, project.id, pid);
-    process.kill(pid, 'SIGUSR2');
     if (json) writeJson({ parada_pedida: true, pid });
     else process.stdout.write(`Pedido enviado (pid ${pid}): a fila para depois da etapa em andamento.\n`);
     return 0;

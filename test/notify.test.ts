@@ -2,12 +2,11 @@ import assert from 'node:assert/strict';
 import type { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
-import { type InboxIO, inboxSession } from '../src/inbox.ts';
 import { syncBacklog } from '../src/items.ts';
 import { notify } from '../src/notify.ts';
 import { writeConfig } from '../src/project.ts';
 import { type QueueOptions, startQueue } from '../src/run.ts';
-import { EXECUTION, EXECUTION_FILES, PLAN, REVIEW_OK, scriptedGuided, setupProject, useScenario } from './helpers.ts';
+import { EXECUTION, EXECUTION_FILES, PLAN, REVIEW_OK, setupProject, useScenario } from './helpers.ts';
 
 /** `spawn` falso: registra a chamada e devolve um processo que não faz nada. */
 function fakeSpawn() {
@@ -108,7 +107,7 @@ test('aviso na pausa, com o motivo', async () => {
   assert.match(q.notices[0]?.[1] ?? '', /^saldo da janela de 7 dias em 15%; fila pausada/);
 });
 
-test('aviso antes de cada pergunta no terminal: saldo, inbox e retomada', async () => {
+test('aviso antes de cada pergunta no terminal: saldo e inbox', async () => {
   const balance = queue('\n## A\nprimeiro\n', DONE);
   balance.lowBalance('five_hour');
   await balance.start({ interactive: true, confirm: async () => true });
@@ -120,10 +119,4 @@ test('aviso antes de cada pergunta no terminal: saldo, inbox e retomada', async 
     'aguardando você: 1 item aguarda você. Abrir a inbox agora?',
     'fila vazia · needs_human 1 · veja .mabel/run.md',
   ]);
-
-  // Retomada: a inbox avisa antes de perguntar se a esteira volta.
-  const io: InboxIO = scriptedGuided(['Responder', 'resposta', 'Retomar a esteira agora']);
-  const waiting: string[] = [];
-  assert.equal(await inboxSession(offer.db, offer.home, offer.project, io, (question) => waiting.push(question)), true);
-  assert.deepEqual(waiting, ['Retomar a esteira agora?']);
 });

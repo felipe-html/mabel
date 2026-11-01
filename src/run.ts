@@ -13,9 +13,8 @@ import {
 import { dataDir, openDb } from './db.ts';
 import { fail } from './errors.ts';
 import { ToolLog, summaryLine } from './exec.ts';
-import { startFooter } from './footer.ts';
 import { formatCost, formatDuration } from './format.ts';
-import { inboxSession, pendingItems, runInbox, terminalIO } from './inbox.ts';
+import { pendingItems } from './inbox.ts';
 import { type Item, type ItemStatus, getItemById, listItems, syncBacklog, transition } from './items.ts';
 import { writeJson } from './json.ts';
 import { type Notify, notify as systemNotify } from './notify.ts';
@@ -31,9 +30,13 @@ import { probeRequest } from './status.ts';
 import { SupervisorUnavailable, request } from './supervisor.ts';
 import { style } from './style.ts';
 import { mabelCodeChanged } from './version.ts';
+import type { ChildMessage, PanelMessage } from './queuepanel.ts';
 import { checkDeliveries } from './delivery.ts';
 import { deleteBranch, isMerged, removeOrphanWorktrees, removeWorktree } from './worktree.ts';
 import { type OptionSpecs, jsonOption } from './options.ts';
+
+/** Variável que diz ao `rodar` filho que ele responde ao painel pelo canal IPC. */
+export const PANEL_ENV = 'MABEL_PAINEL';
 
 export const runUsage = 'mabel rodar [--item <n> | --limite <n>] [--sem-lote] [--fundo [--json]]';
 
@@ -207,7 +210,8 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; stop
   /** Pergunta no terminal: avisa antes, porque a fila fica parada até a resposta. */
   const askHuman = (question: string, action: string, settings: ConfirmSettings, notice = question.trim()) => {
     notify(title, `aguardando você: ${notice}`);
-    return ask(question, action, settings);
+    // Sem texto próprio (a política de saldo), a pergunta é o aviso: o painel a mostra.
+    return ask(question || notice, action, settings);
   };
   const abort = new AbortController();
   const log = new ToolLog(project.root, '    ');
@@ -585,9 +589,15 @@ export async function run(args: string[]): Promise<number> {
 
   const home = dataDir();
   if (values.fundo) return background(home, args.filter((arg) => arg !== '--fundo' && arg !== '--json'), values.json ?? false);
+  // No terminal, a fila roda num processo filho e este mostra o painel (`src/queuepanel.ts`).
+  const panelChild = process.env[PANEL_ENV] === '1' && typeof process.send === 'function';
+  if (isInteractive() && !panelChild) {
+    const { queuePanel } = await import('./queuepanel.ts');
+    const { standalone } = await import('./home.ts');
+    return standalone(() => queuePanel({ mode: 'rodar', args, origin: 'shell' }));
+  }
   const db = openDb(home);
   let release: (() => void) | undefined;
-  let stopFooter: (() => void) | undefined;
   try {
     const project = resolveProject(db);
     const base = project.config.baseBranch;
@@ -621,54 +631,37 @@ export async function run(args: string[]): Promise<number> {
       );
     }
     release = acquireLock(home, project.id);
-    const interactive = isInteractive();
-    if (interactive) stopFooter = startFooter();
-    // run → inbox → run: com itens aguardando, o humano responde e a fila segue sem sair.
-    for (;;) {
-      const queue = startQueue({
-        db,
-        home,
-        project,
-        itemNumber,
-        limit,
-        batch: !values['sem-lote'],
-        interactive,
-        inbox: async () => {
-          process.stdout.write('\n');
-          await runInbox(db, home, project, terminalIO);
-          process.stdout.write('\n');
-        },
-      });
-      const onSigint = () => queue.interrupt();
-      // `mabel parar`: a etapa em andamento termina e a fila encerra.
-      const onStop = () => {
-        process.stdout.write(`${style.bold('  Parada pedida: a fila encerra depois da etapa em andamento.')}\n`);
-        queue.stop();
-      };
-      process.on('SIGINT', onSigint);
-      process.on('SIGUSR2', onStop);
-      let result: QueueResult;
-      try {
-        result = await queue.done;
-      } finally {
-        process.off('SIGINT', onSigint);
-        process.off('SIGUSR2', onStop);
-      }
-      process.stdout.write(`\n${renderQueueSummary(result)}\n`);
-      if (result.end === 'interrupted') return 130;
-      if (result.end === 'not_found') return 1;
-      if (result.end === 'stopped') return 0;
-      const waiting = pendingItems(db, project.id).length;
-      if (!interactive || waiting === 0) return 0;
-      const label = waiting === 1 ? '1 item aguarda você' : `${waiting} itens aguardam você`;
-      const question = `${label}. Abrir a inbox agora?`;
-      const waitingFor = (text: string) => systemNotify(notifyTitle(project), `aguardando você: ${text}`);
-      waitingFor(question);
-      if (!(await confirmInTerminal(`\n${label}.`, 'Abrir a inbox agora', { back: 'Agora não', actionFirst: true }))) return 0;
-      process.stdout.write('\n');
-      if (!(await inboxSession(db, home, project, terminalIO, waitingFor))) return 0;
-      process.stdout.write('\n');
+    const queue = startQueue({
+      db,
+      home,
+      project,
+      itemNumber,
+      limit,
+      batch: !values['sem-lote'],
+      // Filho do painel: as perguntas da política de saldo vão para a barra de ações dele.
+      interactive: panelChild,
+      ...(panelChild ? { confirm: askPanel } : {}),
+    });
+    const onSigint = () => queue.interrupt();
+    // `mabel parar`: a etapa em andamento termina e a fila encerra.
+    const onStop = () => {
+      process.stdout.write(`${style.bold('  Parada pedida: a fila encerra depois da etapa em andamento.')}\n`);
+      if (panelChild) process.send?.({ tipo: 'parada' } satisfies ChildMessage);
+      queue.stop();
+    };
+    process.on('SIGINT', onSigint);
+    process.on('SIGUSR2', onStop);
+    let result: QueueResult;
+    try {
+      result = await queue.done;
+    } finally {
+      process.off('SIGINT', onSigint);
+      process.off('SIGUSR2', onStop);
     }
+    process.stdout.write(`\n${renderQueueSummary(result)}\n`);
+    if (result.end === 'interrupted') return 130;
+    if (result.end === 'not_found') return 1;
+    return 0;
   } catch (error) {
     if (error instanceof ProjectError || error instanceof LockError) {
       process.stderr.write(`${error.message}\n`);
@@ -676,10 +669,24 @@ export async function run(args: string[]): Promise<number> {
     }
     throw error;
   } finally {
-    stopFooter?.();
     release?.();
     db.close();
+    // O canal com o painel prenderia o processo depois da fila.
+    if (panelChild) process.disconnect?.();
   }
+}
+
+/** Pergunta da política de saldo ao painel que iniciou este `rodar`, pelo canal IPC. */
+function askPanel(question: string, action: string, settings: ConfirmSettings = {}): Promise<boolean> {
+  return new Promise((resolve) => {
+    const onMessage = (message: PanelMessage) => {
+      if (message?.tipo !== 'resposta') return;
+      process.off('message', onMessage);
+      resolve(message.sim);
+    };
+    process.on('message', onMessage);
+    process.send?.({ tipo: 'pergunta', aviso: question.trim(), acao: action, voltar: settings.back ?? 'Voltar' } satisfies ChildMessage);
+  });
 }
 
 /** `mabel rodar --fundo`: entrega a fila ao supervisor e volta na hora. */
