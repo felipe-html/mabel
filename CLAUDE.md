@@ -20,6 +20,13 @@ com agentes, de forma auditável e com intervenção humana só em regras de neg
   histórico do `docs/PLANO.md` e traga as perguntas numeradas, cada uma com a sugestão, no
   fim. Mudança no contrato continua exigindo autorização antes.
 - Ao concluir uma tarefa do plano, marque-a e registre no histórico do `docs/PLANO.md`.
+- Versão em semver, no `package.json` (o `mabel --version` lê de lá). Toda mudança que
+  chega à `main` sobe a versão na mesma mudança, com `npm version <x.y.z>
+  --no-git-tag-version` (atualiza também o `package-lock.json`): **major** quando quebra
+  quem usa o Mabel (comando ou opção renomeados ou removidos, campo do `--json` mudado,
+  dado gravado incompatível, mudança no contrato); **minor** para comando, opção, tela ou
+  comportamento novo compatível; **patch** para correção, ajuste de texto ou documentação.
+  Registre a versão nova na entrada do histórico do `docs/PLANO.md`.
 - Ideia nova que não cabe na tarefa atual vai para a seção do Claude no `BACKLOG.md`.
 - `docs/ESTEIRA.html` é o fluxograma do funcionamento do Mabel: comandos e o que gravam,
   agentes (modelo, ferramentas, limites, saída), gates, estados e pendências. Mudança em
