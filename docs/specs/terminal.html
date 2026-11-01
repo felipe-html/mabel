@@ -749,9 +749,9 @@ render();
       fields: {
         tipo: F.choice('Tipo', [['tela', 'tela do Figma'], ['api', 'API OpenAPI ou Swagger']]),
         nome: F.text('Nome', { req: true, ph: 'minúsculas, dígitos e hífen' }),
-        url: F.text('Endereço', { req: true, ph: 'URL do frame (com node-id) ou do OpenAPI', when: (v) => !(v.tipo === 'tela' && v.png) }),
-        escala: F.choice('Escala da imagem', [['', '2 (padrão)'], ['1', '1'], ['3', '3'], ['4', '4']], { flag: '--escala', when: (v) => v.tipo === 'tela' && !v.png }),
-        png: F.text('PNG exportado', { flag: '--png', ph: 'opcional: usa este arquivo em vez de baixar', when: (v) => v.tipo === 'tela' }),
+        url: F.text('Endereço', { req: true, ph: 'URL do OpenAPI ou do Swagger', when: (v) => v.tipo === 'api' }),
+        origem: F.text('Link do Figma ou arquivo PNG', { req: true, ph: 'link do frame (com node-id) ou caminho do PNG', when: (v) => v.tipo === 'tela' }),
+        escala: F.choice('Escala da imagem', [['', '2 (padrão)'], ['1', '1'], ['3', '3'], ['4', '4']], { flag: '--escala', when: (v) => v.tipo === 'tela' && /^https?:\/\//.test(v.origem || '') }),
       },
       action: 'Capturar',
       result: (v) => [L(`.mabel/referencias/${v.nome}`, 'b'), L(v.tipo === 'tela' ? 'Imagem e estrutura do frame salvas.' : '14 operações salvas.'), L(`Os itens citam com: Referências: ${v.nome}`, 'd')],

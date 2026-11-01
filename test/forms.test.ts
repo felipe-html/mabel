@@ -34,7 +34,7 @@ const SAMPLES: Record<string, FormValues> = {
   adicionar: { title: 'Exportar pedidos', intent: 'Abrir no Excel', criteria: ['Uma linha por pedido', 'Com "aspas"'], dependsOn: ['1'], restrictions: 'sem libs' },
   especificar: { spec: 'frete-gratis', acao: '--aceitar' },
   refinar: { item: '2', acao: '--refazer' },
-  capturar: { tipo: 'tela', nome: 'checkout', url: 'https://www.figma.com/design/abc/x?node-id=1-2', escala: '3' },
+  capturar: { tipo: 'tela', nome: 'checkout', origem: 'https://www.figma.com/design/abc/x?node-id=1-2', escala: '3' },
   credenciar: { cred: 'figma', expira: '2027-01-31' },
   rodar: { modo: '--sem-lote', limite: '2', fundo: true },
   cancelar: { item: '1' },
@@ -129,7 +129,8 @@ test('linhas de shell do protótipo: campos vazios somem, condicionais seguem o 
   assert.equal(shell('rodar', { modo: 'item', limite: '3', item: '1' }), 'mabel rodar --item 1');
   assert.equal(shell('rodar', { modo: '--sem-lote' }), 'mabel rodar --sem-lote');
   assert.equal(shell('capturar', { tipo: 'api', nome: 'pedidos', url: 'https://x/openapi.json', escala: '3' }), 'mabel capturar api pedidos https://x/openapi.json');
-  assert.equal(shell('capturar', { tipo: 'tela', nome: 'checkout', url: 'https://f', png: 'tela.png' }), 'mabel capturar tela checkout --png tela.png');
+  assert.equal(shell('capturar', { tipo: 'tela', nome: 'checkout', origem: 'https://www.figma.com/x', escala: '3' }), 'mabel capturar tela checkout https://www.figma.com/x --escala 3');
+  assert.equal(shell('capturar', { tipo: 'tela', nome: 'checkout', origem: 'tela.png', escala: '3' }), 'mabel capturar tela checkout tela.png');
   assert.equal(shell('auditar', { projeto: 'loja-api' }), 'mabel auditar loja-api');
   assert.equal(shell('retomar', { item: '3' }), 'mabel retomar 3');
   assert.equal(shell('adicionar', { title: 'Exportar', intent: 'Abrir no Excel' }), 'mabel adicionar Exportar --intencao "Abrir no Excel"');
@@ -153,7 +154,10 @@ test('formulários: campos e botões do protótipo, condicionais e vermelho no q
   assert.match(labels('auditar', { remover: true }), /Confirme o nome +digite o nome do projeto/);
   assert.doesNotMatch(labels('auditar'), /Confirme o nome/);
   assert.match(labels('capturar', { tipo: 'api' }), /Endereço/);
-  assert.doesNotMatch(labels('capturar', { tipo: 'api' }), /Escala da imagem|PNG exportado/);
+  assert.doesNotMatch(labels('capturar', { tipo: 'api' }), /Escala da imagem|Link do Figma/);
+  assert.match(labels('capturar'), /Link do Figma ou arquivo PNG/);
+  assert.doesNotMatch(labels('capturar', { origem: 'tela.png' }), /Escala da imagem/);
+  assert.match(labels('capturar', { origem: 'https://www.figma.com/x' }), /Escala da imagem/);
   const red = { ...plainStyle, red: (text: string) => `<r>${text}</r>` };
   const button = (name: string, values: FormValues) => {
     const config = (FORMS[name] as NonNullable<(typeof FORMS)[string]>)(DATA).config;

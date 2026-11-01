@@ -30,13 +30,11 @@ import { style } from './style.ts';
 export const referenceUsage = [
   'mabel capturar [--json]',
   'mabel capturar api <nome> <url>',
-  'mabel capturar tela <nome> <url-figma> [--escala <n>]',
-  'mabel capturar tela <nome> --png <arquivo>',
+  'mabel capturar tela <nome> <link-ou-arquivo> [--escala <n>]',
 ].join('\n       ');
 
 export const referenceOptions = {
-  escala: { type: 'string', value: '<n>', description: 'Escala da imagem exportada do Figma, de 0 a 4 (padrão 2)' },
-  png: { type: 'string', value: '<arquivo>', values: 'arquivo', description: 'Usa um PNG exportado à mão em vez de baixar do Figma' },
+  escala: { type: 'string', value: '<n>', description: 'Escala da imagem exportada do Figma, de 0 a 4 (padrão 2); só com link' },
   json: { ...jsonOption, description: 'Sem subcomando: o catálogo de referências em JSON, para outros programas' },
 } satisfies OptionSpecs;
 
@@ -50,7 +48,7 @@ export const referenceArgs: ArgSpec[] = [
     ],
   },
   { name: '<nome>', description: 'Nome da referência: minúsculas, dígitos e -' },
-  { name: '<url>', description: 'URL do OpenAPI/Swagger ou do frame do Figma (com node-id)' },
+  { name: '<url>', description: 'URL do OpenAPI/Swagger; na tela, o link do frame do Figma (com node-id) ou o caminho de um PNG' },
 ];
 
 export class CaptureError extends Error {}
@@ -243,13 +241,16 @@ function screenHeader(name: string, lines: string[]): string[] {
   return [`# Tela ${name}`, '', ...lines];
 }
 
+/** Na `tela`, link (baixa do Figma) ou caminho de um PNG local (copia). */
+export const isLink = (value: string) => /^https?:\/\//i.test(value.trim());
+
 /** Exporta o frame do Figma como `tela.png` e descreve textos, cores e tamanho em `tela.md`. */
 export async function captureFigma(root: string, name: string, url: string, scale = 2, now = new Date()): Promise<ScreenCapture> {
   if (!NAME.test(name)) throw new CaptureError(`Nome "${name}" inválido: use letras minúsculas, dígitos e -.`);
   const token = process.env.FIGMA_TOKEN;
   if (!token) {
     throw new CaptureError(
-      'Defina FIGMA_TOKEN com um token pessoal do Figma (Settings › Security › Personal access tokens, escopo de leitura de arquivos). Sem token, exporte o frame como PNG no Figma e use --png <arquivo>.',
+      'Defina FIGMA_TOKEN com um token pessoal do Figma (Settings › Security › Personal access tokens, escopo de leitura de arquivos). Sem token, exporte o frame como PNG no Figma e passe o caminho do arquivo no lugar do link.',
     );
   }
   const { fileKey, nodeId } = parseFigmaUrl(url);
@@ -476,17 +477,18 @@ export async function referenceCommand(args: string[]): Promise<number> {
   const scale = values.escala === undefined ? 2 : Number(values.escala);
   const valid =
     kind === undefined
-      ? parsed.positionals.length === 0 && values.png === undefined && values.escala === undefined
+      ? parsed.positionals.length === 0 && values.escala === undefined
       : values.json !== undefined
         ? false
-        : kind === 'api'
-          ? Boolean(name && url) && extra.length === 0 && values.png === undefined && values.escala === undefined
-          : kind === 'tela' && Boolean(name) && extra.length === 0 && (values.png === undefined) === Boolean(url);
+        : (kind === 'api' || kind === 'tela') && Boolean(name && url) && extra.length === 0 && (kind === 'tela' || values.escala === undefined);
   if (!valid || !(scale > 0 && scale <= 4)) return fail('argumento_invalido', 'Argumentos inválidos.', referenceUsage);
+  const figma = kind === 'tela' && isLink(url as string);
+  if (kind === 'tela' && !figma && values.escala !== undefined) {
+    return fail('argumento_invalido', '--escala vale só com o link do Figma; o PNG local é copiado como está.', referenceUsage);
+  }
 
   const home = dataDir();
   const db = openDb(home);
-  const figma = kind === 'tela' && values.png === undefined;
   try {
     const project = resolveProject(db);
     syncBacklog(db, project);
@@ -501,9 +503,9 @@ export async function referenceCommand(args: string[]): Promise<number> {
     if (kind === 'tela') {
       const warning = figma ? expiryWarning(home, 'figma') : null;
       if (warning) process.stderr.write(`${style.dim(`Aviso: ${warning}`)}\n`);
-      const screen = values.png
-        ? captureScreenFile(project.root, name as string, values.png)
-        : await captureFigma(project.root, name as string, url as string, scale);
+      const screen = figma
+        ? await captureFigma(project.root, name as string, url as string, scale)
+        : captureScreenFile(project.root, name as string, url as string);
       const { warnings } = syncBacklog(db, project);
       process.stdout.write(
         [

@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { addForm } from './add.ts';
-import { type CatalogEntry, referenceCatalog } from './capture.ts';
+import { type CatalogEntry, isLink, referenceCatalog } from './capture.ts';
 import { CREDENTIALS } from './credentials.ts';
 import { dataDir, openDb, processAlive } from './db.ts';
 import { RESUMABLE } from './decisions.ts';
@@ -255,7 +255,6 @@ export const FORMS: Record<string, (data: ScreenData) => CommandForm> = {
 
   capturar: () => {
     const screen = (v: FormValues) => text(v, 'tipo') !== 'api';
-    const png = (v: FormValues) => screen(v) && Boolean(text(v, 'png'));
     return form(
       'capturar',
       {
@@ -263,27 +262,29 @@ export const FORMS: Record<string, (data: ScreenData) => CommandForm> = {
         fields: [
           { type: 'choice', key: 'tipo', label: 'Tipo', options: [['tela', 'tela do Figma'], ['api', 'API OpenAPI ou Swagger']] },
           { type: 'text', key: 'nome', label: 'Nome', required: true, placeholder: 'minúsculas, dígitos e hífen' },
-          // Com o PNG exportado, o comando não leva o endereço.
-          { type: 'text', key: 'url', label: 'Endereço', required: (v) => !png(v), placeholder: 'URL do frame (com node-id) ou do OpenAPI', when: (v) => !png(v) },
+          { type: 'text', key: 'origem', label: 'Link do Figma ou arquivo PNG', required: true, placeholder: 'link do frame (com node-id) ou caminho do PNG', when: screen },
+          { type: 'text', key: 'url', label: 'Endereço', required: true, placeholder: 'URL do OpenAPI ou do Swagger', when: (v) => !screen(v) },
+          // A escala só vale para o que é baixado do Figma; o PNG local é copiado como está.
           {
             type: 'choice',
             key: 'escala',
             label: 'Escala da imagem',
             options: [['', '2 (padrão)'], ['1', '1'], ['3', '3'], ['4', '4']],
-            when: (v) => screen(v) && !png(v),
+            when: (v) => screen(v) && isLink(text(v, 'origem')),
           },
-          { type: 'text', key: 'png', label: 'PNG exportado', placeholder: 'opcional: usa este arquivo em vez de baixar', when: screen },
         ],
         action: 'Capturar',
       },
       {
-        args: (v) => [
-          text(v, 'tipo') || 'tela',
-          ...(text(v, 'nome') ? [text(v, 'nome')] : []),
-          ...(!png(v) && text(v, 'url') ? [text(v, 'url')] : []),
-          ...(screen(v) && !png(v) ? option(v, 'escala', '--escala') : []),
-          ...(png(v) ? option(v, 'png', '--png') : []),
-        ],
+        args: (v) => {
+          const source = text(v, screen(v) ? 'origem' : 'url');
+          return [
+            screen(v) ? 'tela' : 'api',
+            ...(text(v, 'nome') ? [text(v, 'nome')] : []),
+            ...(source ? [source] : []),
+            ...(screen(v) && isLink(source) ? option(v, 'escala', '--escala') : []),
+          ];
+        },
         mode: view,
       },
     );

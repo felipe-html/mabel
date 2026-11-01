@@ -141,7 +141,7 @@ Um campo por argumento ou opção do comando, na ordem do protótipo.
 - **Informação:** linhas só de leitura que dependem do que foi escolhido (critérios do
   item a retomar, critérios da pendência a aprovar).
 - **Campos condicionais:** só aparecem quando fazem sentido ("Item" em "Rodar a fila" no
-  modo "só um item"; "Escala" só para tela do Figma).
+  modo "só um item"; "Escala" só quando a tela vem de um link do Figma).
 - **Botão de ação:** "[ <ação> ]"; enquanto faltar campo obrigatório, fica esmaecido e
   mostra "falta: <campos>". Ações que apagam ou revertem têm o botão em vermelho.
 - **Linha de shell:** embaixo, "$ mabel …" com o comando equivalente, atualizado a cada

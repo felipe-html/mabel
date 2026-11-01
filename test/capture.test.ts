@@ -119,7 +119,7 @@ test('describeFrame: textos visíveis na ordem e cores sólidas com contagem', (
   });
 });
 
-test('referencia tela: exporta o PNG e o tela.md pelo Figma; sem token, erro com a alternativa; --png sem rede', async () => {
+test('referencia tela: exporta o PNG e o tela.md pelo Figma; sem token, erro com a alternativa; PNG local sem rede', async () => {
   const { root } = setupProject();
   const requests: { url: string; token?: string }[] = [];
   const server = createServer((req, res) => {
@@ -147,7 +147,7 @@ test('referencia tela: exporta o PNG e o tela.md pelo Figma; sem token, erro com
   try {
     process.env.MABEL_FIGMA_API = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     delete process.env.FIGMA_TOKEN;
-    await assert.rejects(captureFigma(root, 'cadastro', link), /FIGMA_TOKEN[\s\S]*--png/);
+    await assert.rejects(captureFigma(root, 'cadastro', link), /FIGMA_TOKEN[\s\S]*caminho do arquivo/);
 
     process.env.FIGMA_TOKEN = 'token-de-teste';
     const capture = await captureFigma(root, 'cadastro', link, 2, new Date('2026-10-22T12:00:00Z'));
@@ -174,4 +174,17 @@ test('referencia tela: exporta o PNG e o tela.md pelo Figma; sem token, erro com
   assert.deepEqual(readFileSync(join(manual.dir, 'tela.png')), PNG);
   writeFileSync(file, 'não é png');
   assert.throws(() => captureScreenFile(root, 'manual', file), /não é um PNG/);
+});
+
+test('capturar tela: link do Figma ou caminho de PNG no mesmo argumento; --escala só com link; --png saiu', () => {
+  const { root, cli } = setupProject();
+  writeFileSync(join(root, 'exportado.png'), PNG);
+  const local = cli('capturar', 'tela', 'manual', 'exportado.png');
+  assert.equal(local.status, 0, local.stderr);
+  assert.match(local.stdout, /Tela \.mabel\/referencias\/telas\/manual\/ gravada/);
+  assert.deepEqual(readFileSync(join(root, '.mabel', 'referencias', 'telas', 'manual', 'tela.png')), PNG);
+  const scaled = cli('capturar', 'tela', 'outra', 'exportado.png', '--escala', '3');
+  assert.equal(scaled.status, 1);
+  assert.match(scaled.stderr, /--escala vale só com o link do Figma/);
+  assert.equal(cli('capturar', 'tela', 'outra', '--png', 'exportado.png').status, 1);
 });

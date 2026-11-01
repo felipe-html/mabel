@@ -209,7 +209,7 @@ Para capturar:
 ```
 mabel capturar api wego-acessos https://…/q/swagger-ui/      # OpenAPI em JSON
 mabel capturar tela home-operador '<link do frame no Figma>'  # PNG e tela.md
-mabel capturar tela home-operador --png exportado.png         # sem token
+mabel capturar tela home-operador exportado.png              # sem token: o PNG exportado
 mabel capturar                                                # lista e quem cita
 ```
 
