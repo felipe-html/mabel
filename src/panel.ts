@@ -5,6 +5,7 @@ import { formatCost, formatDuration } from './format.ts';
 import { type ItemStatus, listItems } from './items.ts';
 import type { Key } from './menu.ts';
 import type { Project } from './project.ts';
+import { PROOF_PROGRESS, type ProofProgress } from './proof.ts';
 import type { RunStage, RunStatus } from './runner.ts';
 import type { QueueEnd } from './run.ts';
 import { QUEUE_ENDINGS } from './runreport.ts';
@@ -74,6 +75,8 @@ export interface PanelItem {
   doneAt: number | null;
   /** Início do ciclo de execução: as reprovações antes dele não contam para "tentativa 2/3". */
   cycleStart: number | null;
+  /** Teste da prova em andamento, de `prova-N/progresso.json`; só em `verifying`. */
+  proof?: ProofProgress;
   runs: PanelRun[];
   gates: PanelGate[];
 }
@@ -109,7 +112,7 @@ export type PanelEvent =
 
 export interface PanelBase {
   project: string;
-  items: Pick<PanelItem, 'number' | 'title' | 'status' | 'reason' | 'attempts' | 'unitBranch' | 'planNote'>[];
+  items: Pick<PanelItem, 'number' | 'title' | 'status' | 'reason' | 'attempts' | 'unitBranch' | 'planNote' | 'proof'>[];
   integration: boolean;
   verify: { name: string; command: string }[];
   scope: PanelScope;
@@ -215,6 +218,7 @@ export function loadPanel(db: DatabaseSync, home: string, project: Project, scop
       attempts: item.attempts,
       unitBranch: unitBranch(item),
       planNote: planNote(home, item.id),
+      proof: item.status === 'verifying' ? readArtifact<ProofProgress>(home, item.id, `prova-${item.attemptNo}/${PROOF_PROGRESS}`) : undefined,
     })),
     integration: Boolean(project.config.integracao),
     verify: project.config.verify.map(({ name, command }) => ({ name, command })),
@@ -334,7 +338,7 @@ export interface StageRow {
 
 export const MAX_ATTEMPTS = 3;
 
-/** Gates que contam como verificação (G3): os comandos do `verify` do projeto. */
+/** Gates da prova (G3): os testes ligados aos critérios e a prova, que roda cada um. */
 const PROOF_GATES = ['criteria_tests', 'proof'];
 /** Onde a tentativa reprovou, para o ↻. */
 function failureCause(gate: string, verify: string[]): string {
@@ -366,6 +370,22 @@ function gateRow(label: string, gate: string, hint: string, results: PanelGate[]
   const at = (results.at(-1) as PanelGate).at;
   if (failed) return { label, kind: 'gate', gate, hint, status: 'failed', note: failed.detail ?? 'reprovou', end: at };
   return { label, kind: 'gate', gate, hint, status: 'done', note: note(results), end: at };
+}
+
+/** "R7-2 na base · teste 14 de 16": o teste que a prova está rodando. */
+function proofHint(progress: ProofProgress): string {
+  const where = `${progress.criterio ?? 'comando de teste'} ${progress.lado === 'item' ? 'no item' : 'na base'}`;
+  return `${where} · ${progress.criterio ? 'teste' : 'execução'} ${progress.feitos + 1} de ${progress.total}`;
+}
+
+/**
+ * A prova só termina com o gate `proof`: o `criteria_tests`, gravado antes dela, passa na
+ * hora. Até lá a linha segue pendente, e vira a etapa em andamento com o teste da vez.
+ */
+function proofRow(results: PanelGate[], progress: ProofProgress | undefined): StageRow {
+  const hint = progress ? proofHint(progress) : 'cada critério ligado a um teste';
+  const finished = results.some((result) => result.gate === 'proof' || !result.passed);
+  return gateRow('prova', 'G3', hint, finished ? results : [], (passed) => passed.at(-1)?.detail ?? 'critérios ligados a testes');
 }
 
 /**
@@ -410,7 +430,7 @@ export function stageRows(state: PanelState, item: PanelItem, now: number): Stag
       gateRow('verificação', 'G3', state.verify.map((command) => command.command).join(' · ') || 'sem comando de verificação', named(verifyNames), (passed) =>
         passed.length === 1 ? `${passed[0]?.gate} verde` : `${passed.map((gate) => gate.gate).join(' · ')} verdes`,
       ),
-      gateRow('prova', 'G3', 'cada critério ligado a um teste', named(PROOF_GATES), (passed) => passed.at(-1)?.detail ?? 'critérios ligados a testes'),
+      proofRow(named(PROOF_GATES), item.proof),
       agentRow('revisar', review, reviewGate?.detail ?? undefined),
     ];
     if (reviewGate && !reviewGate.passed && rows[5]) Object.assign(rows[5], { status: 'failed', note: reviewGate.detail ?? 'revisão reprovou' });
@@ -625,9 +645,11 @@ function stageLines(row_: StageRow, style: ScreenStyle, width: number, now: numb
       const elapsed = formatDuration(Math.max(0, now - (row_.since ?? now)));
       if (row_.kind === 'agent') {
         const attempt = row_.attempt ? ` · tentativa ${row_.attempt}/${MAX_ATTEMPTS}` : '';
-        const model = run ? `${run.model} · turno ${run.turns}${attempt}` : `iniciando${attempt}`;
+        // Sem run, o Mabel ainda não abriu a sessão: não há ferramentas a mostrar.
+        const model = run ? `${run.model} · turno ${run.turns}${attempt}` : `preparando a sessão${attempt}`;
         out.push(line(`    ${style.accent(spin)} ${style.bold(label)}`, model, style.dim, elapsed, width));
         for (const entry of row_.history ?? []) out.push(line(`      ${style.yellow('↻')} `, entry, style.dim, '', width));
+        if (!run) break;
         const tools = run?.tools ?? [];
         out.push(line('      ', standardPhrase(tools), style.italic, style.dim(`${plural(tools.length, 'ferramenta', 'ferramentas')} ${showTools ? '▾' : '▸'}`), width));
         if (showTools) {

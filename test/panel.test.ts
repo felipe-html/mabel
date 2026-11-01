@@ -164,6 +164,32 @@ test('gate rodando depois da execução; ao concluir, o item recolhe numa linha'
   assert.ok(has(opened, /✓ merge na unidade {3}mabel\/spec\/frete-gratis +G10/));
 });
 
+test('prova: segue rodando até o gate proof, com o teste da vez; revisar sem sessão prepara', () => {
+  const proving = [
+    ended(s(103), 13, 'e13', 'execute', s(300), 0.97, 21),
+    tr(s(300), 13, 'executing', 'verifying', 'execução 1 commitada'),
+    gate(s(301), 13, 1, 'scope'),
+    gate(s(320), 13, 1, 'test'),
+    gate(s(321), 13, 1, 'criteria_tests'),
+  ].reduce(reducePanel, executing());
+  const withProgress: PanelState = {
+    ...proving,
+    items: proving.items.map((entry) => (entry.number === 13 ? { ...entry, proof: { criterio: 'R7-2', lado: 'base', feitos: 13, total: 16 } } : entry)),
+  };
+  const lines = draw(withProgress);
+  assert.ok(has(lines, /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] prova {14}R7-2 na base · teste 14 de 16 +G3 · 4m40s$/));
+  assert.ok(has(lines, /◌ revisar/));
+  // Sem o progresso ainda: a dica de sempre.
+  assert.ok(has(draw(proving), /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] prova {14}cada critério ligado a um teste +G3/));
+
+  // Prova gravada, revisor ainda sem run: nada de "0 ferramentas".
+  const reviewing = [gate(s(500), 13, 1, 'proof', true, '1 critério provado'), tr(s(500), 13, 'verifying', 'reviewing')].reduce(reducePanel, proving);
+  const next = draw(reviewing);
+  assert.ok(has(next, /✓ prova {14}1 critério provado +G3 · 3m00s$/));
+  assert.ok(has(next, /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] revisar {12}preparando a sessão +1m40s$/));
+  assert.ok(!has(next, /\d ferramentas? [▸▾]$/));
+});
+
 test('nova tentativa: ↻ com a causa mecânica da anterior e "tentativa 2/3"', () => {
   const retry = [
     ended(s(103), 13, 'e13', 'execute', s(300), 0.71),

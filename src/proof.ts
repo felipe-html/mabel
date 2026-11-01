@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { formatDuration } from './format.ts';
 import { git, tryGit } from './git.ts';
@@ -43,6 +43,20 @@ export interface ProofResult {
   /** Teste que nem chegou a rodar no item: a prova parou nele, sem rodar a base. */
   naoRodou?: { criterio: string; nome: string; saida: string };
 }
+
+/**
+ * Teste da prova em andamento, em `prova-N/progresso.json`: o painel lê dali, porque a prova
+ * roda síncrona e cada teste pode levar minutos. `criterio` ausente: o comando de teste inteiro.
+ */
+export interface ProofProgress {
+  criterio?: string;
+  lado: 'item' | 'base';
+  /** Execuções já encerradas, antes desta. */
+  feitos: number;
+  total: number;
+}
+
+export const PROOF_PROGRESS = 'progresso.json';
 
 /** Testes declarados para o critério que existem no worktree e contêm o nome. */
 export function foundTests(worktree: string, tests: { arquivo: string; nome: string }[]): { arquivo: string; nome: string }[] {
@@ -131,6 +145,10 @@ export function withBaseCode<T>(
   return { value, restored: status(worktree) === before, error };
 }
 
+function progress(logDir: string, value: ProofProgress): void {
+  writeFileSync(join(logDir, PROOF_PROGRESS), `${JSON.stringify(value)}\n`);
+}
+
 function run(command: string, worktree: string, logPath: string): { passed: boolean; output: string } {
   const { code, output } = shell(command, worktree);
   appendFileSync(logPath, `$ ${command}\n${output}\n[saída ${code}]\n\n`);
@@ -190,7 +208,11 @@ export function runProof(input: ProofInput): ProofResult {
   if (pending.length === 0) return { mode, criteria, restored: true, ...adjusted };
 
   if (template) {
+    // Cada teste roda no item e, se todos rodaram, na base.
+    const total = 2 * pending.reduce((sum, criterion) => sum + criterion.tests.length, 0);
+    let done = 0;
     const timed = (criterion: CriterionProof, side: 'item' | 'base', test: TestRun) => {
+      progress(logDir, { criterio: criterion.id, lado: side, feitos: done++, total });
       log?.(`prova ${criterion.id} no ${side}: \`${test.nome}\`…`);
       const started = Date.now();
       const outcome = run(singleTestCommand(template, test), worktree, join(logDir, `${criterion.id}-${side}.log`));
@@ -233,8 +255,12 @@ export function runProof(input: ProofInput): ProofResult {
     for (const criterion of pending) Object.assign(criterion, { status: 'sem_prova', reason: 'sem `testeUnico` nem comando de teste no `verify`' });
     return { mode, criteria, restored: true };
   }
+  progress(logDir, { lado: 'item', feitos: 0, total: 2 });
   const passedOnItem = run(test.command, worktree, join(logDir, 'item.log')).passed;
-  const result = withBaseCode(worktree, base, restorable, () => run(test.command, worktree, join(logDir, 'base.log')).passed);
+  const result = withBaseCode(worktree, base, restorable, () => {
+    progress(logDir, { lado: 'base', feitos: 1, total: 2 });
+    return run(test.command, worktree, join(logDir, 'base.log')).passed;
+  });
   if (!result.restored || result.error) return { mode, criteria, restored: result.restored, error: result.error };
   const expectBaseToFail = pending.some((c) => c.comportamento === 'novo');
   const gap = !passedOnItem

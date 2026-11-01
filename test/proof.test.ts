@@ -8,7 +8,7 @@ import { git } from '../src/git.ts';
 import { getItem, syncBacklog } from '../src/items.ts';
 import { type PipelineEnv, advanceItem, hostEnvironmentSign } from '../src/pipeline.ts';
 import { DEFAULT_TEST_GLOBS, readConfig } from '../src/project.ts';
-import { type ProofInput, proofDetail, runProof, singleTestCommand, testRan, withBaseCode } from '../src/proof.ts';
+import { PROOF_PROGRESS, type ProofInput, proofDetail, runProof, singleTestCommand, testRan, withBaseCode } from '../src/proof.ts';
 import type { ExecuteOutput, PlanOutput } from '../src/schemas/stages.ts';
 import { STACKS, findStack, proofTestCommand } from '../src/stacks.ts';
 import { CLI, PLAN, REVIEW_OK, makeRepo, setupProject, useScenario } from './helpers.ts';
@@ -84,6 +84,8 @@ test('P.2 critério 3: mantido passa nos dois → provado; falha na base → nao
   assert.equal(proofDetail(ok), 'C1 provado');
   assert.deepEqual(ok.criteria[0]?.tests, [{ arquivo: 'test/dobro.test.mjs', nome: 'dobro de 4', item: true, base: true }]);
   assert.equal(kept.status(), '');
+  // O painel lê o teste da vez: ao fim, o último que rodou.
+  assert.deepEqual(JSON.parse(readFileSync(join(kept.logDir, PROOF_PROGRESS), 'utf8')), { criterio: 'C1', lado: 'base', feitos: 1, total: 2 });
 
   const changed = itemRepo(
     { 'src/dobro.mjs': 'export const dobro = (x) => x * 2;\n' },
@@ -141,6 +143,7 @@ test('P.2 critério 6: modo por item, sem testeUnico, roda o comando de teste um
   assert.equal(ok.mode, 'item');
   assert.equal(proofDetail(ok), 'C1 provado (por item)');
   assert.ok(existsSync(join(strong.logDir, 'base.log')));
+  assert.deepEqual(JSON.parse(readFileSync(join(strong.logDir, PROOF_PROGRESS), 'utf8')), { lado: 'base', feitos: 1, total: 2 });
 
   const weak = itemRepo({}, { 'src/soma.mjs': SOMA, 'test/soma.test.mjs': WEAK_TEST });
   const gap = runProof(weak.input({ config, plan: plan('novo'), execution: execution('test/soma.test.mjs', NAME) }));
