@@ -21,37 +21,11 @@ export function branchExists(root: string, branch: string): boolean {
   return tryGit(root, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`) !== undefined;
 }
 
-// Unidades de entrega (S.5): com integração, cada spec e cada avulso têm a sua branch,
-// nascida da base quando a primeira tarefa começa; a tarefa nasce dela e volta por merge.
-
-export const SPEC_BRANCH_PREFIX = 'mabel/spec/';
-export const AVULSO_BRANCH_PREFIX = 'mabel/avulso/';
-
-export function specBranch(unit: string): string {
-  return `${SPEC_BRANCH_PREFIX}${unit}`;
-}
-
-export function avulsoBranch(item: Pick<Item, 'number' | 'title'>): string {
-  return `${AVULSO_BRANCH_PREFIX}${item.number}-${slugify(item.title)}`;
-}
-
-type UnitFields = Pick<Item, 'number' | 'title' | 'spec'> & { unit?: string | null };
-
-/** Branch da unidade da tarefa: a da spec (ou a do `legado`) ou a do avulso. */
-export function unitBranch(item: UnitFields): string {
-  const unit = item.unit ?? item.spec;
-  return unit ? specBranch(unit) : avulsoBranch(item);
-}
-
-/** A tarefa é de uma spec (ou do `legado`): nasce da branch dela e volta para ela por merge. */
-export const inSpec = (item: UnitFields) => Boolean(item.unit ?? item.spec);
-
 /**
- * De onde a tarefa nasce (G5): com integração, a branch da unidade (a da spec ou a do
- * avulso, que nascem da base); sem ela, a base.
+ * De onde a tarefa nasce (G5): com integração, a ponta dela (a fila, F1); sem ela, a base.
  */
-export function itemOrigin(project: Pick<Project, 'config'>, item: UnitFields): string {
-  return project.config.integracao ? unitBranch(item) : project.config.baseBranch;
+export function itemOrigin(project: Pick<Project, 'config'>): string {
+  return project.config.integracao ?? project.config.baseBranch;
 }
 
 export function branchName(item: Pick<Item, 'number' | 'title'>): string {
@@ -93,8 +67,8 @@ export function prepareWorktree(db: DatabaseSync, home: string, project: Project
   const path = item.worktree ?? worktreePath(home, project.id, item);
   let created = false;
 
-  const origin = itemOrigin(project, item);
-  // A branch da unidade nasce da base quando a primeira tarefa dela começa.
+  const origin = itemOrigin(project);
+  // A integração nasce da base na primeira tarefa.
   if (!branchExists(project.root, origin)) git(project.root, 'branch', origin, project.config.baseBranch);
   if (!existsSync(path)) {
     mkdirSync(dirname(path), { recursive: true });

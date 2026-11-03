@@ -6,7 +6,8 @@ import { type Item, listItems, transition, updateItem } from './items.ts';
 import type { Project } from './project.ts';
 import { branchExists, worktreesDir } from './worktree.ts';
 
-// Branch de integração (P.4): item provado entra sozinho nela; o humano faz o merge na base.
+// Branch de integração (P.4, fila do F.1): item provado entra sozinho nela; o humano faz o
+// merge na base.
 
 /** Worktree temporário do Mabel para merges e reverts na integração. */
 export function integrationWorktree(home: string, projectId: string): string {
@@ -84,7 +85,7 @@ export function finishIntegrated(db: DatabaseSync, project: Project, items: Item
       isAncestor(project.root, item.integratedCommit, project.config.baseBranch),
   );
   for (const item of finished) {
-    transition(db, project, item.id, 'done', `merge da unidade ${unitOf(item)} na ${project.config.baseBranch}`);
+    transition(db, project, item.id, 'done', `merge de ${unitOf(item)} na ${project.config.baseBranch}`);
   }
   return finished;
 }
@@ -107,8 +108,8 @@ export function mergeInProgress(worktree: string): boolean {
 }
 
 /**
- * Merge da tarefa na branch da unidade (a da spec): commit de merge com a árvore da tarefa
- * (que já contém a branch) e `update-ref` contra o valor antigo. Devolve o commit ou o motivo.
+ * Merge da tarefa na integração (a fila): commit de merge com a árvore da tarefa (que já
+ * contém a ponta) e `update-ref` contra o valor antigo. Devolve o commit ou o motivo.
  */
 export function integrateItem(project: Project, item: Item, integration: string): { commit: string } | { error: string } {
   const worktree = item.worktree as string;

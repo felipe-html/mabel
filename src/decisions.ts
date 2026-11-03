@@ -1,8 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { truncate } from './format.ts';
 import { git, tryGit, withTrailers } from './git.ts';
-import { isAncestor, itemTrailers, onTempWorktree, unitOf } from './integration.ts';
-import { inSpec, unitBranch } from './worktree.ts';
+import { integratedItems, isAncestor, itemTrailers, onTempWorktree, unitOf } from './integration.ts';
 import {
   type Item,
   type ItemStatus,
@@ -234,16 +233,6 @@ export interface RejectResult {
   dependents: number[];
 }
 
-/** Tarefas concluídas da mesma unidade, na ordem em que entraram na branch dela. */
-function unitItems(db: DatabaseSync, project: Project, item: Item): Item[] {
-  const branch = unitBranch(item);
-  const order = (tryGit(project.root, 'rev-list', '--topo-order', '--reverse', `${project.config.baseBranch}..${branch}`) ?? '').split('\n');
-  const position = new Map(order.map((commit, i) => [commit, i]));
-  return listItems(db, project.id)
-    .filter((other) => other.status === 'awaiting_merge' && other.integratedCommit && position.has(other.integratedCommit) && unitOf(other) === unitOf(item))
-    .sort((a, b) => (position.get(a.integratedCommit as string) as number) - (position.get(b.integratedCommit as string) as number));
-}
-
 /** Arquivos que o commit de merge mudou em relação ao primeiro pai. */
 function integratedFiles(root: string, commit: string): string[] {
   return (tryGit(root, 'diff', '--name-only', `${commit}^1`, commit) ?? '').split('\n').filter(Boolean);
@@ -264,44 +253,34 @@ export function reject(
   const integration = project.config.integracao;
   const commit = item.integratedCommit;
   if (!integration || item.status !== 'awaiting_merge' || !commit) {
-    throw new DecisionError(`#${item.number} não está concluída na branch da unidade (estado: ${item.status}).`);
+    throw new DecisionError(`#${item.number} não está concluída na integração (estado: ${item.status}).`);
   }
   if (isAncestor(project.root, commit, project.config.baseBranch)) {
     throw new DecisionError(`#${item.number} já está na ${project.config.baseBranch}; reverta por lá.`);
   }
-  if (inSpec(item)) {
-    // Dentro da spec, as tarefas se acumulam: o merge da tarefa é revertido na branch da spec.
-    const branch = unitBranch(item);
-    const reverted = onTempWorktree(
-      home,
-      project,
-      branch,
-      (path) =>
-        tryGit(path, 'revert', '--no-commit', '-m', '1', commit) !== undefined &&
-        tryGit(path, 'commit', '-q', '-m', withTrailers(`mabel: rejeita #${item.number} ${item.title}`, itemTrailers(item))) !== undefined,
-      ['revert', '--abort'],
+  // A fila só anda para frente: o merge da tarefa é revertido na integração (F10).
+  const reverted = onTempWorktree(
+    home,
+    project,
+    integration,
+    (path) =>
+      tryGit(path, 'revert', '--no-commit', '-m', '1', commit) !== undefined &&
+      tryGit(path, 'commit', '-q', '-m', withTrailers(`mabel: rejeita #${item.number} ${item.title}`, itemTrailers(item))) !== undefined,
+    ['revert', '--abort'],
+  );
+  if (reverted.kind === 'conflict') {
+    const touched = new Set(integratedFiles(project.root, commit));
+    const later = integratedItems(db, project);
+    const blockers = later
+      .slice(later.findIndex((other) => other.id === item.id) + 1)
+      .filter((other) => integratedFiles(project.root, other.integratedCommit as string).some((file) => touched.has(file)))
+      .map((other) => `#${other.number}`);
+    throw new DecisionError(
+      `Não foi possível reverter #${item.number}: conflito em ${reverted.files.join(', ')}.` +
+        (blockers.length > 0 ? ` Rejeite antes ${blockers.join(', ')}, concluídas depois dela nos mesmos arquivos.` : '') +
+        ` A ${integration} não mudou.`,
     );
-    if (reverted.kind === 'conflict') {
-      const touched = new Set(integratedFiles(project.root, commit));
-      const later = unitItems(db, project, item);
-      const blockers = later
-        .slice(later.findIndex((other) => other.id === item.id) + 1)
-        .filter((other) => integratedFiles(project.root, other.integratedCommit as string).some((file) => touched.has(file)))
-        .map((other) => `#${other.number}`);
-      throw new DecisionError(
-        `Não foi possível reverter #${item.number}: conflito em ${reverted.files.join(', ')}.` +
-          (blockers.length > 0 ? ` Rejeite antes ${blockers.join(', ')}, concluídas depois dela nos mesmos arquivos.` : '') +
-          ` A ${branch} não mudou.`,
-      );
-    }
-  } else {
-    // Avulso: a branch volta ao commit da base de onde nasceu; o replanejamento a refaz.
-    const branch = unitBranch(item);
-    const start = git(project.root, 'merge-base', project.config.baseBranch, branch);
-    git(project.root, 'update-ref', `refs/heads/${branch}`, start);
-    if (cancelItem) tryGit(project.root, 'branch', '-D', branch);
   }
-  // A integração não precisa de revert: o próximo `run` a refaz a partir da base.
 
   const text = `rejeitado — ${truncate(reason.replace(/\s+/g, ' '), 200)}`;
   const update: ItemUpdate = { integratedCommit: null };

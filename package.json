@@ -1,6 +1,6 @@
 {
   "name": "mabel",
-  "version": "1.0.3",
+  "version": "2.0.0",
   "description": "Harness para gerenciar, auditar e coordenar agentes Claude Code",
   "private": true,
   "type": "module",

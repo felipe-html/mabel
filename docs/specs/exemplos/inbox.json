@@ -6,6 +6,7 @@
     "raiz": "/Users/voce/projetos/loja-online"
   },
   "resposta_decidir": "decida e registre como suposição.",
+  "conflito_base": null,
   "pendencias": [
     {
       "item": 1,

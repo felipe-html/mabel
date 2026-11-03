@@ -7,7 +7,7 @@ import { dataDir, openDb } from './db.ts';
 import { startFooter } from './footer.ts';
 import { commandScreen, loadScreenData } from './forms.ts';
 import { type ChooseSettings, type GuidedIO, type TextSettings, itemChip } from './guided.ts';
-import { pendingItems, pendingLabel, runInbox } from './inbox.ts';
+import { baseConflictLines, pendingItems, pendingLabel, runInbox } from './inbox.ts';
 import { type Item, boardItems, syncBacklog } from './items.ts';
 import { type Key, leaveFullscreen, runScreen } from './menu.ts';
 import { type Project, ProjectError, gitRoot, readConfig, resolveProject } from './project.ts';
@@ -111,7 +111,8 @@ export function loadHomeContext(cwd: string = process.cwd()): HomeContext {
         project: project.name,
         instance: true,
         ready: items.filter((item) => item.status === 'ready').length,
-        pending: pendingItems(db, project.id).length,
+        // O conflito da base que pausa a fila conta como uma pendência (`base_conflict`).
+        pending: pendingItems(db, project.id).length + (baseConflictLines(db, project).length > 0 ? 1 : 0),
         units: project.config.integracao
           ? openUnits(db, project).length
           : items.filter((item) => item.status === 'awaiting_merge' && item.branch).length,
@@ -700,8 +701,10 @@ export async function decideFlow(context: HomeContext): Promise<number> {
       return 1;
     }
     const pending = pendingItems(db, project.id);
+    const conflict = baseConflictLines(db, project);
     if (pending.length === 0) {
-      await showResult(context, { title: DECIDE.title, command: 'decidir', lines: [`  ${style.dim('Nenhuma pendência esperando você.')}`] });
+      const lines = conflict.length > 0 ? conflict.map((line) => `  ${line.trim()}`) : [`  ${style.dim('Nenhuma pendência esperando você.')}`];
+      await showResult(context, { title: DECIDE.title, command: 'decidir', lines });
       return 0;
     }
     const config = pendingChoice(pending);

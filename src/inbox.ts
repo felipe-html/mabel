@@ -13,6 +13,7 @@ import { type Project, ProjectError, resolveProject } from './project.ts';
 import type { PlanOutput, Question } from './schemas/stages.ts';
 import { readArtifact } from './stages.ts';
 import { style } from './style.ts';
+import { conflictCommand, queueConflict } from './units.ts';
 import { type OptionSpecs, jsonOption } from './options.ts';
 
 export const inboxUsage = 'mabel decidir [--json]';
@@ -50,6 +51,22 @@ export function pendingItems(db: DatabaseSync, projectId: string): Item[] {
   return listItems(db, projectId)
     .filter((item) => item.status === 'needs_human' && item.pendingKind)
     .sort((a, b) => a.number - b.number);
+}
+
+/**
+ * O conflito da base que pausa a fila (`base_conflict`): não é de um item, e a decisão é
+ * resolver o merge à mão. Vazio quando não há.
+ */
+export function baseConflictLines(db: DatabaseSync, project: Project): string[] {
+  const conflict = queueConflict(db, project);
+  if (!conflict) return [];
+  const what = conflict.unit ? `a unidade ${conflict.unit} (${conflict.source})` : `a ${conflict.source}`;
+  return [
+    `Fila pausada: conflito entre ${what} e a ${project.config.integracao}`,
+    `${INDENT}arquivos em conflito: ${conflict.files.join(', ')}`,
+    `${INDENT}resolva: ${conflictCommand(project, conflict)}`,
+    `${INDENT}corrija os arquivos, commite e volte com git switch ${project.config.baseBranch}; o próximo mabel rodar segue`,
+  ];
 }
 
 /** Junta perguntas e respostas no texto que vai para o agente. */
@@ -342,8 +359,10 @@ export const pendingLabel = (item: Item) => KIND_LABELS[item.pendingKind as Pend
 export async function runInbox(db: DatabaseSync, home: string, project: Project, io: InboxIO, options: InboxOptions = {}): Promise<InboxResult> {
   const items = options.items ?? pendingItems(db, project.id);
   const result: InboxResult = { answered: 0, skipped: 0, interrupted: false };
+  const conflict = options.items ? [] : baseConflictLines(db, project);
+  for (const line of conflict) io.write(line);
   if (items.length === 0) {
-    io.write('Nada aguardando você.');
+    if (conflict.length === 0) io.write('Nada aguardando você.');
     return result;
   }
   if (!options.onItem) io.write(style.bold(`${plural(items.length, 'item aguardando', 'itens aguardando')} você`));
@@ -404,11 +423,25 @@ const PENDING_OPTIONS: Record<PendingKind, string[]> = {
   integration_conflict: ['responder', 'replanejar', 'cancelar'],
 };
 
+/** O `base_conflict` no `--json`: o que conflitou, os arquivos e o comando; `null` sem conflito. */
+function baseConflictJson(db: DatabaseSync, project: Project): Record<string, unknown> | null {
+  const conflict = queueConflict(db, project);
+  if (!conflict) return null;
+  return {
+    pendencia: 'conflito_base',
+    origem: conflict.source,
+    unidade: conflict.unit,
+    arquivos: conflict.files,
+    comando: conflictCommand(project, conflict),
+  };
+}
+
 /** `mabel decidir --json`: as pendências do projeto, com as perguntas e as opções de cada uma. */
 export function inboxJson(db: DatabaseSync, project: Project): Record<string, unknown> {
   return {
     projeto: { id: project.id, nome: project.name, raiz: project.root },
     resposta_decidir: DELEGATE,
+    conflito_base: baseConflictJson(db, project),
     pendencias: pendingItems(db, project.id).map((item) => {
       const kind = item.pendingKind as PendingKind;
       const pending = item.pending ?? {};
@@ -448,7 +481,9 @@ export async function inboxCommand(args: string[]): Promise<number> {
     }
     if (!interactive()) {
       const items = pendingItems(db, project.id);
-      if (items.length === 0) process.stdout.write('Nada aguardando você.\n');
+      const conflict = baseConflictLines(db, project);
+      if (conflict.length > 0) process.stdout.write(`${conflict.join('\n')}\n\n`);
+      else if (items.length === 0) process.stdout.write('Nada aguardando você.\n');
       for (const item of items) process.stdout.write(`${renderItemDetail(db, home, item).join('\n')}\n\n`);
       return 0;
     }

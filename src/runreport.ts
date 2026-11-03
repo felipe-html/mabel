@@ -4,8 +4,7 @@ import { balanceOf, formatReset, latestReadings } from './balance.ts';
 import { formatCost, formatDuration } from './format.ts';
 import { unitArg } from './delivery.ts';
 import { unitOf } from './integration.ts';
-import { type Unit, openUnits, readIntegrationState } from './units.ts';
-import { specBranch, unitBranch } from './worktree.ts';
+import { type Unit, conflictText, openUnits, queueConflict } from './units.ts';
 import { type Item, type ItemStatus, listItems } from './items.ts';
 import { type Project, mabelPath } from './project.ts';
 import { ensureIgnored, integrationSection } from './report.ts';
@@ -123,44 +122,16 @@ function needsYou(db: DatabaseSync, project: Project, items: Item[], session: Se
     if (item.status === 'failed') lines.push(`- #${item.number} ${item.title} falhou${reason}`);
     if (item.status === 'blocked') lines.push(`- #${item.number} ${item.title} bloqueada${reason}`);
   }
-  if (session?.stop?.end === 'paused') {
+  // A fila pausada pelo conflito da base (`base_conflict`): o que conflitou e como resolver.
+  const conflict = queueConflict(db, project);
+  if (conflict) lines.push(`- Conflito da base (base_conflict): ${conflictText(project, conflict)}`);
+  else if (session?.stop?.end === 'paused') {
     const pause = db
       .prepare("SELECT detail FROM queue_events WHERE project_id = ? AND kind = 'pause' AND id > ? ORDER BY id DESC LIMIT 1")
       .get(project.id, session.startId) as { detail: string } | undefined;
     if (pause) lines.push(`- Fila pausada: ${pause.detail}`);
   }
-  lines.push(...integrationWarnings(db, project, items));
   return lines.length > 0 ? lines : ['Nada.'];
-}
-
-/** Branch da unidade pelo nome (`avulso-<n>` ou o slug da spec). */
-function branchOfUnit(items: Item[], unit: string): string {
-  const avulso = /^avulso-(\d+)$/.exec(unit);
-  const item = avulso ? items.find((i) => i.number === Number(avulso[1])) : undefined;
-  return item ? unitBranch(item) : specBranch(unit);
-}
-
-/** Unidades pausadas, conflitos e verificação vermelha na integração (S4): avisos para o humano. */
-function integrationWarnings(db: DatabaseSync, project: Project, items: Item[]): string[] {
-  const state = project.config.integracao ? readIntegrationState(db, project.id) : undefined;
-  if (!state) return [];
-  const base = project.config.baseBranch;
-  const lines = state.paused.map(
-    (p) => `- Unidade ${p.unit} pausada: conflito da ${base} em ${p.files.join(', ')} (resolva o merge da ${base} na ${p.branch})`,
-  );
-  for (const conflict of state.conflicts) {
-    const branches = [conflict.unit, ...conflict.others].map((unit) => branchOfUnit(items, unit));
-    const since = conflict.item !== null ? ` (desde #${conflict.item})` : '';
-    lines.push(
-      branches.length > 1
-        ? `- Integração: ${branches.join(' × ')} conflitam em ${conflict.files.join(', ')}${since}`
-        : `- Integração: ${branches[0]} conflita com a integração em ${conflict.files.join(', ')}${since}`,
-    );
-  }
-  if (state.verify && !state.verify.ok) {
-    lines.push(`- Integração: verificação vermelha em \`${state.verify.command}\`${state.verify.item ? ` (depois de #${state.verify.item})` : ''}`);
-  }
-  return lines;
 }
 
 function readyToDeliver(db: DatabaseSync, project: Project, items: Item[]): string[] {

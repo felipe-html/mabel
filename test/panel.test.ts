@@ -31,7 +31,7 @@ const s = (seconds: number) => T0 + seconds * 1000;
 const NOW = s(600);
 
 function item(number: number, title: string, status: ItemStatus = 'ready'): PanelBase['items'][number] {
-  return { number, title, status, reason: null, attempts: 0, unitBranch: 'mabel/spec/frete-gratis' };
+  return { number, title, status, reason: null, attempts: 0, integrationBranch: 'mabel/integracao' };
 }
 
 function state(items: PanelBase['items'], events: PanelEvent[], extra: Partial<PanelBase> = {}): PanelState {
@@ -112,10 +112,10 @@ test('planejamento: fase no cabeçalho, planejar girando, G2 em linha própria, 
 test('sem item em andamento: a abertura da fila gira com a última linha do log', () => {
   // Item já planejado numa fila anterior: a fila abre (integração, branches) e vai direto à execução.
   const panel = state([item(4, 'Moldura e CSS', 'planned')], [start(s(0))], { phase: 'execute' });
-  const log = ['── mabel rodar  · 2026-11-01T17:02:00.000Z · neste terminal ──', 'main trazida para a mabel/spec/tema-login', ''];
+  const log = ['── mabel rodar  · 2026-11-01T17:02:00.000Z · neste terminal ──', 'main trazida para a mabel/integracao', ''];
   const lines = draw(panel, view(), 40, { log, now: s(24) });
   assert.match(lines[0] ?? '', / execução +fila 0\/1/);
-  assert.ok(has(lines, /^ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] abrindo a fila {8}main trazida para a mabel\/spec\/tema-login +24s$/));
+  assert.ok(has(lines, /^ [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] abrindo a fila {8}main trazida para a mabel\/integracao +24s$/));
   assert.ok(has(lines, /^ ◌ #4 {2}Moldura e CSS +planejado$/));
 
   // Entre um item e outro, a linha volta como "próximo item"; com um item ativo, some.
@@ -125,16 +125,16 @@ test('sem item em andamento: a abertura da fila gira com a última linha do log'
   assert.ok(!has(draw(reducePanel(panel, { kind: 'queue', at: s(50), event: 'stop', detail: 'empty' })), /abrindo a fila/));
 });
 
-test('execução: plano aceito numa linha, executar com modelo e turno, gates e merge na unidade', () => {
+test('execução: plano aceito numa linha, executar com modelo e turno, gates e merge na fila', () => {
   const lines = draw(executing());
   assert.match(lines[0] ?? '', / execução +fila 0\/2/);
   assert.ok(has(lines, /^ {4}✓ planejar {11}plano aceito · sonnet +58s · US\$ 0,18$/));
   assert.ok(has(lines, /^ {4}. executar {11}opus · turno 5 +8m17s$/));
   assert.ok(has(lines, /^ {6}editando src\/checkout\/total\.ts · 2 arquivos alterados +3 ferramentas ▸$/));
-  const order = ['escopo', 'verificação', 'prova', 'revisar', 'merge na unidade'].map((label) => lines.findIndex((line) => line.includes(`◌ ${label}`)));
+  const order = ['escopo', 'verificação', 'prova', 'revisar', 'merge na fila'].map((label) => lines.findIndex((line) => line.includes(`◌ ${label}`)));
   assert.ok(order.every((index, i) => index > 0 && (i === 0 || index > (order[i - 1] as number))), `ordem das etapas: ${order}`);
   assert.ok(has(lines, /◌ verificação {8}npm test +G3$/));
-  assert.ok(has(lines, /◌ merge na unidade {3}mabel\/spec\/frete-gratis +G10$/));
+  assert.ok(has(lines, /◌ merge na fila {6}mabel\/integracao +G10$/));
   assert.ok(has(lines, /^ ◌ #14 {2}Histórico de pedidos na conta do cliente +planejado$/));
 
   // Ferramentas abertas: as seis últimas, com ✓, ✗ e a que está rodando.
@@ -177,7 +177,7 @@ test('gate rodando depois da execução; ao concluir, o item recolhe numa linha'
   const opened = draw(done, view({ done: true }));
   assert.ok(has(opened, /✓ verificação {8}test verde +G3 · 19s$/));
   assert.ok(has(opened, /✓ revisar {12}sonnet · 6 turnos · 1 de 1 critério atendido +1m34s · US\$ 0,21$/));
-  assert.ok(has(opened, /✓ merge na unidade {3}mabel\/spec\/frete-gratis +G10/));
+  assert.ok(has(opened, /✓ merge na fila {6}mabel\/integracao +G10/));
 });
 
 test('prova: segue rodando até o gate proof, com o teste da vez; revisar sem sessão prepara', () => {
@@ -337,7 +337,7 @@ test('terminal baixo recolhe: ferramentas, depois pendentes, depois concluídos;
   for (const lines of [tall, noTools, fewPending, short]) {
     assert.ok(has(lines, /^ ● #16 {2}Item 16/), 'o item ativo nunca é cortado');
     assert.ok(has(lines, /executar/));
-    assert.ok(has(lines, /merge na unidade/));
+    assert.ok(has(lines, /merge na fila/));
     assert.match(lines.at(-2) ?? '', /←→ escolher {2}enter executar/);
   }
 });

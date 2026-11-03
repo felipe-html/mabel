@@ -10,18 +10,19 @@ import { type GuidedIO, confirmAction, terminalGuided } from './guided.ts';
 import { select } from './menu.ts';
 import { git, gitWith, tryGit, withTrailers } from './git.ts';
 import { deliveryDocPath, renderDeliveryDoc } from './deliverydoc.ts';
-import { checkedOutAt, isAncestor, unitOf } from './integration.ts';
+import { checkedOutAt, integratedItems, isAncestor, unitOf } from './integration.ts';
 import { type Item, listItems } from './items.ts';
 import { type Project, ProjectError, resolveProject } from './project.ts';
 import { unitContext, unitSections } from './runreport.ts';
 import { CURRENT_RULES_FILE, type RuleChange, SPECS_DIR, applyRuleChanges, parseChange, parseSpec } from './specs.ts';
 import { style } from './style.ts';
 import type { ArgSpec, OptionSpecs } from './options.ts';
-import { type Unit, combineUnits, openUnits, proveDelivery, readIntegrationState, unitDependencies } from './units.ts';
+import { type Unit, combineUnits, openUnits, proveDelivery } from './units.ts';
 
 // Entrega por unidade (`docs/specs/entregar.md`, S.6 de `docs/specs/specs-e-entrega.md`):
 // prova (base + snapshot), documento e regras vigentes num commit do Mabel na branch de
-// entrega, PR e volta à base.
+// entrega, PR e volta à base. Na fila (F.1), o snapshot é o corte `base..ponta da unidade`
+// (F7): leva também as tarefas de outras unidades que entraram antes dela.
 
 export const deliverUsage = 'mabel entregar [<slug> | #<n>] [--com <unidade>]… [--parcial] [--substituir] [--rascunho]';
 
@@ -378,13 +379,20 @@ export function unitLabel(unit: Unit): string {
 }
 
 /** Alterações nas regras vigentes da unidade: as da spec (lida do snapshot) ou as do avulso. */
-function unitRuleChanges(root: string, snapshot: string, unit: Unit): RuleChange[] {
-  const item = unit.items[0];
+function unitRuleChanges(root: string, snapshot: string, items: Item[]): RuleChange[] {
+  const item = items[0];
   if (item?.spec) {
     const text = tryGit(root, 'show', `${snapshot}:.mabel/${SPECS_DIR}/${item.spec}.md`);
     return text ? parseSpec(text).alteracoesRegrasVigentes : [];
   }
-  return unit.items.flatMap((task) => task.ruleChanges.flatMap((line) => parseChange(line) ?? []));
+  return items.flatMap((task) => task.ruleChanges.flatMap((line) => parseChange(line) ?? []));
+}
+
+/** As tarefas do corte agrupadas por unidade, na ordem da fila. */
+function byUnit(items: Item[]): Map<string, Item[]> {
+  const units = new Map<string, Item[]>();
+  for (const item of items) units.set(unitOf(item), [...(units.get(unitOf(item)) ?? []), item]);
+  return units;
 }
 
 function deliverChecked(db: DatabaseSync, home: string, project: Project, options: DeliverOptions): DeliverResult {
@@ -422,29 +430,19 @@ function deliverChecked(db: DatabaseSync, home: string, project: Project, option
       lines: [`Entrega parcial: ${names.join(' e ')} ainda tem ${missing.map((n) => `#${n}`).join(', ')} por concluir. Rode com --parcial para entregar o que está pronto.`],
     };
   }
-  // Dependências (R6): unidade que depende de outra fora da base só vai junto dela.
-  const pending = [...new Set(names.flatMap((name) => unitDependencies(all, name)))].filter((dep) => !names.includes(dep));
-  if (pending.length > 0) {
-    return {
-      code: 1,
-      lines: [
-        `${names.join(' e ')} depende de ${pending.join(', ')}, ainda fora da ${base}. Entregue antes ${pending.length === 1 ? 'a unidade' : 'as unidades'} ou rode mabel entregar ${unitArg(names[0] as string)} ${pending.map((dep) => `--com ${unitArg(dep)}`).join(' ')}.`,
-      ],
-    };
-  }
-
+  // O corte (F7): base..ponta da unidade. A dependência (R6) já vem antes dela na fila.
   let snapshot: string | undefined;
   if (chosen.length === names.length) {
-    if (chosen.length === 1) snapshot = git(project.root, 'rev-parse', `refs/heads/${(chosen[0] as Unit).branch}`);
+    if (chosen.length === 1) snapshot = (chosen[0] as Unit).tip;
     else {
-      const combined = combineUnits(home, project, chosen.map((unit) => unit.branch));
+      const combined = combineUnits(home, project, chosen.map((unit) => unit.tip));
       if ('files' in combined) {
-        return { code: 1, lines: [`As unidades não se juntam: conflito com a ${combined.branch} em ${combined.files.join(', ')}. Faça o merge à mão ou entregue uma de cada vez.`] };
+        return { code: 1, lines: [`As unidades não se juntam: conflito com ${combined.tip.slice(0, 7)} em ${combined.files.join(', ')}. Entregue uma de cada vez.`] };
       }
       snapshot = combined.commit;
     }
   }
-  const items = chosen.flatMap((unit) => unit.items);
+  const items = snapshot ? integratedItems(db, project, snapshot) : [];
 
   let delivery: Delivery | undefined;
   let previous: Delivery | undefined;
@@ -473,8 +471,10 @@ function deliverChecked(db: DatabaseSync, home: string, project: Project, option
   if (!delivery && snapshot) {
     const proof = proveDelivery(home, project, snapshot);
     if (proof.kind === 'conflict') {
-      const branches = chosen.map((unit) => unit.branch).join(', ');
-      return { code: 1, lines: [`A ${base} conflita com a entrega em ${proof.files.join(', ')}: faça o merge da ${base} na ${branches} e rode de novo.`] };
+      return {
+        code: 1,
+        lines: [`A ${base} conflita com a entrega em ${proof.files.join(', ')}: rode mabel rodar (a abertura traz a ${base} para a ${integration}) e entregue de novo.`],
+      };
     }
     if (proof.kind === 'red') {
       return {
@@ -500,19 +500,15 @@ function deliverChecked(db: DatabaseSync, home: string, project: Project, option
     const branch = nextBranch(db, project, group);
     const date = today();
     const name = `${date}-${group}`;
-    const changes = chosen.flatMap((unit) => unitRuleChanges(project.root, snapshot as string, unit));
+    const units = byUnit(items);
+    const changes = [...units.values()].flatMap((unitItems) => unitRuleChanges(project.root, snapshot as string, unitItems));
     const rulesPath = `.mabel/${CURRENT_RULES_FILE}`;
     const applied = changes.length > 0 ? applyRuleChanges(tryGit(project.root, 'show', `${snapshot}:${rulesPath}`) ?? '', changes) : undefined;
     const short = git(project.root, 'rev-parse', '--short', snapshot as string);
-    const state = readIntegrationState(db, project.id);
     const warnings = [
       ...(missing.length > 0 ? [`Entrega parcial: faltam ${missing.map((n) => `#${n}`).join(', ')}.`] : []),
-      ...(state?.conflicts ?? [])
-        .filter((conflict) => names.includes(conflict.unit) || conflict.others.some((other) => names.includes(other)))
-        .map((conflict) => {
-          const others = [conflict.unit, ...conflict.others].filter((unit) => !names.includes(unit));
-          return `Conflito visto na integração${others.length > 0 ? ` com ${others.join(', ')}` : ''} em ${conflict.files.join(', ')}${conflict.item !== null ? ` (desde #${conflict.item})` : ''}`;
-        }),
+      // Tarefas de outra unidade antes da ponta entram junto (F9).
+      ...items.filter((item) => !names.includes(unitOf(item))).map((item) => `#${item.number} (de ${unitOf(item)}) entra nesta entrega`),
     ];
     const doc = renderDeliveryDoc(db, home, project, {
       name,
@@ -520,7 +516,7 @@ function deliverChecked(db: DatabaseSync, home: string, project: Project, option
       snapshot: snapshot as string,
       date,
       items,
-      specs: names.filter((unit) => existsSpec(project.root, snapshot as string, unit)).map((unit) => `.mabel/${SPECS_DIR}/${unit}.md (${short})`),
+      specs: [...units.keys()].filter((unit) => existsSpec(project.root, snapshot as string, unit)).map((unit) => `.mabel/${SPECS_DIR}/${unit}.md (${short})`),
       subjects: changes.map((change) => change.assunto),
       ruleNotes: applied?.notes,
       warnings,
@@ -638,6 +634,12 @@ function checkDelivery(db: DatabaseSync, project: Project, delivery: Delivery): 
     updateDelivery(db, delivery, { status: 'merged' });
     const deleted = tryGit(project.root, 'branch', '-D', delivery.branch) !== undefined;
     return [`entrega ${delivery.branch} na ${base}${deleted ? '; branch local apagada' : ''}`];
+  }
+  // Na fila, a entrega de uma unidade posterior leva a desta junto (F7).
+  if (isAncestor(project.root, delivery.snapshot, base)) {
+    updateDelivery(db, delivery, { status: 'replaced' });
+    tryGit(project.root, 'branch', '-D', delivery.branch);
+    return [`entrega ${delivery.branch}: o conteúdo chegou à ${base} por outra entrega${delivery.prUrl ? `; feche o PR ${delivery.prUrl}` : ''}`];
   }
   if (!delivery.remote) return [];
   const fetched = spawnSync('git', ['fetch', '-q', delivery.remote, base], {

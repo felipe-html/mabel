@@ -1,62 +1,53 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { git, tryGit, withTrailers } from './git.ts';
-import { checkedOutAt, conflictedFiles, integrationWorktree, isAncestor, removeTemp, unitOf } from './integration.ts';
-import { type Item, listItems, updateItem } from './items.ts';
+import { checkedOutAt, conflictedFiles, integratedItems, integrationWorktree, isAncestor, removeTemp, unitOf } from './integration.ts';
+import { type Item, listItems } from './items.ts';
 import type { Project } from './project.ts';
 import { getSpecRecord, setSpecStatus } from './specs.ts';
-import { branchExists, deleteBranch, isMerged, shell, specBranch, unitBranch } from './worktree.ts';
+import { branchExists, shell, slugify } from './worktree.ts';
 
-// Branch por unidade (S.5, `docs/specs/specs-e-entrega.md`): a spec tem a sua branch, o
-// avulso trabalha na dele, e a `mabel/integracao` é refeita a cada `run` a partir da base,
-// com o merge de cada unidade aberta, só para teste. Conflito ou verificação vermelha nela
-// viram aviso; nunca bloqueiam a tarefa.
-
-/** Unidade das tarefas da integração antiga, migradas no primeiro `run` deste modelo. */
-export const LEGACY_UNIT = 'legado';
+// Fila linear (F.1, `docs/specs/fila-e-pilha.md`): a `mabel/integracao` é o trunk do Mabel.
+// Toda tarefa nasce da ponta dela e entra nela por merge, em ordem; ela recebe também o
+// merge da base na abertura do `run` e nunca é refeita. A unidade (spec ou avulso) é um
+// trecho da fila, identificado pelo trailer `Mabel-Unidade` dos merges.
 
 /** A resolução de conflito que o humano gravou é reaplicada quando o conflito volta. */
 export const RERERE = ['-c', 'rerere.enabled=true', '-c', 'rerere.autoUpdate=true'];
 
 export interface Unit {
   name: string;
-  branch: string;
-  /** Tarefas concluídas na branch da unidade e ainda fora da base. */
+  /** Ponta da unidade: o último commit dela no primeiro pai da integração (F7). */
+  tip: string;
+  /** Tarefas concluídas da unidade, na fila e ainda fora da base, em ordem. */
   items: Item[];
 }
 
-export interface UnitConflict {
-  unit: string;
-  /** Tarefa cujo merge trouxe o conflito; nula na reconstrução da abertura. */
-  item: number | null;
+/**
+ * Conflito que pausa a fila (`base_conflict`): o merge da base na integração ou, na migração
+ * do modelo por unidade (F12), o de uma branch de unidade.
+ */
+export interface QueueConflict {
+  /** Branch cujo merge na integração conflitou: a base ou a da unidade migrada. */
+  source: string;
+  /** Unidade migrada; nula no merge da base. */
+  unit: string | null;
   files: string[];
-  /** Unidades já na integração que mexem nos mesmos arquivos. */
-  others: string[];
 }
 
-export interface VerifyResult {
-  ok: boolean;
-  command?: string;
-  detail?: string;
-  /** Tarefa cujo merge deixou a integração vermelha; nula na abertura. */
-  item?: number | null;
-}
-
-/** Estado da integração do último `run` (o `run.md` e o documento de entrega o leem). */
+/** Estado da fila na última abertura do `run` (o `run.md`, a inbox e o painel o leem). */
 export interface IntegrationState {
+  /** Commit da base contido na integração. */
   base: string;
-  builtAt: string;
-  /** Unidades na integração, na ordem do merge. */
-  included: string[];
-  /** Unidades que conflitaram com a integração: avisos, sem bloquear. */
-  conflicts: UnitConflict[];
-  /** Unidades pausadas: a base conflita com a branch delas. */
-  paused: { unit: string; branch: string; files: string[] }[];
-  verify: VerifyResult | null;
+  updatedAt: string;
+  conflict: QueueConflict | null;
 }
 
 export function readIntegrationState(db: DatabaseSync, projectId: string): IntegrationState | undefined {
   const row = db.prepare('SELECT state FROM integration_state WHERE project_id = ?').get(projectId) as { state: string } | undefined;
-  return row ? (JSON.parse(row.state) as IntegrationState) : undefined;
+  if (!row) return undefined;
+  // O estado do S.5 (`included`, `conflicts`, `paused`) não vale mais: a abertura o reescreve.
+  const state = JSON.parse(row.state) as Partial<IntegrationState>;
+  return { base: state.base ?? '', updatedAt: state.updatedAt ?? '', conflict: state.conflict ?? null };
 }
 
 function writeIntegrationState(db: DatabaseSync, projectId: string, state: IntegrationState): void {
@@ -66,33 +57,64 @@ function writeIntegrationState(db: DatabaseSync, projectId: string, state: Integ
   ).run(projectId, JSON.stringify(state), new Date().toISOString());
 }
 
-// Unidades -------------------------------------------------------------------------------
-
-/** Primeira entrada em `awaiting_merge` de cada tarefa: ordena as unidades na integração. */
-function firstDone(db: DatabaseSync, itemId: string): string {
-  const row = db.prepare("SELECT min(at) AS at FROM item_transitions WHERE item_id = ? AND to_state = 'awaiting_merge'").get(itemId) as {
-    at: string | null;
-  };
-  return row.at ?? '';
+/** O que o humano roda para resolver o conflito que pausou a fila. */
+export function conflictCommand(project: Project, conflict: QueueConflict): string {
+  return `git switch ${project.config.integracao} && git merge ${conflict.source}`;
 }
 
-/** Unidades com tarefa concluída e não entregue, na ordem da primeira integração. */
+/** O conflito em uma linha: o que conflitou, os arquivos e como resolver. */
+export function conflictText(project: Project, conflict: QueueConflict): string {
+  const integration = project.config.integracao as string;
+  const what = conflict.unit ? `a unidade ${conflict.unit} (${conflict.source})` : `a ${conflict.source}`;
+  return `conflito entre ${what} e a ${integration} em ${conflict.files.join(', ')}; resolva com \`${conflictCommand(project, conflict)}\`, commite e volte à ${project.config.baseBranch}`;
+}
+
+/** O conflito da base que pausa a fila, se houver. */
+export function queueConflict(db: DatabaseSync, project: Project): QueueConflict | null {
+  return project.config.integracao ? (readIntegrationState(db, project.id)?.conflict ?? null) : null;
+}
+
+// Unidades -------------------------------------------------------------------------------
+
+/** Ponta de cada unidade na integração: o último commit do primeiro pai com o trailer dela. */
+function unitTips(project: Project): { tips: Map<string, string>; order: Map<string, number> } {
+  const integration = project.config.integracao as string;
+  const log =
+    tryGit(
+      project.root,
+      'log',
+      '--first-parent',
+      '--reverse',
+      '--format=%H%x00%(trailers:key=Mabel-Unidade,valueonly,separator=%x00)%x01',
+      `${project.config.baseBranch}..${integration}`,
+    ) ?? '';
+  const tips = new Map<string, string>();
+  const order = new Map<string, number>();
+  for (const [i, record] of log.split('\x01').entries()) {
+    const [commit, unit] = record.trim().split('\0').map((part) => part.trim());
+    if (!commit || !unit) continue;
+    tips.set(unit, commit);
+    order.set(commit, i);
+  }
+  return { tips, order };
+}
+
+/** Unidades com tarefa concluída na fila e fora da base, na ordem da ponta de cada uma. */
 export function openUnits(db: DatabaseSync, project: Project, items = listItems(db, project.id)): Unit[] {
-  const units = new Map<string, Unit & { first: string }>();
-  for (const item of items) {
-    if (item.status !== 'awaiting_merge' || !item.integratedCommit) continue;
+  if (!project.config.integracao) return [];
+  const ids = new Set(items.map((item) => item.id));
+  const queued = integratedItems(db, project).filter((item) => ids.has(item.id));
+  const { tips, order } = unitTips(project);
+  const units = new Map<string, Unit>();
+  for (const item of queued) {
     const name = unitOf(item);
-    const unit = units.get(name) ?? { name, branch: unitBranch(item), items: [], first: '' };
+    const unit = units.get(name) ?? { name, tip: tips.get(name) ?? (item.integratedCommit as string), items: [] };
     unit.items.push(item);
-    const first = firstDone(db, item.id);
-    if (!unit.first || first < unit.first) unit.first = first;
     units.set(name, unit);
   }
   return [...units.values()]
-    // Unidade cuja branch já chegou à base não tem o que entregar (o `run` a leva a done).
-    .filter((unit) => branchExists(project.root, unit.branch) && !isAncestor(project.root, unit.branch, project.config.baseBranch))
-    .sort((a, b) => a.first.localeCompare(b.first))
-    .map(({ first: _, ...unit }) => unit);
+    .filter((unit) => !isAncestor(project.root, unit.tip, project.config.baseBranch))
+    .sort((a, b) => (order.get(a.tip) ?? Number.MAX_SAFE_INTEGER) - (order.get(b.tip) ?? Number.MAX_SAFE_INTEGER));
 }
 
 // Worktree temporário e merges -----------------------------------------------------------
@@ -123,6 +145,28 @@ export function mergeBranch(path: string, branch: string, message: string): stri
   return files.length > 0 ? files : ['(merge falhou)'];
 }
 
+/**
+ * Merge de `source` na integração, num worktree temporário, e `update-ref` contra o valor
+ * antigo: a integração só anda para frente (G10). Devolve os arquivos em conflito.
+ */
+function mergeIntoIntegration(home: string, project: Project, source: string, message: string): string[] | undefined {
+  const integration = project.config.integracao as string;
+  const old = git(project.root, 'rev-parse', `refs/heads/${integration}`);
+  const merged = withTemp(home, project, old, (path) => {
+    const files = mergeBranch(path, source, message);
+    return files ? { files } : { commit: git(path, 'rev-parse', 'HEAD') };
+  });
+  if ('files' in merged) return merged.files;
+  git(project.root, 'update-ref', `refs/heads/${integration}`, merged.commit, old);
+  return undefined;
+}
+
+export interface VerifyResult {
+  ok: boolean;
+  command?: string;
+  detail?: string;
+}
+
 /** Verificação do projeto num worktree (o `setup`, depois cada comando do `verify`). */
 export function verifyAt(project: Project, path: string): VerifyResult | null {
   if (project.config.verify.length === 0) return null;
@@ -138,48 +182,62 @@ export function verifyAt(project: Project, path: string): VerifyResult | null {
   return { ok: true };
 }
 
-const changedFiles = (root: string, base: string, branch: string) =>
-  new Set((tryGit(root, 'diff', '--name-only', `${base}...${branch}`) ?? '').split('\n').filter(Boolean));
+// Migração do modelo por unidade (F12) ---------------------------------------------------
 
-/** Unidades da lista que mexem em algum dos arquivos (em relação à base). */
-function touching(project: Project, units: Unit[], files: string[]): string[] {
-  return units
-    .filter((unit) => {
-      const changed = changedFiles(project.root, project.config.baseBranch, unit.branch);
-      return files.some((file) => changed.has(file));
-    })
-    .map((unit) => unit.name);
+/** Prefixos das branches de unidade do S.5, que deixam de existir. */
+const LEGACY_PREFIXES = ['mabel/spec/', 'mabel/avulso/'];
+
+/** Branch de unidade do S.5: a da spec (ou do `legado`) ou a do avulso. */
+export function legacyUnitBranch(item: Pick<Item, 'number' | 'title' | 'spec'> & { unit?: string | null }): string {
+  const unit = item.unit ?? item.spec;
+  return unit ? `mabel/spec/${unit}` : `mabel/avulso/${item.number}-${slugify(item.title)}`;
 }
 
-/** Avança a branch para o commit, criando-a se preciso. */
-function setBranch(project: Project, branch: string, commit: string, old?: string): void {
-  if (old) git(project.root, 'update-ref', `refs/heads/${branch}`, commit, old);
-  else git(project.root, 'update-ref', `refs/heads/${branch}`, commit);
+/** Primeira entrada em `awaiting_merge` de cada tarefa: ordena as unidades migradas. */
+function firstDone(db: DatabaseSync, itemId: string): string {
+  const row = db.prepare("SELECT min(at) AS at FROM item_transitions WHERE item_id = ? AND to_state = 'awaiting_merge'").get(itemId) as {
+    at: string | null;
+  };
+  return row.at ?? '';
 }
-
-// Migração -------------------------------------------------------------------------------
 
 /**
- * Primeiro `run` com o modelo por unidade: tarefas concluídas na integração antiga viram a
- * unidade `legado` (`mabel/spec/legado`, sem arquivo de spec, só para entrega).
+ * Unidades abertas do S.5 (tarefa concluída numa branch de unidade, fora da integração):
+ * entram na integração por merge, na ordem da primeira tarefa concluída de cada uma.
+ * Devolve o conflito da primeira que não entra; as seguintes esperam.
  */
-export function migrateLegacy(db: DatabaseSync, project: Project, notes: string[]): void {
-  const integration = project.config.integracao;
-  if (!integration || readIntegrationState(db, project.id) || !branchExists(project.root, integration)) return;
-  const items = listItems(db, project.id).filter(
-    (item) =>
-      item.status === 'awaiting_merge' &&
-      item.integratedCommit &&
-      !item.unit &&
-      !isAncestor(project.root, item.integratedCommit, project.config.baseBranch),
-  );
-  if (items.length === 0) return;
-  const branch = specBranch(LEGACY_UNIT);
-  if (!branchExists(project.root, branch)) git(project.root, 'branch', branch, integration);
-  for (const item of items) updateItem(db, item.id, { unit: LEGACY_UNIT });
-  notes.push(
-    `migração: ${items.map((item) => `#${item.number}`).join(', ')} da ${integration} antiga viraram a unidade ${LEGACY_UNIT} (${branch}); entregue com mabel entregar ${LEGACY_UNIT}`,
-  );
+function migrateUnits(home: string, db: DatabaseSync, project: Project, notes: string[]): QueueConflict | undefined {
+  const integration = project.config.integracao as string;
+  const units = new Map<string, { branch: string; first: string }>();
+  for (const item of listItems(db, project.id)) {
+    const commit = item.integratedCommit;
+    if (item.status !== 'awaiting_merge' || !commit) continue;
+    if (isAncestor(project.root, commit, integration) || isAncestor(project.root, commit, project.config.baseBranch)) continue;
+    const branch = legacyUnitBranch(item);
+    if (!branchExists(project.root, branch)) continue;
+    const name = unitOf(item);
+    const first = firstDone(db, item.id);
+    const unit = units.get(name);
+    if (!unit || first < unit.first) units.set(name, { branch, first });
+  }
+  const ordered = [...units].sort(([, a], [, b]) => a.first.localeCompare(b.first));
+  for (const [name, { branch }] of ordered) {
+    const message = withTrailers(`mabel: integra ${name} na ${integration} (migração)`, { 'Mabel-Unidade': name });
+    const files = mergeIntoIntegration(home, project, branch, message);
+    if (files) return { source: branch, unit: name, files };
+    notes.push(`migração: ${branch} entrou na ${integration}`);
+  }
+  return undefined;
+}
+
+/** Branches de unidade do S.5 que a integração já contém: apagadas. */
+function removeLegacyBranches(project: Project, notes: string[]): void {
+  const integration = project.config.integracao as string;
+  const refs = tryGit(project.root, 'for-each-ref', '--format=%(refname:short)', ...LEGACY_PREFIXES.map((prefix) => `refs/heads/${prefix}`)) ?? '';
+  for (const branch of refs.split('\n').filter(Boolean)) {
+    if (!isAncestor(project.root, branch, integration) || checkedOutAt(project, branch)) continue;
+    if (tryGit(project.root, 'branch', '-D', branch) !== undefined) notes.push(`branch ${branch} contida na ${integration} e apagada`);
+  }
 }
 
 // Abertura do run ------------------------------------------------------------------------
@@ -187,173 +245,39 @@ export function migrateLegacy(db: DatabaseSync, project: Project, notes: string[
 export interface OpenResult {
   /** Motivo para a fila não começar. */
   pause?: string;
+  /** O conflito que pausou a fila (`base_conflict`). */
+  conflict?: QueueConflict;
   notes: string[];
-  /** Unidades pausadas neste run: as tarefas delas não são escolhidas. */
-  paused: Set<string>;
-}
-
-/** Branches de unidade que chegaram à base e já não têm tarefa em aberto: apagadas. */
-export function removeDeliveredBranches(project: Project, items: Item[], notes: string[]): void {
-  const byBranch = new Map<string, Item[]>();
-  for (const item of items) {
-    if (!project.config.integracao) continue;
-    const branch = unitBranch(item);
-    byBranch.set(branch, [...(byBranch.get(branch) ?? []), item]);
-  }
-  for (const [branch, unitItems] of byBranch) {
-    if (!branchExists(project.root, branch)) continue;
-    if (unitItems.some((item) => item.status !== 'done' && item.status !== 'cancelled')) continue;
-    if (!unitItems.some((item) => item.status === 'done')) continue;
-    if (!isMerged(project, branch)) continue;
-    const warning = deleteBranch(project, branch);
-    notes.push(warning ?? `branch ${branch} entregue e apagada`);
-  }
 }
 
 /**
- * Abertura do `run` (S3): migração do legado, merge da base em cada unidade aberta (conflito
- * pausa a unidade), integração refeita a partir da base com o merge de cada unidade (conflito
- * a deixa de fora, com aviso) e a verificação do projeto nela (vermelho: aviso).
+ * Abertura do `run` (F4, F12): a integração nasce da base se não existe; as unidades abertas
+ * do S.5 entram nela por merge; depois, o merge da base. Conflito pausa a fila com
+ * `base_conflict`: nada novo entra sem o merge limpo.
  */
-export function openUnitModel(home: string, db: DatabaseSync, project: Project): OpenResult {
+export function openQueue(home: string, db: DatabaseSync, project: Project): OpenResult {
   const integration = project.config.integracao;
   const notes: string[] = [];
-  const paused = new Set<string>();
-  if (!integration) return { notes, paused };
+  if (!integration) return { notes };
   const open = checkedOutAt(project, integration);
-  if (open) return { pause: `a branch ${integration} está aberta em ${open}; feche-a para o Mabel continuar`, notes, paused };
-  migrateLegacy(db, project, notes);
-
-  const base = project.config.baseBranch;
-  const units = openUnits(db, project);
-  const state: IntegrationState = {
-    base: git(project.root, 'rev-parse', '--short', base),
-    builtAt: new Date().toISOString(),
-    included: [],
-    conflicts: [],
-    paused: [],
-    verify: null,
-  };
-
-  // A base anda (a `develop` recebe o que outros entregaram): cada unidade aberta a recebe.
-  for (const unit of units) {
-    if (isAncestor(project.root, base, unit.branch) || checkedOutAt(project, unit.branch)) continue;
-    const old = git(project.root, 'rev-parse', `refs/heads/${unit.branch}`);
-    const merged = withTemp(home, project, old, (path) => {
-      const files = mergeBranch(path, base, `mabel: traz a ${base} para a ${unit.branch}`);
-      return files ? { kind: 'conflict' as const, files } : { kind: 'ok' as const, commit: git(path, 'rev-parse', 'HEAD') };
-    });
-    if (merged.kind === 'conflict') {
-      state.paused.push({ unit: unit.name, branch: unit.branch, files: merged.files });
-      paused.add(unit.name);
-      notes.push(`unidade ${unit.name} pausada: conflito da ${base} em ${merged.files.join(', ')}; resolva o merge da ${base} na ${unit.branch}`);
-    } else {
-      setBranch(project, unit.branch, merged.commit, old);
-      notes.push(`${base} trazida para a ${unit.branch}`);
-    }
-  }
-
-  // Integração refeita a partir da base, só para teste.
-  const included: Unit[] = [];
-  const tip = withTemp(home, project, git(project.root, 'rev-parse', base), (path) => {
-    for (const unit of units.filter((u) => !paused.has(u.name))) {
-      const message = withTrailers(`mabel: integra ${unit.name}`, { 'Mabel-Unidade': unit.name });
-      const files = mergeBranch(path, unit.branch, message);
-      if (files) {
-        const others = touching(project, included, files);
-        state.conflicts.push({ unit: unit.name, item: null, files, others });
-        notes.push(`integração: ${unit.name} ficou de fora, conflito em ${files.join(', ')}${others.length > 0 ? ` com ${others.join(', ')}` : ''}`);
-      } else {
-        included.push(unit);
-      }
-    }
-    if (included.length > 0) state.verify = verifyAt(project, path);
-    return git(path, 'rev-parse', 'HEAD');
-  });
-  setBranch(project, integration, tip);
-  state.included = included.map((unit) => unit.name);
-  writeIntegrationState(db, project.id, state);
-  notes.push(`${integration} refeita: ${base} + ${included.length} ${included.length === 1 ? 'unidade' : 'unidades'}`);
-  if (state.verify && !state.verify.ok) notes.push(`integração: verificação vermelha em \`${state.verify.command}\``);
-  return { notes, paused };
-}
-
-// Fim de cada tarefa ---------------------------------------------------------------------
-
-/**
- * Depois do merge da tarefa na branch da unidade: merge da unidade na integração. Conflito
- * ou verificação vermelha viram aviso com a tarefa que o causou, sem desfazer nada (S4).
- */
-export function integrateUnit(home: string, db: DatabaseSync, project: Project, item: Item): string[] {
-  const integration = project.config.integracao;
-  if (!integration) return [];
+  if (open) return { pause: `a branch ${integration} está aberta em ${open}; feche-a para o Mabel continuar`, notes };
   const base = project.config.baseBranch;
   if (!branchExists(project.root, integration)) git(project.root, 'branch', integration, base);
-  const open = checkedOutAt(project, integration);
-  if (open) return [`a ${integration} está aberta em ${open}; a unidade entra nela no próximo run`];
-  const unit = unitOf(item);
-  const branch = unitBranch(item);
-  const state = readIntegrationState(db, project.id) ?? {
-    base: git(project.root, 'rev-parse', '--short', base),
-    builtAt: new Date().toISOString(),
-    included: [],
-    conflicts: [],
-    paused: [],
-    verify: null,
-  };
-  const old = git(project.root, 'rev-parse', `refs/heads/${integration}`);
-  const message = withTrailers(`mabel: integra ${unit} (#${item.number})`, { 'Mabel-Item': `#${item.number}`, 'Mabel-Unidade': unit });
-  const result = withTemp(home, project, old, (path) => {
-    const files = mergeBranch(path, branch, message);
-    if (files) return { kind: 'conflict' as const, files };
-    return { kind: 'ok' as const, commit: git(path, 'rev-parse', 'HEAD'), verify: verifyAt(project, path) };
-  });
-  const notes: string[] = [];
-  state.conflicts = state.conflicts.filter((conflict) => conflict.unit !== unit || result.kind === 'conflict');
-  if (result.kind === 'conflict') {
-    const others = touching(
-      project,
-      openUnits(db, project).filter((other) => state.included.includes(other.name) && other.name !== unit),
-      result.files,
-    );
-    state.conflicts.push({ unit, item: item.number, files: result.files, others });
-    notes.push(`integração: ${unit} conflita em ${result.files.join(', ')}${others.length > 0 ? ` com ${others.join(', ')}` : ''} (desde #${item.number}); a tarefa segue concluída na ${branch}`);
-  } else {
-    setBranch(project, integration, result.commit, old);
-    if (!state.included.includes(unit)) state.included.push(unit);
-    state.verify = result.verify && { ...result.verify, item: result.verify.ok ? null : item.number };
-    if (result.verify && !result.verify.ok) notes.push(`integração: verificação vermelha em \`${result.verify.command}\` depois de #${item.number}`);
-  }
-  writeIntegrationState(db, project.id, state);
-  return notes;
-}
 
-/**
- * Tarefa que depende de tarefa concluída em outra unidade, ainda fora da base: antes de
- * começar, o merge daquela unidade na branch da sua (spec ou avulso). Devolve o conflito.
- */
-export function bringDependencies(home: string, db: DatabaseSync, project: Project, item: Item): { unit: string; files: string[] } | undefined {
-  if (!project.config.integracao || item.dependsOn.length === 0) return undefined;
-  const target = unitBranch(item);
-  if (!branchExists(project.root, target)) git(project.root, 'branch', target, project.config.baseBranch);
-  const items = listItems(db, project.id);
-  const units = new Map<string, string>();
-  for (const number of item.dependsOn) {
-    const dep = items.find((other) => other.number === number);
-    if (!dep || dep.status !== 'awaiting_merge' || !dep.integratedCommit || unitOf(dep) === unitOf(item)) continue;
-    units.set(unitOf(dep), unitBranch(dep));
+  let conflict = migrateUnits(home, db, project, notes);
+  if (!conflict && !isAncestor(project.root, base, integration)) {
+    const files = mergeIntoIntegration(home, project, base, `mabel: traz a ${base} para a ${integration}`);
+    if (files) conflict = { source: base, unit: null, files };
+    else notes.push(`${base} trazida para a ${integration}`);
   }
-  for (const [unit, branch] of units) {
-    if (isAncestor(project.root, branch, target)) continue;
-    const old = git(project.root, 'rev-parse', `refs/heads/${target}`);
-    const merged = withTemp(home, project, old, (path) => {
-      const files = mergeBranch(path, branch, withTrailers(`mabel: traz ${unit} para a ${target}`, { 'Mabel-Unidade': unitOf(item) }));
-      return files ? { kind: 'conflict' as const, files } : { kind: 'ok' as const, commit: git(path, 'rev-parse', 'HEAD') };
-    });
-    if (merged.kind === 'conflict') return { unit, files: merged.files };
-    setBranch(project, target, merged.commit, old);
-  }
-  return undefined;
+  removeLegacyBranches(project, notes);
+  writeIntegrationState(db, project.id, {
+    base: git(project.root, 'rev-parse', '--short', base),
+    updatedAt: new Date().toISOString(),
+    conflict: conflict ?? null,
+  });
+  if (!conflict) return { notes };
+  return { pause: `fila pausada: ${conflictText(project, conflict)}`, conflict, notes };
 }
 
 // Entrega (S.6) ----------------------------------------------------------------------------
@@ -373,13 +297,14 @@ export function proveDelivery(home: string, project: Project, snapshot: string):
   });
 }
 
-/** Snapshot de várias unidades juntas (`--com`): merge das outras sobre a primeira. */
-export function combineUnits(home: string, project: Project, branches: string[]): { commit: string } | { files: string[]; branch: string } {
-  const [first, ...rest] = branches as [string, ...string[]];
-  return withTemp(home, project, git(project.root, 'rev-parse', first), (path) => {
-    for (const branch of rest) {
-      const files = mergeBranch(path, branch, `mabel: junta ${branch} na entrega`);
-      if (files) return { files, branch };
+/** Snapshot de várias unidades juntas (`--com`): merge das outras pontas sobre a primeira. */
+export function combineUnits(home: string, project: Project, tips: string[]): { commit: string } | { files: string[]; tip: string } {
+  const [first, ...rest] = tips as [string, ...string[]];
+  return withTemp(home, project, first, (path) => {
+    for (const tip of rest) {
+      if (isAncestor(path, tip, 'HEAD')) continue;
+      const files = mergeBranch(path, tip, `mabel: junta ${tip.slice(0, 7)} na entrega`);
+      if (files) return { files, tip };
     }
     return { commit: git(path, 'rev-parse', 'HEAD') };
   });
@@ -395,16 +320,4 @@ export function markDeliveredSpecs(db: DatabaseSync, project: Project, items: It
     setSpecStatus(db, project.id, slug, 'entregue');
     notes.push(`spec ${slug} entregue`);
   }
-}
-
-/** Unidades das quais a unidade depende (tarefas dela que dependem de outra unidade fora da base). */
-export function unitDependencies(items: Item[], unit: string): string[] {
-  const deps = new Set<string>();
-  for (const item of items.filter((i) => unitOf(i) === unit && i.status !== 'cancelled')) {
-    for (const number of item.dependsOn) {
-      const dep = items.find((other) => other.number === number);
-      if (dep && unitOf(dep) !== unit && dep.status !== 'done' && dep.status !== 'cancelled') deps.add(unitOf(dep));
-    }
-  }
-  return [...deps];
 }

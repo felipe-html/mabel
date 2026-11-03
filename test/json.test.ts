@@ -219,7 +219,7 @@ test('inbox --json: perguntas, sugestões e opções de cada pendência', () => 
     .run(JSON.stringify({ reason: 'regra crítica: Desconto' }), p.item(2).id);
 
   const out = p.json('decidir');
-  assert.deepEqual(Object.keys(out), ['versao', 'projeto', 'resposta_decidir', 'pendencias']);
+  assert.deepEqual(Object.keys(out), ['versao', 'projeto', 'resposta_decidir', 'conflito_base', 'pendencias']);
   assert.equal(out.pendencias.length, 2);
   const [questions, critical] = out.pendencias;
   assert.deepEqual(questions, {

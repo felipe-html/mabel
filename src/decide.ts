@@ -19,7 +19,6 @@ import { itemDir, readArtifact } from './stages.ts';
 import { signals, signalsLine, situation } from './refine.ts';
 import { type RecentRun, renderRecentRuns } from './status.ts';
 import { style } from './style.ts';
-import { inSpec, unitBranch } from './worktree.ts';
 import { type ArgSpec, type OptionSpecs, itemArg, jsonOption } from './options.ts';
 
 function parseNumber(value: string | undefined): number | undefined {
@@ -322,13 +321,13 @@ export function rejectCommand(args: string[]): Promise<number> {
       process.stderr.write(`Informe o motivo.\nUso: ${rejectUsage}\n`);
       return 1;
     }
-    // A rejeição escreve na branch da unidade: não pode correr junto com um `mabel rodar`.
+    // A rejeição escreve na integração: não pode correr junto com um `mabel rodar`.
     const home = dataDir();
     const release = acquireLock(home, project.id);
     try {
       const result = reject(db, home, project, item, reason, { cancel: parsed.values.cancelar });
       writeRunReport(db, home, project);
-      const where = inSpec(item) ? `revertido na ${unitBranch(item)}` : `retirado da ${unitBranch(item)}`;
+      const where = `revertido na ${project.config.integracao}`;
       process.stdout.write(
         result.to === 'cancelled'
           ? `#${item.number} ${where} e cancelado.\n`

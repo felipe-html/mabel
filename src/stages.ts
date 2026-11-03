@@ -413,7 +413,7 @@ export interface ReviewPromptInput {
 
 export function reviewPrompt(ctx: StageContext, input: ReviewPromptInput): string {
   if (input.resuming) return `${INTERRUPTED} Termine a revisão com a saída estruturada.`;
-  const base = itemOrigin(ctx.project, ctx.item);
+  const base = itemOrigin(ctx.project);
   const tests = input.execution.criterios.map(
     (criterion) => `${criterion.id}: ${criterion.testes.map((t) => `\`${t.arquivo}\` › ${t.nome}`).join(', ') || '(nenhum)'}`,
   );
