@@ -300,7 +300,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
         <text class="cmd" x="38" y="130">adicionar</text><text class="note" x="124" y="130">item no backlog.md</text>
         <text class="cmd" x="38" y="152">refinar</text><circle class="dot" cx="104" cy="148" r="4"/><text class="ag" x="114" y="152">especificador</text>
         <text class="cmd" x="38" y="174">capturar</text><text class="note" x="124" y="174">telas e APIs</text>
-        <text class="cmd" x="38" y="196">credenciar</text><text class="note" x="124" y="196">validade do token</text>
+        <text class="cmd" x="38" y="196">credenciar</text><text class="note" x="124" y="196">validade dos tokens</text>
 
         <!-- Rodar -->
         <rect class="box run" x="405" y="30" width="290" height="200" rx="6"/>
@@ -754,8 +754,8 @@ Tamanho: 3 regras · 3 exemplos · 2 rodadas · 2 perguntas · 2 tarefas
         </article>
         <article class="cmd">
           <header><span class="name">credenciar</span><span class="badge none">sem agente</span></header>
-          <p class="usage">mabel credenciar · credencial figma --expira AAAA-MM-DD</p>
-          <p>Acompanha o vencimento do <code>FIGMA_TOKEN</code>; avisa a partir de 14 dias do fim.</p>
+          <p class="usage">mabel credenciar · credenciar &lt;figma | bitbucket&gt; --expira AAAA-MM-DD</p>
+          <p>Acompanha o vencimento do <code>FIGMA_TOKEN</code> e do <code>BITBUCKET_TOKEN</code>; avisa a partir de 14 dias do fim.</p>
           <p class="writes"><b>Grava:</b> a data em <code>~/.mabel/credenciais.json</code>, nunca o token.</p>
         </article>
       </div>
@@ -855,7 +855,7 @@ Respostas registradas em 2 itens · 1 pulado.
           <header><span class="name">entregar</span><span class="badge human">você pede</span></header>
           <p class="usage">mabel entregar [slug | #n] [--com unidade] [--parcial] [--substituir] [--rascunho]</p>
           <p>Sem unidade, mostra as unidades do relatório de run: prontas para entregar (spec com tarefas concluídas, avulso), em andamento e a fila (base + tarefas na fila, base em dia ou em conflito); no terminal, escolhe uma das prontas. Entrega uma unidade (spec ou avulso): o corte da fila até a ponta dela, com as tarefas de outras unidades que entraram antes (listadas no “Olhe primeiro”). Parcial pede confirmação (TTY) ou <code>--parcial</code>. Antes de criar qualquer branch, a <b>prova</b>: base + merge do corte num worktree temporário, e a verificação do projeto; conflito ou vermelho recusam. Depois, o documento de entrega e o PR para a base. O merge é seu; no próximo <code>run</code> as tarefas viram <code>done</code>, a spec vira <code>entregue</code>, e o documento e as regras vigentes ficam na base junto do código.</p>
-          <p class="writes"><b>Grava:</b> branch <code>mabel/entrega/&lt;unidade&gt;</code> = o corte da fila até a ponta da unidade + commit <code>mabel: entrega &lt;unidade&gt;</code> só com <code>.mabel/entregas/&lt;data&gt;-&lt;unidade&gt;.md</code> e o <code>.mabel/regras.md</code> com as alterações das unidades do corte (trailer <code>Mabel-Entrega</code>; a base não recebe commit), push no remoto, PR pelo <code>gh</code>; a entrega no SQLite, uma aberta por unidade. Sem <code>gh</code>: o endereço e o arquivo do corpo.</p>
+          <p class="writes"><b>Grava:</b> branch <code>mabel/entrega/&lt;unidade&gt;</code> = o corte da fila até a ponta da unidade + commit <code>mabel: entrega &lt;unidade&gt;</code> só com <code>.mabel/entregas/&lt;data&gt;-&lt;unidade&gt;.md</code> e o <code>.mabel/regras.md</code> com as alterações das unidades do corte (trailer <code>Mabel-Entrega</code>; a base não recebe commit), push no remoto, PR pelo <code>gh</code> no GitHub ou pela API do Bitbucket (<code>curl</code>, com o <code>BITBUCKET_TOKEN</code>); a entrega no SQLite, uma aberta por unidade. Sem PR automático: o motivo, o endereço e o arquivo do corpo.</p>
 <pre class="term">Entrega mabel/entrega/exportar-csv · exportar-csv · 3 tarefas desde a main
 <span class="g">PR aberto: https://github.com/…/pull/31</span></pre>
         </article>

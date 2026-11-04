@@ -19,7 +19,7 @@ commit.
 | E2 | Commit | Nenhum. Cada item já entra na integração por um commit de merge do Mabel, e o relatório não é versionado (D10). O "o que foi feito" vai no corpo do PR. |
 | E3 | Merge do PR | Só merge commit. Squash e rebase tiram os `integrated_commit` da história da base, e os itens nunca chegam a `done`. O comando recusa abrir o PR num repositório que não permite merge commit, e o corpo do PR avisa. |
 | E4 | Checkout | Troca para a base só o checkout da raiz do projeto, só se ele estiver na integração ou numa entrega, e só se não houver alteração em arquivo versionado. Fora disso, não mexe e diz por quê. |
-| E5 | `gh` | Usado se estiver instalado e autenticado e o remoto for do GitHub. Sem ele, ou com o remoto no Bitbucket Cloud (o `gh` nem é chamado): publica a branch (se houver remoto), mostra o endereço para abrir o PR à mão (comparação no GitHub, `pull-requests/new` no Bitbucket) e o arquivo do corpo do PR; fora do GitHub, lembra de escolher "Merge commit", que o Mabel não confere. Sem remoto: só cria o snapshot e mostra o `git merge --no-ff`. |
+| E5 | `gh` e Bitbucket | No GitHub, o `gh`, se estiver instalado e autenticado. No Bitbucket Cloud (o `gh` nem é chamado), a API REST 2.0 pelo `curl`, se houver `BITBUCKET_TOKEN` no ambiente e o token enxergar o repositório: com `BITBUCKET_EMAIL`, API token da conta Atlassian (autenticação básica); sem ele, access token do repositório ou do workspace (Bearer). A credencial vai na configuração do `curl` pelo stdin, nunca nos argumentos; as duas variáveis ficam fora do ambiente do agente (`PRIVATE_ENV`) e a validade entra no `mabel credenciar bitbucket`. Sem PR automático: publica a branch (se houver remoto), mostra o motivo, o endereço para abrir o PR à mão (comparação no GitHub, `pull-requests/new` no Bitbucket) e o arquivo do corpo do PR. Fora do GitHub, lembra de escolher "Merge commit", que o Mabel não confere. Sem remoto: só cria o snapshot e mostra o `git merge --no-ff`. |
 | E6 | Entrega aberta | Uma por projeto. Com uma aberta, o comando mostra o PR e sai; `--substituir` fecha o PR anterior e abre outro com a integração atual. |
 
 ## Comando
@@ -77,7 +77,16 @@ mabel entregar
 10. PR: `gh pr create --base <base> --head mabel/entrega/<data> --title "<título>" --body-file <arquivo>`
     (`--draft` com `--rascunho`). Título: `Mabel: <n> itens (#3, #5, #7, #9)`, com os
     números cortados em `…` acima de 70 caracteres.
-11. Sem `gh` (E5): mostra o endereço para abrir o PR, com a branch e a base, quando o
+10b. No Bitbucket com token (E5): `GET /2.0/repositories/<workspace>/<repo>` antes de
+    criar a entrega (401/403/404 viram o motivo do "sem PR automático", com a validade
+    vencida do `credenciar` quando houver) e, depois do push,
+    `POST /2.0/repositories/<workspace>/<repo>/pullrequests` com `title`, `description`
+    (o corpo), `source.branch.name`, `destination.branch.name`, `close_source_branch: false`
+    e `draft: true` com `--rascunho`. O PR é o `links.html.href` da resposta. No
+    `--substituir`, o anterior recebe o comentário `Substituído por <url nova>` e é
+    recusado (`/decline`); no "Depois do merge", o estado vem de
+    `GET …/pullrequests/<id>` (`MERGED` fora da base → squash ou rebase, como no GitHub).
+11. Sem PR automático (E5): mostra o endereço para abrir o PR, com a branch e a base, quando o
     remoto é do GitHub (`https://github.com/<dono>/<repo>/compare/<base>...<branch>?expand=1`)
     ou do Bitbucket Cloud (`https://bitbucket.org/<workspace>/<repo>/pull-requests/new?source=<branch>&dest=<base>`),
     e o caminho do arquivo do corpo, para copiar. Remoto de outra hospedagem: só o caminho
@@ -176,3 +185,8 @@ Com um remoto local (`git init --bare`) e um `gh` falso no `PATH`, como o `claud
    mostra o conserto; a entrega segue `open`.
 10. `rejeitar` de item numa entrega aberta avisa sobre o `--substituir`.
 11. Remoção do projeto apaga `deliveries` e `<dados>/entregas/<projeto>`.
+12. Bitbucket (com um `curl` falso em `MABEL_CURL_BIN`): sem `BITBUCKET_TOKEN`, link e
+    motivo, sem chamar o `gh`; com ele, PR pela API com o corpo, `draft` no `--rascunho` e a
+    credencial só no stdin (básica com `BITBUCKET_EMAIL`, Bearer sem); `--substituir`
+    comenta e recusa o anterior; token recusado (401) mostra o motivo e o link; PR
+    `MERGED` fora da base explica o squash.

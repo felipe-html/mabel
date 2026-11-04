@@ -144,7 +144,7 @@ export const commands: Command[] = [
   },
   {
     name: 'credenciar',
-    description: 'Registra quando vence cada token da captura, para o Mabel avisar antes.',
+    description: 'Registra quando vence cada token (Figma, Bitbucket), para o Mabel avisar antes.',
     usage: credentialUsage,
     options: credentialOptions,
     args: credentialArgs,

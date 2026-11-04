@@ -109,8 +109,8 @@ export interface RunHandle {
   done: Promise<RunOutcome>;
 }
 
-/** Variáveis que o Mabel usa fora das runs e o agente não deve ver (tokens de captura). */
-export const PRIVATE_ENV = ['FIGMA_TOKEN'];
+/** Variáveis que o Mabel usa fora das runs e o agente não deve ver (tokens da captura e da entrega). */
+export const PRIVATE_ENV = ['FIGMA_TOKEN', 'BITBUCKET_TOKEN', 'BITBUCKET_EMAIL'];
 
 /** Ambiente da run: o do Mabel sem as variáveis privadas. */
 export function agentEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {

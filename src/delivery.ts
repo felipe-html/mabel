@@ -1,10 +1,12 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
 import { Interrupted, interactive } from './ask.ts';
+import { BITBUCKET_TOKEN, type BitbucketAuth, bitbucketAuth, bitbucketPr, bitbucketPrState, bitbucketProblem, createBitbucketPr, declineBitbucketPr } from './bitbucket.ts';
+import { expired, expiryWarning } from './credentials.ts';
 import { dataDir, openDb } from './db.ts';
 import { type GuidedIO, confirmAction, terminalGuided } from './guided.ts';
 import { select } from './menu.ts';
@@ -199,12 +201,30 @@ export function newPrUrl({ host, repo }: RemoteRepo, branch: string, base: strin
     : `https://bitbucket.org/${repo}/pull-requests/new?source=${encodeURIComponent(branch)}&dest=${encodeURIComponent(base)}`;
 }
 
-type GhState = { kind: 'ready'; repo?: string; mergeCommitAllowed: boolean } | { kind: 'unavailable'; reason: string };
+/** Onde e como o Mabel abre o PR: pelo `gh` no GitHub, pela API no Bitbucket, ou à mão. */
+type PrHost =
+  | { kind: 'github'; repo?: string; mergeCommitAllowed: boolean }
+  | { kind: 'bitbucket'; repo: string; auth: BitbucketAuth }
+  | { kind: 'unavailable'; reason: string };
+
+function prHost(home: string, project: Project, remote: string): PrHost {
+  const hosted = remoteRepo(tryGit(project.root, 'remote', 'get-url', remote) ?? '');
+  if (hosted?.host === 'bitbucket') return bitbucketHost(home, hosted.repo);
+  return ghState(project, remote, hosted);
+}
+
+/** Bitbucket Cloud: precisa do `BITBUCKET_TOKEN` e de o token enxergar o repositório. */
+function bitbucketHost(home: string, repo: string): PrHost {
+  const auth = bitbucketAuth();
+  if (!auth) return { kind: 'unavailable', reason: `defina ${BITBUCKET_TOKEN} para o Mabel abrir o PR no Bitbucket; veja o README` };
+  const problem = bitbucketProblem(auth, repo);
+  if (!problem) return { kind: 'bitbucket', repo, auth };
+  const stale = expired(home, 'bitbucket') ? '; a validade registrada já passou (mabel credenciar)' : '';
+  return { kind: 'unavailable', reason: `${problem}${stale}` };
+}
 
 /** O `gh` pode abrir o PR neste remoto: instalado, autenticado e reconhecendo o repositório. */
-function ghState(project: Project, remote: string): GhState {
-  const hosted = remoteRepo(tryGit(project.root, 'remote', 'get-url', remote) ?? '');
-  if (hosted?.host === 'bitbucket') return { kind: 'unavailable', reason: `o remoto ${remote} está no Bitbucket; o gh só abre PR no GitHub` };
+function ghState(project: Project, remote: string, hosted: RemoteRepo | undefined): PrHost {
   const auth = gh(project.root, ['auth', 'status']);
   if (!auth) return { kind: 'unavailable', reason: 'gh não instalado' };
   if (!auth.ok) return { kind: 'unavailable', reason: 'gh sem login (gh auth login)' };
@@ -217,7 +237,30 @@ function ghState(project: Project, remote: string): GhState {
   } catch {
     // Resposta inesperada: segue como permitido; o corpo do PR avisa de qualquer forma.
   }
-  return { kind: 'ready', repo, mergeCommitAllowed: allowed };
+  return { kind: 'github', repo, mergeCommitAllowed: allowed };
+}
+
+/** Fecha o PR substituído, no GitHub pelo `gh` e no Bitbucket pela API. */
+function closePr(project: Project, url: string, comment: string): boolean {
+  if (bitbucketPr(url)) {
+    const auth = bitbucketAuth();
+    return auth ? declineBitbucketPr(auth, url, comment) : false;
+  }
+  return gh(project.root, ['pr', 'close', url, '--comment', comment])?.ok === true;
+}
+
+/** Estado do PR em maiúsculas (`OPEN`, `MERGED`…), ou `undefined` quando não dá para saber. */
+function prState(project: Project, url: string): string | undefined {
+  if (bitbucketPr(url)) {
+    const auth = bitbucketAuth();
+    return auth ? bitbucketPrState(auth, url) : undefined;
+  }
+  const view = gh(project.root, ['pr', 'view', url, '--json', 'state']);
+  try {
+    return view?.ok ? (JSON.parse(view.stdout) as { state?: string }).state : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 // Entrega --------------------------------------------------------------------------------
@@ -485,8 +528,8 @@ function deliverChecked(db: DatabaseSync, home: string, project: Project, option
   }
 
   const remote = deliveryRemote(project);
-  const ghNow = remote ? ghState(project, remote) : undefined;
-  if (ghNow?.kind === 'ready' && !ghNow.mergeCommitAllowed) {
+  const host = remote ? prHost(home, project, remote) : undefined;
+  if (host?.kind === 'github' && !host.mergeCommitAllowed) {
     return {
       code: 1,
       lines: [
@@ -562,11 +605,31 @@ function deliverChecked(db: DatabaseSync, home: string, project: Project, option
       code = 1;
     } else {
       out.push(`branch publicada em ${remote}`);
-      if (ghNow?.kind === 'ready') {
+      if (host?.kind === 'bitbucket') {
+        const warning = expiryWarning(home, 'bitbucket');
+        if (warning) out.push(warning);
+        const created = createBitbucketPr(host.auth, host.repo, {
+          title: deliveryTitle(delivery.unit, delivery.items),
+          description: readFileSync(bodyPath, 'utf8'),
+          source: delivery.branch,
+          destination: base,
+          draft: options.draft,
+        });
+        if ('url' in created) {
+          updateDelivery(db, delivery, { prUrl: created.url });
+          out.push(`PR aberto: ${created.url}`);
+          out.push('O Mabel não confere a estratégia de merge no Bitbucket: no merge, escolha "Merge commit".');
+        } else {
+          out.push(`o Bitbucket não abriu o PR: ${created.error}`);
+          out.push(`Abra o PR: ${newPrUrl({ host: 'bitbucket', repo: host.repo }, delivery.branch, base)}`);
+          out.push(`Corpo do PR: ${bodyPath}`);
+          code = 1;
+        }
+      } else if (host?.kind === 'github') {
         const created = gh(project.root, [
           'pr',
           'create',
-          ...(ghNow.repo ? ['--repo', ghNow.repo] : []),
+          ...(host.repo ? ['--repo', host.repo] : []),
           '--base',
           base,
           '--head',
@@ -587,7 +650,7 @@ function deliverChecked(db: DatabaseSync, home: string, project: Project, option
           code = 1;
         }
       } else {
-        if (ghNow) out.push(`sem PR automático (${ghNow.reason})`);
+        if (host) out.push(`sem PR automático (${host.reason})`);
         const hosted = remoteRepo(tryGit(project.root, 'remote', 'get-url', remote) ?? '');
         if (hosted) out.push(`Abra o PR: ${newPrUrl(hosted, delivery.branch, base)}`);
         out.push(`Corpo do PR: ${bodyPath}`);
@@ -598,10 +661,8 @@ function deliverChecked(db: DatabaseSync, home: string, project: Project, option
 
   if (previous) {
     if (previous.prUrl) {
-      const closed = delivery.prUrl
-        ? gh(project.root, ['pr', 'close', previous.prUrl, '--comment', `Substituído por ${delivery.prUrl}`])
-        : undefined;
-      out.push(closed?.ok ? `PR anterior fechado: ${previous.prUrl}` : `Feche o PR anterior: ${previous.prUrl}`);
+      const closed = delivery.prUrl ? closePr(project, previous.prUrl, `Substituído por ${delivery.prUrl}`) : false;
+      out.push(closed ? `PR anterior fechado: ${previous.prUrl}` : `Feche o PR anterior: ${previous.prUrl}`);
     }
     if (isAncestor(project.root, previous.snapshot, delivery.snapshot)) tryGit(project.root, 'branch', '-D', previous.branch);
   }
@@ -652,14 +713,7 @@ function checkDelivery(db: DatabaseSync, project: Project, delivery: Delivery): 
     return [`O PR da entrega foi integrado no ${delivery.remote}; atualize a ${base} local (git pull) para os itens irem a done.`];
   }
   if (!delivery.prUrl) return [];
-  const view = gh(project.root, ['pr', 'view', delivery.prUrl, '--json', 'state']);
-  let state: string | undefined;
-  try {
-    state = view?.ok ? (JSON.parse(view.stdout) as { state?: string }).state : undefined;
-  } catch {
-    state = undefined;
-  }
-  if (state !== 'MERGED') return [];
+  if (prState(project, delivery.prUrl) !== 'MERGED') return [];
   return [
     `O PR da entrega (${delivery.prUrl}) foi integrado sem merge commit (squash ou rebase): os commits do Mabel não estão na ${base}, e os itens não vão a done.`,
     `Para consertar, na ${base}: git merge --no-ff ${delivery.branch} (traz os commits para a história; o conteúdo já está lá).`,
