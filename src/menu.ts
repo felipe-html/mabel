@@ -58,6 +58,17 @@ export function leaveFullscreen(): void {
   process.stdout.write('\x1b[?1049l');
 }
 
+/**
+ * Linhas da tela cheia, cada uma limpando o resto da linha anterior. A linha que ocupa a
+ * largura toda não leva o `\x1b[K`: com o cursor na última coluna, ele apaga a última letra.
+ */
+export function fullscreenRows(lines: string[], width: number, height: number): string {
+  return lines
+    .slice(0, height)
+    .map((line) => (visibleLength(line) >= width ? line : `${line}\x1b[K`))
+    .join('\r\n');
+}
+
 /** Linhas físicas que o texto ocupa, com a quebra do terminal. */
 function physicalRows(lines: string[], width: number): number {
   return lines.reduce((total, line) => total + Math.max(1, Math.ceil(visibleLength(line) / Math.max(1, width))), 0);
@@ -84,7 +95,7 @@ export function runScreen<S, R>(screen: Screen<S, R>): Promise<R> {
     const lines = screen.render(state, width(), height());
     if (screen.fullscreen) {
       // Linha a linha a partir do topo, sem passar da última: o buffer alternativo não rola.
-      stdout.write(`\x1b[H${lines.slice(0, height()).map((line) => `${line}\x1b[K`).join('\r\n')}\x1b[J`);
+      stdout.write(`\x1b[H${fullscreenRows(lines, width(), height())}\x1b[J`);
       return;
     }
     clear();

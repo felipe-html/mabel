@@ -77,6 +77,31 @@ test('item crítico: sem "deixar o agente decidir"; aprovar leva o item a planne
   assert.deepEqual(p.reasons(1), ['humano: inbox critérios aprovados']);
 });
 
+test('item crítico: suposições críticas por inteiro só na sua seção, sem repetir no motivo', async () => {
+  const plan = {
+    ...PLAN,
+    conceitosCriticos: ['Desconto'],
+    suposicoes: [
+      { texto: 'Desconto de no máximo 10%', regraCritica: true },
+      { texto: 'Botão azul', regraCritica: false },
+    ],
+  };
+  const p = inboxProject('\n## Desconto\naplica desconto\n', [{ structured_output: plan, session_id: 'plan-c' }]);
+  // Motivo gravado antes da contagem: as suposições vinham por inteiro.
+  const item = p.item(1);
+  const pending = { ...item.pending, reason: 'conceito crítico: Desconto; suposição sobre regra crítica: Desconto de no máximo 10%' };
+  p.db.prepare('UPDATE items SET pending = ? WHERE id = ?').run(JSON.stringify(pending), item.id);
+  const { io, out } = scripted(['Pular por agora']);
+  await runInbox(p.db, p.home, p.project, io);
+  assert.equal(out.filter((line) => line.includes('Desconto de no máximo 10%')).length, 1, out.join('\n'));
+  assert.ok(out.some((line) => line.includes('motivo: conceito crítico: Desconto')));
+  const critical = out.indexOf('      suposições sobre regra crítica:');
+  const others = out.indexOf('      outras suposições do plano:');
+  assert.ok(critical > 0 && others > critical, out.join('\n'));
+  assert.equal(out[critical + 1], '        - Desconto de no máximo 10%');
+  assert.equal(out[others + 1], '        - Botão azul');
+});
+
 test('pergunta de regra crítica: sem "deixar o agente decidir" na inbox (G7)', async () => {
   const p = setupProject('\n## Desconto\naplica desconto\n');
   assert.equal(p.cli('conferir').status, 0);
