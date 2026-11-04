@@ -84,13 +84,35 @@ function isEmpty(value: unknown): boolean {
 }
 
 /**
+ * Servidores MCP do `init` contra os pedidos pela etapa (só o do Mabel, `--mcp-config`):
+ * exatamente os mesmos, todos `connected`. Sem pedido, nenhum.
+ */
+function mcpViolation(reported: unknown, expected: string[]): string | undefined {
+  if (expected.length === 0) return isEmpty(reported) ? undefined : 'mcp_servers';
+  const servers = Array.isArray(reported)
+    ? reported.map((entry) => {
+        const server = (typeof entry === 'object' && entry !== null ? entry : { name: entry }) as { name?: unknown; status?: unknown };
+        return { name: String(server.name), status: String(server.status ?? '') };
+      })
+    : [];
+  const extra = servers.filter((server) => !expected.includes(server.name)).map((server) => `+${server.name}`);
+  const missing = expected.filter((name) => !servers.some((server) => server.name === name)).map((name) => `-${name}`);
+  const down = servers
+    .filter((server) => expected.includes(server.name) && server.status !== 'connected')
+    .map((server) => `${server.name}: ${server.status || 'sem status'}`);
+  const problems = [...extra, ...missing, ...down];
+  return problems.length > 0 ? `mcp_servers (${problems.join(', ')})` : undefined;
+}
+
+/**
  * Campo do `init` que mostra contexto fora do pedido, ou `undefined` quando a run é
- * hermética: sem memória, MCP, skills nem comandos, ferramentas iguais às pedidas e só
+ * hermética: sem memória, MCP além do pedido (`mcpServers`), skills nem comandos, ferramentas iguais às pedidas e só
  * plugins e agentes internos.
  */
-export function initViolation(init: Record<string, unknown>, tools: string[]): string | undefined {
+export function initViolation(init: Record<string, unknown>, tools: string[], mcpServers: string[] = []): string | undefined {
   if (!isEmpty(init.memory_paths)) return 'memory_paths';
-  if (!isEmpty(init.mcp_servers)) return 'mcp_servers';
+  const mcp = mcpViolation(init.mcp_servers, mcpServers);
+  if (mcp) return mcp;
   if (!isEmpty(init.skills)) return 'skills';
   if (!isEmpty(init.slash_commands)) return 'slash_commands';
   const reported = names(init.tools);

@@ -371,8 +371,8 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
 
   <div class="locks">
     <div class="lock"><b>Toda run é auditada (G1)</b><span>Modelo, custo, tokens, ferramentas e transcript no SQLite e em <code>~/.mabel/runs/</code>. Sem registro, a run não inicia.</span></div>
-    <div class="lock"><b>Contexto hermético (G8)</b><span><code>--restricted</code>, <code>--strict-mcp-config</code>, sem slash commands, <code>--tools</code> por etapa. Só prompt do Mabel + CLAUDE.md + regras críticas.</span></div>
-    <div class="lock"><b>Escopo (G4)</b><span>Hook <code>PreToolUse</code> nega escrita fora dos globs do plano; sandbox confina o terminal ao worktree; o agente não usa git de escrita.</span></div>
+    <div class="lock"><b>Contexto hermético (G8)</b><span><code>--restricted</code>, <code>--strict-mcp-config</code> (só o MCP do Mabel, na execução), sem slash commands, <code>--tools</code> por etapa. Só prompt do Mabel + CLAUDE.md + regras críticas.</span></div>
+    <div class="lock"><b>Escopo (G4)</b><span>Hook <code>PreToolUse</code> nega escrita fora dos globs do plano; sandbox confina o terminal ao worktree; o agente não usa git de escrita. Fora do sandbox, a pedido dele, só o <code>verify</code>/<code>testeUnico</code> pela ferramenta <code>verificar</code>.</span></div>
     <div class="lock"><b>Teto por run (G6)</b><span><code>--max-turns</code> e <code>--max-budget-usd</code> por etapa, e a política de saldo antes de cada uma.</span></div>
   </div>
 
@@ -465,8 +465,8 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
         <i class="arm in" aria-hidden="true"></i>
         <span class="kicker">Agente</span>
         <h4>Executor</h4>
-        <p class="meta">sonnet (opus na 3ª tentativa) · Read Glob Grep Edit Write Bash · 120 turnos · US$ 8</p>
-        <p>Implementa só o plano, um teste por critério <code>teste</code>, roda os comandos de verificação. Sem git de escrita: o Mabel commita.</p>
+        <p class="meta">sonnet (opus na 3ª tentativa) · Read Glob Grep Edit Write Bash · <code>verificar</code> (MCP do Mabel) · 120 turnos · US$ 8</p>
+        <p>Implementa só o plano, um teste por critério <code>teste</code>, roda os comandos de verificação. Quando o sandbox bloqueia os testes, chama <code>verificar</code>: o Mabel roda o <code>verify</code> ou um teste pelo <code>testeUnico</code> fora do sandbox, no worktree (8 chamadas por run, 10 min cada, gravadas em <code>runs/&lt;run&gt;/verificar.jsonl</code>). Não conta como gate. Sem git de escrita: o Mabel commita.</p>
         <div class="out"><span class="file">execucao-N.json</span><code>resumo</code><code>criterios → testes{arquivo, nome}</code><code>suposicoes</code><code>perguntas</code><code>escopoAdicional</code><code>impedimento</code></div>
       </div>
       <!-- 12 -->
@@ -641,7 +641,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       <header><h3>Executor</h3><span class="where">etapa execute · prompts/executar.md</span></header>
       <dl>
         <dt>Quando</dt><dd>Item em <code>executing</code>; volta aqui a cada reprovação.</dd>
-        <dt>Run</dt><dd><code>sonnet</code> (opus na 3ª) · Read Glob Grep Edit Write Bash · 120 turnos · US$ 8 · hook de escopo, sandbox, sem <code>git commit/push/merge</code>, <code>curl</code>, <code>sudo</code></dd>
+        <dt>Run</dt><dd><code>sonnet</code> (opus na 3ª) · Read Glob Grep Edit Write Bash · 120 turnos · US$ 8 · hook de escopo, sandbox, sem <code>git commit/push/merge</code>, <code>curl</code>, <code>sudo</code> · com sandbox e comando de verificação, a ferramenta <code>mcp__mabel__verificar</code> (MCP por run, <code>runs/&lt;run&gt;/mcp.json</code>): <code>verify</code> sem argumentos ou <code>testeUnico</code> com <code>arquivo</code> e <code>nome</code>, fora do sandbox, 8 chamadas e 10 min por chamada; eventos <code>mabel/verificar</code></dd>
         <dt>Recebe</dt><dd>O plano; na retentativa, o motivo da reprovação ou o resumo.</dd>
         <dt>Devolve</dt><dd><code>execucao-N.json</code>: testes por critério, <code>suposicoes</code>, <code>perguntas</code>, <code>escopoAdicional</code>, <code>impedimento</code>. E as edições no worktree.</dd>
         <dt>Depois</dt><dd>O Mabel commita e roda a verificação e a prova.</dd>

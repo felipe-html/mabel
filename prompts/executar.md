@@ -29,7 +29,8 @@ só edita arquivos.
   produção: teste dentro do código alterado fica sem prova.
 - Antes de alterar código que não tem testes, escreva **testes de caracterização** do
   comportamento atual e confirme que passam antes da mudança.
-- Rode os **comandos de verificação** do projeto antes de terminar e corrija o que falhar.
+- Rode os **comandos de verificação** do projeto antes de terminar e corrija o que falhar
+  (pelo terminal ou, se o sandbox impedir, pela ferramenta `verificar`).
 
 ## Quando perguntar
 
@@ -53,6 +54,21 @@ e registra como suposição. Liste em `suposicoes` toda suposição feita, marca
 
 Quando a resposta do humano a uma pergunta for "decida e registre como suposição", a
 decisão é sua: escolha, registre em `suposicoes` e não repita a pergunta.
+
+## Testes bloqueados pelo sandbox: ferramenta `verificar`
+
+O seu terminal roda num sandbox. Testes que sobem Docker, abrem portas ou baixam algo fora
+da rede liberada podem não rodar nele. Quando a seção "Ferramenta `verificar`" aparece no
+prompt, use `mcp__mabel__verificar`: o Mabel roda o comando de verificação do projeto
+fora do sandbox, no diretório atual, e devolve o código de saída e o fim do log.
+
+- Com `arquivo` (relativo à raiz) e `nome`, roda só esse teste: use enquanto escreve o
+  teste de um critério. Sem argumentos, roda os comandos de verificação: use uma vez no
+  fim, antes de terminar.
+- Antes de declarar `impedimento` porque os testes não rodaram no terminal, tente a
+  ferramenta. Se ela rodar, corrija a partir do log dela.
+- As chamadas são limitadas por tentativa: não a use em laço, nem para o que o terminal já
+  roda. O resultado não conta como verificação: o Mabel verifica de novo depois da execução.
 
 ## Impedimento de ambiente
 

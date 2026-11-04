@@ -56,8 +56,25 @@ test('G2: regra crítica por caminho, conceito ou suposição; aprovação liber
   });
   assert.deepEqual(
     startGate(plan({ suposicoes: [{ texto: 'frete grátis', regraCritica: true }] }), undefined, NO_RULES, false),
-    { kind: 'critical', reasons: ['suposição sobre regra crítica: frete grátis'] },
+    { kind: 'critical', reasons: ['1 suposição sobre regra crítica'] },
   );
+  // Vários arquivos no mesmo caminho e várias suposições: um motivo de cada, com a contagem.
+  const many = plan({
+    escopo: ['src/billing/a.ts', 'src/billing/a.test.ts', 'migrations/002.sql'],
+    suposicoes: [
+      { texto: 'frete grátis', regraCritica: true },
+      { texto: 'desconto de 10%', regraCritica: true },
+      { texto: 'cor azul', regraCritica: false },
+    ],
+  });
+  assert.deepEqual(startGate(many, undefined, rules, false), {
+    kind: 'critical',
+    reasons: [
+      '2 arquivos do escopo tocam o caminho crítico `src/billing/**`',
+      'escopo `migrations/002.sql` toca o caminho crítico `migrations/*.sql`',
+      '2 suposições sobre regra crítica',
+    ],
+  });
   assert.deepEqual(startGate(plan({ escopo: ['src/**'] }), undefined, rules, true), { kind: 'pass' });
 });
 

@@ -164,7 +164,7 @@ test('item crítico mostra na inbox as suposições autônomas junto dos critér
   const out = (io as ReturnType<typeof scriptedGuided>).lines;
   await runInbox(p.db, p.home, p.project, io);
   const criteria = out.indexOf('      critérios:');
-  const assumptions = out.indexOf('      suposições:');
+  const assumptions = out.indexOf('      outras suposições do plano:');
   assert.ok(criteria > 0 && assumptions > criteria, out.join('\n'));
   assert.equal(out[assumptions + 1], '        - P: Qual cor do botão? → R: Azul (autônomo)');
 });
