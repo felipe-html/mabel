@@ -18,6 +18,7 @@ import { StringDecoder } from 'node:string_decoder';
 import { balanceChanged } from './balance.ts';
 import { runDir } from './db.ts';
 import { initViolation } from './hermetic.ts';
+import { MABEL_MCP, MCP_SERVER, type ToolsConfig, VERIFY_TOOL, mcpToolName } from './mcp.ts';
 import type { ScopeContext } from './scope.ts';
 import { type ResultTotals, type ToolResult, type ToolUse, parseLine } from './stream.ts';
 
@@ -59,7 +60,20 @@ export interface RunRequest {
    * ao `claude` em `MABEL_ESCOPO`.
    */
   scope?: Omit<ScopeContext, 'log'>;
+  /**
+   * Ferramentas do Mabel para o agente (servidor MCP próprio, `docs/specs/ferramentas.md`):
+   * a configuração da `verificar`, gravada em `<run>/ferramentas.json`. Só na run hermética.
+   */
+  mabelTools?: Omit<ToolsConfig, 'log' | 'logDir'>;
 }
+
+/** Ferramentas do MCP do Mabel que o `init` precisa listar, além das de `--tools`. */
+export function mabelToolNames(request: Pick<RunRequest, 'mabelTools'>): string[] {
+  return request.mabelTools ? [mcpToolName(VERIFY_TOOL)] : [];
+}
+
+/** Folga do `MCP_TOOL_TIMEOUT` sobre o prazo da chamada: o Mabel encerra o comando antes. */
+const MCP_TIMEOUT_MARGIN_MS = 60_000;
 
 /** Etapa e probe rodam isoladas da configuração pessoal (G8); o `exec` avulso, não. */
 export function isHermetic(request: Pick<RunRequest, 'kind'>): boolean {
@@ -109,10 +123,12 @@ export function claudeBin(): string {
   return process.env.MABEL_CLAUDE_BIN || 'claude';
 }
 
-export function claudeArgs(request: RunRequest, settingsPath?: string): string[] {
+export function claudeArgs(request: RunRequest, settingsPath?: string, mcpConfigPath?: string): string[] {
   const args = ['-p', '--output-format', 'stream-json', '--verbose'];
   if (isHermetic(request)) {
     args.push('--restricted', '--strict-mcp-config', '--disable-slash-commands');
+    // Só o MCP do Mabel; o `--strict-mcp-config` continua ignorando qualquer outro (G8).
+    if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath);
     args.push('--tools', (request.tools ?? []).join(','));
     if (request.addDirs?.length) args.push('--add-dir', ...request.addDirs);
     if (settingsPath) args.push('--settings', settingsPath);
@@ -191,6 +207,8 @@ export function startRun(
   let streamFd: number;
   let stderrFd: number;
   let settingsPath: string | undefined;
+  let mcpConfigPath: string | undefined;
+  const toolsLog = join(dir, 'verificar.jsonl');
   const hookLog = join(dir, 'hook.jsonl');
   const childEnv = agentEnv(process.env);
   try {
@@ -198,6 +216,18 @@ export function startRun(
     if (isHermetic(request)) {
       settingsPath = join(dir, 'settings.json');
       writeFileSync(settingsPath, `${JSON.stringify(request.settings ?? {}, null, 2)}\n`);
+      if (request.mabelTools) {
+        const toolsPath = join(dir, 'ferramentas.json');
+        const tools: ToolsConfig = { ...request.mabelTools, log: toolsLog, logDir: dir };
+        writeFileSync(toolsPath, `${JSON.stringify(tools, null, 2)}\n`);
+        mcpConfigPath = join(dir, 'mcp.json');
+        const server = { type: 'stdio', command: process.execPath, args: ['--disable-warning=ExperimentalWarning', MCP_SERVER, toolsPath] };
+        writeFileSync(mcpConfigPath, `${JSON.stringify({ mcpServers: { [MABEL_MCP]: server } }, null, 2)}\n`);
+        // O `claude` não desiste da chamada antes do prazo do Mabel.
+        childEnv.MCP_TOOL_TIMEOUT = String(request.mabelTools.timeoutMs + MCP_TIMEOUT_MARGIN_MS);
+        // O `init` só sai com o servidor conectado; sem isso, um MCP lento viria `pending`.
+        delete childEnv.MCP_CONNECTION_NONBLOCKING;
+      }
     }
     if (request.scope) {
       const scopePath = join(dir, 'escopo.json');
@@ -260,8 +290,8 @@ export function startRun(
         ).run(event.sessionId ?? null, event.model ?? null, event.claudeVersion ?? null, runId);
         if (isHermetic(request) && !hermeticError) {
           // `--json-schema` acrescenta a ferramenta da saída estruturada.
-          const expected = [...(request.tools ?? []), ...(request.jsonSchema ? ['StructuredOutput'] : [])];
-          const violation = initViolation(event.raw, expected);
+          const expected = [...(request.tools ?? []), ...(request.jsonSchema ? ['StructuredOutput'] : []), ...mabelToolNames(request)];
+          const violation = initViolation(event.raw, expected, request.mabelTools ? [MABEL_MCP] : []);
           if (violation) {
             // O `init` já está em `events`: a evidência fica gravada antes de encerrar.
             hermeticError = `contexto não hermético: ${violation}`;
@@ -335,7 +365,7 @@ export function startRun(
   };
 
   const done = new Promise<RunOutcome>((resolve) => {
-    child = spawn(claudeBin(), claudeArgs(request, settingsPath), {
+    child = spawn(claudeBin(), claudeArgs(request, settingsPath, mcpConfigPath), {
       cwd: request.cwd,
       env: childEnv,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -434,6 +464,7 @@ export function startRun(
           recordEvent('mabel', 'transcript_missing', JSON.stringify({ session_id: sessionId, reason: missingReason }));
         }
         if (request.scope) importHookLog(hookLog, recordEvent);
+        if (request.mabelTools) importToolsLog(toolsLog, recordEvent);
         db.prepare(
           `UPDATE runs SET status = ?, exit_code = ?, error = ?, ended_at = ?, duration_ms = ?,
              transcript_path = ? WHERE id = ?`,
@@ -469,6 +500,14 @@ function importHookLog(path: string, record: (type: string, subtype: string | nu
       decision = 'invalid';
     }
     record('hook', decision, line);
+  }
+}
+
+/** Chamadas das ferramentas do Mabel (`verificar.jsonl`) viram eventos `mabel`/`verificar` da run. */
+function importToolsLog(path: string, record: (type: string, subtype: string | null, payload: string) => void): void {
+  if (!existsSync(path)) return;
+  for (const line of readFileSync(path, 'utf8').split('\n')) {
+    if (line.trim()) record('mabel', VERIFY_TOOL, line);
   }
 }
 

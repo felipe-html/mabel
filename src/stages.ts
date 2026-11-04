@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import type { DatabaseSync } from 'node:sqlite';
 import type { Item } from './items.ts';
 import { projectContext } from './hermetic.ts';
+import { MAX_VERIFY_CALLS, VERIFY_TIMEOUT_MS, VERIFY_TOOL, mcpToolName } from './mcp.ts';
 import { type Project, type Stage, readCriticalRules } from './project.ts';
 import { type FrozenReference, freezeReferences, frozenDir, referencesSection } from './references.ts';
 import { sandboxSettings } from './sandbox.ts';
@@ -122,6 +123,15 @@ export interface StageResult<T> {
   invalid?: string;
 }
 
+/**
+ * A etapa recebe a ferramenta `verificar` do Mabel (`docs/specs/ferramentas.md`, V2 e V3):
+ * só a execução, com o sandbox ligado e algum comando para rodar.
+ */
+export function hasVerifyTool(project: Project, stage: RunStage): boolean {
+  const { config } = project;
+  return stage === 'execute' && config.sandbox && (config.verify.length > 0 || config.testeUnico !== null);
+}
+
 /** Argumentos da run de cada etapa: ferramentas, modo, modelo, limites, esquema e sessão. */
 export function stageRequest(ctx: StageContext, stage: Stage, prompt: string, options: StageOptions = {}): RunRequest {
   const { config } = ctx.project;
@@ -157,6 +167,16 @@ export function stageRequest(ctx: StageContext, stage: Stage, prompt: string, op
   }
   if (!config.sandbox) request.sandboxDisabled = true;
   if (stage === 'execute') request.disallowedTools = EXECUTE_DISALLOWED;
+  if (hasVerifyTool(ctx.project, stage)) {
+    request.mabelTools = {
+      worktree: ctx.worktree,
+      verify: config.verify,
+      testeUnico: config.testeUnico,
+      maxCalls: MAX_VERIFY_CALLS,
+      timeoutMs: VERIFY_TIMEOUT_MS,
+    };
+    request.allowedTools = [...(request.allowedTools ?? []), mcpToolName(VERIFY_TOOL)];
+  }
   if (options.resumeSessionId) request.resumeSessionId = options.resumeSessionId;
   return request;
 }
@@ -272,6 +292,15 @@ function verifyCommands(project: Project): string {
     project.config.verify.map((command) => `\`${command.command}\` (${command.name})`),
     'Nenhum comando de verificação configurado.',
   );
+}
+
+/** Como chamar a `verificar` neste projeto, ou vazio quando a execução não a recebe. */
+function verifyToolSection(project: Project): string {
+  if (!hasVerifyTool(project, 'execute')) return '';
+  const single = project.config.testeUnico
+    ? `\`${mcpToolName(VERIFY_TOOL)}\` com \`arquivo\` e \`nome\` roda um teste só (\`${project.config.testeUnico}\`); sem argumentos, roda os comandos acima.`
+    : `\`${mcpToolName(VERIFY_TOOL)}\` sem argumentos roda os comandos acima (o projeto não tem comando de teste único).`;
+  return `${single} Roda fora do sandbox, no diretório atual. Limite de ${MAX_VERIFY_CALLS} chamadas nesta tentativa.`;
 }
 
 export interface PlanPromptInput {
@@ -395,6 +424,7 @@ export function executePrompt(ctx: StageContext, input: ExecutePromptInput): str
     ...section('Referências', referencesPrompt(ctx)),
     ...section('Restrições', ctx.item.restrictions ?? ''),
     ...section('Comandos de verificação', verifyCommands(ctx.project)),
+    ...section('Ferramenta `verificar`', verifyToolSection(ctx.project)),
     ...section('Tentativas anteriores', input.attemptsSummary ?? ''),
     ...section('Falha da tentativa anterior', input.failure ?? ''),
     ...section('Resposta do humano', input.answer ?? ''),

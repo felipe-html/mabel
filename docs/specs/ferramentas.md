@@ -37,7 +37,13 @@ Fica registrado na spec, para não ser lido como garantia que não é: quem cont
 que o `verify` executa é o agente. A ferramenta restringe a *linha de comando*, não o que
 os testes fazem. Isso já era verdade para a verificação do Mabel e continua sendo.
 
-## Decisões propostas
+## Decisões
+
+Aprovadas pelo usuário em 2026-11-04, com as quatro perguntas respondidas pela sugestão.
+As mudanças no contrato estão autorizadas e entraram no `CONTRATO.md` com esta
+implementação. **Revisão marcada para 2026-11-18** (duas semanas de filas com a 3.0.0):
+a ferramenta só na execução (V2) e os limites fixos no código (V8), com os números da
+seção "Medição".
 
 | # | Tema | Proposta |
 |---|---|---|
@@ -58,7 +64,7 @@ os testes fazem. Isso já era verdade para a verificação do Mabel e continua s
 
 ## Contrato
 
-Proposta de texto. Muda o G4 e o G8; o G3 recebe uma frase que deixa explícito que a
+Texto aprovado. Muda o G4 e o G8; o G3 recebe uma frase que deixa explícito que a
 ferramenta não é gate.
 
 **G3**, ao fim da garantia:

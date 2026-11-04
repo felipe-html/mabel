@@ -44,7 +44,10 @@ test('cada etapa monta ferramentas, modo, modelo, limites, esquema e sessão', (
 
   const execute = stageRequest(stage, 'execute', 'e', { model: 'opus', resumeSessionId: 's-1' });
   assert.deepEqual(execute.tools, ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'Bash']);
-  assert.deepEqual(execute.allowedTools, ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'Bash']);
+  // A ferramenta `verificar` do Mabel vem pelo MCP, não pelo `--tools` (docs/specs/ferramentas.md).
+  assert.deepEqual(execute.allowedTools, ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'Bash', 'mcp__mabel__verificar']);
+  assert.equal(execute.mabelTools?.worktree, stage.worktree);
+  assert.equal(plan.mabelTools, undefined);
   assert.equal(execute.disallowedTools, EXECUTE_DISALLOWED);
   assert.deepEqual([execute.model, execute.maxTurns, execute.maxBudgetUsd, execute.resumeSessionId], ['opus', 120, 8, 's-1']);
 
@@ -53,6 +56,7 @@ test('cada etapa monta ferramentas, modo, modelo, limites, esquema e sessão', (
   assert.deepEqual(review.allowedTools, ['Read', 'Glob', 'Grep', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git show:*)']);
   assert.equal(review.model, 'opus');
   assert.equal(review.resumeSessionId, undefined);
+  assert.equal(review.mabelTools, undefined);
 });
 
 test('prompts de sistema têm o conteúdo mínimo obrigatório', () => {
