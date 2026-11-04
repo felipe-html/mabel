@@ -13,6 +13,10 @@ import { setSpecStatus } from '../src/specs.ts';
 import { PLAN, REVIEW_OK, setupProject, useScenario } from './helpers.ts';
 
 const FAKE_GH = fileURLToPath(new URL('./fixtures/fake-gh.mjs', import.meta.url));
+const FAKE_CURL = fileURLToPath(new URL('./fixtures/fake-curl.mjs', import.meta.url));
+// O token do Bitbucket do shell de quem roda os testes nunca chega à API de verdade.
+delete process.env.BITBUCKET_TOKEN;
+delete process.env.BITBUCKET_EMAIL;
 const INTEGRATION = 'mabel/integracao';
 const PLAN_OK = { structured_output: PLAN };
 const REVIEW = { structured_output: REVIEW_OK };
@@ -56,6 +60,41 @@ function useGh(dir: string, responses: Record<string, unknown> | null) {
       return [];
     }
   };
+}
+
+type CurlCall = { method: string; path: string; config: string; argv: string[]; body?: Record<string, unknown> };
+
+/** Aponta o `curl` falso para as respostas do Bitbucket e define a credencial; devolve as chamadas. */
+function useBitbucket(dir: string, responses: Record<string, unknown>, env: Record<string, string> = { BITBUCKET_TOKEN: 'tok-de-teste', BITBUCKET_EMAIL: 'eu@exemplo.com' }) {
+  const scenario = join(dir, `curl-${Math.random().toString(36).slice(2)}.json`);
+  const log = `${scenario}.log`;
+  writeFileSync(scenario, JSON.stringify(responses));
+  Object.assign(process.env, { MABEL_CURL_BIN: FAKE_CURL, FAKE_CURL_SCENARIO: scenario, FAKE_CURL_LOG: log, ...env });
+  return () => {
+    try {
+      return readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map((line) => JSON.parse(line) as CurlCall);
+    } catch {
+      return [];
+    }
+  };
+}
+
+function withoutBitbucket() {
+  delete process.env.BITBUCKET_TOKEN;
+  delete process.env.BITBUCKET_EMAIL;
+}
+
+const BB_REPO = '/repositories/seasolutions/app';
+const BB_PR = 'https://bitbucket.org/seasolutions/app/pull-requests/7';
+const BB_OK = {
+  [`GET ${BB_REPO}`]: { status: 200, body: { full_name: 'seasolutions/app' } },
+  [`POST ${BB_REPO}/pullrequests`]: { status: 201, body: { id: 7, links: { html: { href: BB_PR } } } },
+};
+
+/** Remoto `origin` com endereço do Bitbucket, publicando no repositório nu do teste. */
+function onBitbucket(q: { root: string; origin: string }) {
+  git(q.root, 'remote', 'set-url', 'origin', 'git@ssh.bitbucket.org:seasolutions/app.git');
+  git(q.root, 'remote', 'set-url', '--push', 'origin', q.origin);
 }
 
 /** Projeto com integração, remoto `origin` (repositório nu) e `n` tarefas da spec `pedidos` concluídas. */
@@ -201,21 +240,111 @@ test('entregar critério 4: sem gh publica e mostra o corpo; sem remoto, só a b
   assert.equal(git(local.root, 'rev-parse', `${offline.delivery!.branch}^`), local.ref(INTEGRATION));
 });
 
-test('entregar: remoto no Bitbucket publica, mostra o link do PR e não chama o gh', async () => {
+test('entregar: Bitbucket sem BITBUCKET_TOKEN publica, mostra o link do PR e não chama o gh', async () => {
   const q = await integrated(1);
-  git(q.root, 'remote', 'set-url', 'origin', 'git@ssh.bitbucket.org:seasolutions/app.git');
-  git(q.root, 'remote', 'set-url', '--push', 'origin', q.origin);
+  onBitbucket(q);
+  withoutBitbucket();
   const calls = useGh(q.root, GH_OK);
   const result = deliver(q.db, q.home, q.project, UNIT);
   assert.equal(result.code, 0, result.lines.join('\n'));
   const branch = result.delivery!.branch;
   assert.equal(q.remoteRef(branch), q.ref(branch));
   const out = result.lines.join('\n');
-  assert.match(out, /sem PR automático \(o remoto origin está no Bitbucket; o gh só abre PR no GitHub\)/);
+  assert.match(out, /sem PR automático \(defina BITBUCKET_TOKEN para o Mabel abrir o PR no Bitbucket; veja o README\)/);
   assert.match(out, new RegExp(`Abra o PR: https://bitbucket\\.org/seasolutions/app/pull-requests/new\\?source=${encodeURIComponent(branch)}&dest=main`));
   assert.match(out, /Corpo do PR: /);
   assert.match(out, /no merge, escolha "Merge commit"/);
   assert.deepEqual(calls(), []);
+});
+
+test('entregar: Bitbucket com BITBUCKET_TOKEN abre o PR pela API, com o token fora da linha de comando', async () => {
+  const q = await integrated(2);
+  onBitbucket(q);
+  const gh = useGh(q.root, GH_OK);
+  const calls = useBitbucket(q.root, BB_OK);
+  try {
+    const result = deliver(q.db, q.home, q.project, { ...UNIT, draft: true });
+    assert.equal(result.code, 0, result.lines.join('\n'));
+    const delivery = result.delivery!;
+    assert.equal(delivery.prUrl, BB_PR);
+    assert.equal(q.remoteRef(delivery.branch), q.ref(delivery.branch));
+    const out = result.lines.join('\n');
+    assert.match(out, new RegExp(`PR aberto: ${BB_PR}`));
+    assert.match(out, /no merge, escolha "Merge commit"/);
+    assert.deepEqual(gh(), []);
+
+    const log = calls();
+    assert.deepEqual(log.map((call) => `${call.method} ${call.path}`), [`GET ${BB_REPO}`, `POST ${BB_REPO}/pullrequests`]);
+    for (const call of log) {
+      assert.equal(call.config, 'user = "eu@exemplo.com:tok-de-teste"\n');
+      assert.ok(!call.argv.some((arg) => arg.includes('tok-de-teste')), 'o token não aparece nos argumentos');
+    }
+    const body = log[1]!.body!;
+    assert.equal(body.title, 'Mabel: pedidos (#1, #2)');
+    assert.deepEqual(body.source, { branch: { name: delivery.branch } });
+    assert.deepEqual(body.destination, { branch: { name: 'main' } });
+    assert.equal(body.close_source_branch, false);
+    assert.equal(body.draft, true);
+    assert.equal(body.description, readFileSync(deliveryBodyPath(q.home, q.project.id, delivery.branch), 'utf8'));
+
+    // Sem e-mail: access token do repositório, como Bearer. O estado vem pelo endereço do PR;
+    // o remoto volta ao repositório nu para o fetch do acompanhamento não sair da máquina.
+    git(q.root, 'remote', 'set-url', 'origin', q.origin);
+    delete process.env.BITBUCKET_EMAIL;
+    const state = useBitbucket(q.root, { [`GET ${BB_REPO}/pullrequests/7`]: { status: 200, body: { state: 'MERGED' } } }, { BITBUCKET_TOKEN: 'tok-repo' });
+    const notes = checkDeliveries(q.db, q.project).join('\n');
+    assert.match(notes, /sem merge commit \(squash ou rebase\)/);
+    assert.deepEqual(state().map((call) => call.config), ['header = "Authorization: Bearer tok-repo"\n']);
+  } finally {
+    withoutBitbucket();
+  }
+});
+
+test('entregar: Bitbucket --substituir recusa o PR anterior com comentário', async () => {
+  const q = await integrated(1);
+  onBitbucket(q);
+  useGh(q.root, GH_OK);
+  useBitbucket(q.root, BB_OK);
+  try {
+    const first = deliver(q.db, q.home, q.project, UNIT);
+    assert.equal(first.code, 0, first.lines.join('\n'));
+    git(q.root, 'remote', 'set-url', 'origin', q.origin);
+    await integrateAnother(q, 2);
+    onBitbucket(q);
+    const second = 'https://bitbucket.org/seasolutions/app/pull-requests/8';
+    const calls = useBitbucket(q.root, {
+      ...BB_OK,
+      [`POST ${BB_REPO}/pullrequests`]: { status: 201, body: { id: 8, links: { html: { href: second } } } },
+      [`POST ${BB_REPO}/pullrequests/7/comments`]: { status: 201, body: {} },
+      [`POST ${BB_REPO}/pullrequests/7/decline`]: { status: 200, body: { state: 'DECLINED' } },
+    });
+    const replaced = deliver(q.db, q.home, q.project, { ...UNIT, replace: true });
+    assert.equal(replaced.code, 0, replaced.lines.join('\n'));
+    assert.match(replaced.lines.join('\n'), new RegExp(`PR anterior fechado: ${BB_PR}`));
+    const log = calls();
+    const comment = log.find((call) => call.path.endsWith('/7/comments'));
+    assert.deepEqual(comment?.body, { content: { raw: `Substituído por ${second}` } });
+    assert.ok(log.some((call) => call.method === 'POST' && call.path.endsWith('/7/decline')));
+  } finally {
+    withoutBitbucket();
+  }
+});
+
+test('entregar: Bitbucket recusando o token mostra o motivo e o link', async () => {
+  const q = await integrated(1);
+  onBitbucket(q);
+  useGh(q.root, GH_OK);
+  useBitbucket(q.root, { [`GET ${BB_REPO}`]: { status: 401, body: { type: 'error', error: { message: 'Token is invalid or expired' } } } });
+  try {
+    const result = deliver(q.db, q.home, q.project, UNIT);
+    assert.equal(result.code, 0, result.lines.join('\n'));
+    const out = result.lines.join('\n');
+    assert.match(out, /sem PR automático \(o Bitbucket recusou o BITBUCKET_TOKEN \(HTTP 401: Token is invalid or expired\)\)/);
+    assert.match(out, /Abra o PR: https:\/\/bitbucket\.org\/seasolutions\/app\/pull-requests\/new/);
+    assert.equal(result.delivery!.prUrl, null);
+  } finally {
+    withoutBitbucket();
+  }
 });
 
 test('entregar: URL do PR e repositório pelo remoto', () => {

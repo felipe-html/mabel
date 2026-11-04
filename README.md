@@ -137,10 +137,11 @@ comando mostra à direita o nome no shell (`mabel rodar`), que faz o mesmo fora 
    perguntas e executa item a item até cada um chegar a `awaiting_merge`.
 4. **Revise e entregue.** Cada tarefa aprovada entra na branch da sua unidade, e
    **Entregar uma unidade** (`mabel entregar`) mostra as prontas, prova uma contra a base,
-   publica o snapshot (`mabel/entrega/<unidade>`), abre o PR (pelo `gh` no GitHub; sem ele
-   ou no Bitbucket, mostra o link do PR e o texto) e volta o seu checkout para a base. Faça
-   o merge com "Create a merge commit" e dê `git pull` na base: no próximo `rodar`, os
-   itens viram `done`.
+   publica o snapshot (`mabel/entrega/<unidade>`), abre o PR (pelo `gh` no GitHub; pela API
+   no Bitbucket, com o `BITBUCKET_TOKEN`, em [PR no Bitbucket](#pr-no-bitbucket); sem eles,
+   mostra o link do PR e o texto) e volta o seu checkout para a base. Faça o merge com
+   merge commit ("Create a merge commit" no GitHub, "Merge commit" no Bitbucket) e dê
+   `git pull` na base: no próximo `rodar`, os itens viram `done`.
 
 ### Escrevendo itens
 
@@ -234,6 +235,38 @@ e não chega ao agente. No `tela.md`, escreva abaixo de `<!-- notas -->` o que o
 precisa saber (por exemplo, que os textos dos cards são dados de exemplo); as notas
 ficam na recaptura.
 
+### PR no Bitbucket
+
+Com o remoto no Bitbucket Cloud, o `mabel entregar` abre o PR pela API quando encontra o
+token no ambiente. Crie um *API token* da sua conta Atlassian em id.atlassian.com ›
+Security › API tokens › **Create API token with scopes**, escolha o app **Bitbucket** e
+marque os escopos `read:repository:bitbucket` e `write:pullrequest:bitbucket`. O token
+leva o seu e-mail da Atlassian junto. Guarde os dois num arquivo só seu e carregue-o no
+shell:
+
+```
+read -r "e?E-mail da Atlassian: " && read -rs "t?Token do Bitbucket: " && print -r -- "export BITBUCKET_EMAIL='$e'"$'\n'"export BITBUCKET_TOKEN='$t'" > ~/.bitbucket_token && chmod 600 ~/.bitbucket_token && unset e t
+echo '[ -f ~/.bitbucket_token ] && source ~/.bitbucket_token' >> ~/.zshrc
+```
+
+No lugar do token da conta, serve também um *access token* do repositório ou do workspace
+(Repository settings › Security › Access tokens, com o escopo **Pull requests: Write**):
+defina só o `BITBUCKET_TOKEN`, sem o `BITBUCKET_EMAIL`. O PR sai em nome do token, não do
+seu usuário.
+
+O token da Atlassian sempre vence (no máximo um ano). Registre a data para o Mabel avisar
+a partir de 14 dias do fim, no `mabel conferir` e no `entregar`:
+
+```
+mabel credenciar bitbucket --expira 2027-11-04
+```
+
+Abra um terminal novo depois de definir as variáveis. Como o do Figma, o token não é
+gravado pelo Mabel, não chega ao agente e não aparece na linha de comando (a chamada à API
+passa pelo `curl`, com a credencial no stdin). Sem o token, ou se o Bitbucket recusá-lo, o
+`entregar` publica a branch e mostra o link para abrir o PR à mão, com o motivo. O Mabel
+não confere a estratégia de merge no Bitbucket: no merge, escolha "Merge commit".
+
 ### Regras críticas
 
 Em `.mabel/regras-criticas.md`, declare o que exige sua aprovação: **caminhos** (globs de
@@ -253,7 +286,7 @@ Todos funcionam no shell (`mabel <comando>`); os que têm título aparecem na te
 | Especificar uma funcionalidade | `especificar [<slug>]` | Lista, valida e aceita as specs de `.mabel/specs/` |
 | Refinar um item | `refinar [<n>] [--refazer] [--aceitar \| --descartar]` | Proposta de refinamento de um item, por agente, para você revisar antes de gravar no backlog; `refinar <n> --referencias` só escolhe as referências, sem agente |
 | Capturar uma referência | `capturar [tela \| api] …` | Captura telas do Figma e APIs OpenAPI para os itens citarem em "Referências:"; sem argumentos, lista |
-| Credenciar um token | `credenciar [<nome>] [--expira <data>]` | Registra e mostra a validade dos tokens usados na captura |
+| Credenciar um token | `credenciar [<nome>] [--expira <data>]` | Registra e mostra a validade dos tokens (Figma e Bitbucket) |
 | Rodar a fila | `rodar [--item <n> \| --limite <n>] [--sem-lote] [--fundo]` | Consome a fila. `--item` processa um item; `--limite <n>` toma no máximo n itens; `--sem-lote` planeja e executa item a item; `--fundo` entrega a fila ao supervisor e volta na hora |
 | Acompanhar a fila | `acompanhar` | Acompanha ao vivo a fila em segundo plano do projeto; Ctrl+C solta sem parar a fila |
 | Parar a fila | `parar` | Para a fila do projeto (em segundo plano ou num terminal) depois da etapa em andamento |

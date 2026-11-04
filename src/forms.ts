@@ -294,7 +294,7 @@ export const FORMS: Record<string, (data: ScreenData) => CommandForm> = {
     form(
       'credenciar',
       {
-        ...head('Credenciar um token', 'Registra quando vence cada token da captura, para o Mabel avisar antes.'),
+        ...head('Credenciar um token', 'Registra quando vence cada token (Figma, Bitbucket), para o Mabel avisar antes.'),
         fields: [
           { type: 'choice', key: 'cred', label: 'Credencial', options: Object.entries(CREDENTIALS).map(([name, { env }]): [string, string] => [name, env]) },
           { type: 'text', key: 'expira', label: 'Vence em', required: true, placeholder: 'AAAA-MM-DD' },

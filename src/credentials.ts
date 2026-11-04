@@ -6,11 +6,11 @@ import { paint } from './style.ts';
 import type { ArgSpec, OptionSpecs } from './options.ts';
 
 /**
- * Validade das credenciais que o Mabel usa fora das runs (`FIGMA_TOKEN`). O Mabel não guarda
+ * Validade das credenciais que o Mabel usa fora das runs (`FIGMA_TOKEN`, `BITBUCKET_TOKEN`). O Mabel não guarda
  * o token, só a data de vencimento informada pelo humano, em `~/.mabel/credenciais.json`.
  */
 
-export const credentialUsage = ['mabel credenciar', 'mabel credenciar figma --expira <AAAA-MM-DD>'].join('\n       ');
+export const credentialUsage = ['mabel credenciar', 'mabel credenciar <figma | bitbucket> --expira <AAAA-MM-DD>'].join('\n       ');
 
 export const credentialOptions = {
   expira: { type: 'string', value: '<AAAA-MM-DD>', description: 'Data em que o token vence; o Mabel avisa antes' },
@@ -27,6 +27,7 @@ export const WARN_DAYS = 14;
 
 export const CREDENTIALS: Record<string, { env: string; renew: string }> = {
   figma: { env: 'FIGMA_TOKEN', renew: 'Figma › Settings › Security › Personal access tokens' },
+  bitbucket: { env: 'BITBUCKET_TOKEN', renew: 'id.atlassian.com › Security › API tokens' },
 };
 
 interface Stored {
