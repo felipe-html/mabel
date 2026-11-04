@@ -40,8 +40,10 @@ Se uma dúvida de regra de negócio impedir a implementação correta, pergunte 
   se ninguém responder, a sugestão vale.
 - Marque `regraCritica: true` na pergunta que toca uma regra crítica do projeto (caminho ou
   conceito da seção "Regras críticas do projeto"). Ela sempre para o item até o humano responder.
-- Suposição que o humano já confirmou (seção "Suposições críticas confirmadas pelo humano")
-  é decisão dele: siga-a sem repeti-la em `suposicoes`.
+- Suposição que o humano já confirmou ou aprovou no plano (seção "Suposições críticas
+  confirmadas pelo humano") é decisão dele: siga-a sem repeti-la em `suposicoes`. Se
+  precisar citá-la, copie o texto exatamente como está na seção; reescrita com outras
+  palavras conta como suposição nova e para o item.
 - Pergunta sem sugestão só quando não houver resposta razoável a propor; ela sempre para
   o item.
 

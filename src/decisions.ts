@@ -77,12 +77,12 @@ export function recordDecisions(db: DatabaseSync, project: Project, item: Item, 
 }
 
 /**
- * Suposições críticas da parada que o humano respondeu: viram decisão dele e o G7 não para
- * de novo nelas, nem depois de um replanejamento.
+ * Suposições críticas da parada que o humano respondeu ou aprovou: viram decisão dele e o G7
+ * não para de novo nelas, nem depois de um replanejamento.
  */
-function confirmAssumptions(item: Item): string[] {
+function confirmAssumptions(item: Item, assumptions = item.pending?.criticalAssumptions ?? []): string[] {
   const confirmed = [...item.confirmedAssumptions];
-  for (const assumption of item.pending?.criticalAssumptions ?? []) {
+  for (const assumption of assumptions) {
     if (!confirmed.some((c) => sameAssumption(c, assumption))) confirmed.push(assumption);
   }
   return confirmed;
@@ -177,7 +177,10 @@ export function respond(
   }
 }
 
-/** Aprova os critérios de um item crítico: vai a `planned` e executa com o plano atual. */
+/**
+ * Aprova os critérios de um item crítico: vai a `planned` e executa com o plano atual. As
+ * suposições críticas do plano entram aprovadas junto e não param a execução de novo (G7).
+ */
 export function approve(db: DatabaseSync, project: Project, item: Item, options: DecisionOptions = {}): void {
   if (item.status !== 'needs_human' || item.pendingKind !== 'critical_approval') {
     throw new DecisionError(`#${item.number} não está aguardando aprovação de critérios (estado: ${item.status}).`);
@@ -188,6 +191,7 @@ export function approve(db: DatabaseSync, project: Project, item: Item, options:
     attempts: 0,
     escalatedCycle: false,
     nextInput: null,
+    confirmedAssumptions: confirmAssumptions(item, item.pending?.planAssumptions ?? []),
   });
 }
 

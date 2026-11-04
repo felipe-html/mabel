@@ -248,6 +248,24 @@ test('G7: suposição crítica confirmada pelo humano não para de novo; uma nov
   assert.deepEqual(fresh.item().pending?.criticalAssumptions, ['arredonda para baixo']);
 });
 
+test('G7: suposição crítica aprovada no plano não para a execução de novo', async () => {
+  const assumption = { texto: 'Taxa zero até o item 5.', regraCritica: true };
+  const p = pipeline([
+    { structured_output: plan({ conceitosCriticos: ['Desconto'], suposicoes: [assumption] }) },
+    { structured_output: { ...EXECUTION, suposicoes: [assumption] }, files: EXECUTION_FILES },
+    { structured_output: REVIEW_OK },
+  ]);
+  assert.deepEqual(await p.advance(), { kind: 'stopped', status: 'needs_human' });
+  assert.equal(p.item().pendingKind, 'critical_approval');
+  assert.deepEqual(p.item().pending?.planAssumptions, ['Taxa zero até o item 5.']);
+  assert.equal(p.item().pending?.criticalAssumptions, undefined);
+
+  approve(p.ctx.db, p.ctx.project, p.item());
+  assert.deepEqual(p.item().confirmedAssumptions, ['Taxa zero até o item 5.']);
+  assert.deepEqual(await p.advance(), { kind: 'stopped', status: 'awaiting_merge' });
+  assert.match(p.calls()[1]?.prompt ?? '', /## Suposições críticas confirmadas pelo humano\n\n- Taxa zero até o item 5\./);
+});
+
 test('sameAssumption ignora caixa, pontuação final e observação entre parênteses', () => {
   assert.ok(sameAssumption('Taxa zero até o item 5.', 'taxa zero até o item 5 (confirmado pelo humano)'));
   assert.ok(sameAssumption('A e B juntos', 'a e  b juntos.'));
