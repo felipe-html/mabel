@@ -347,6 +347,26 @@ test('entregar: Bitbucket recusando o token mostra o motivo e o link', async () 
   }
 });
 
+test('entregar: token do Bitbucket sem escopo de PR diz quais escopos faltam', async () => {
+  const q = await integrated(1);
+  onBitbucket(q);
+  useGh(q.root, GH_OK);
+  useBitbucket(q.root, {
+    ...BB_OK,
+    [`POST ${BB_REPO}/pullrequests`]: { status: 403, body: { type: 'error', error: { message: 'Your credentials lack one or more required privilege scopes.' } } },
+  });
+  try {
+    const result = deliver(q.db, q.home, q.project, UNIT);
+    assert.equal(result.code, 1);
+    const out = result.lines.join('\n');
+    assert.match(out, /o Bitbucket não abriu o PR: Your credentials lack .* O token precisa dos escopos read:repository:bitbucket, read:pullrequest:bitbucket, write:pullrequest:bitbucket; .*crie outro/);
+    assert.match(out, /Abra o PR: https:\/\/bitbucket\.org\/seasolutions\/app\/pull-requests\/new/);
+    assert.equal(result.delivery!.prUrl, null);
+  } finally {
+    withoutBitbucket();
+  }
+});
+
 test('entregar: URL do PR e repositório pelo remoto', () => {
   const github: RemoteRepo = { host: 'github', repo: 'dono/app' };
   const bitbucket: RemoteRepo = { host: 'bitbucket', repo: 'seasolutions/app' };

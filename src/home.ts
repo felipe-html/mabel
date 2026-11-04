@@ -59,6 +59,7 @@ import {
 import { queuePanel } from './queuepanel.ts';
 import { paint, style } from './style.ts';
 import { openUnits } from './units.ts';
+import { mabelVersion } from './version.ts';
 
 /**
  * Tela inicial (`docs/specs/terminal.md`, aba "Comandos" do protótipo): o projeto, o que
@@ -71,6 +72,8 @@ export interface HomeContext {
   project: string;
   /** Caminho do projeto, com `~` no lugar da pasta pessoal. */
   path: string;
+  /** Versão do Mabel carregada pelo processo, para conferir se o terminal está com a atual. */
+  version: string;
   /** O Mabel foi preparado aqui (há `.mabel/config.json`). */
   instance: boolean;
   ready: number;
@@ -91,7 +94,7 @@ const tilde = (path: string) => {
 /** Lê o projeto do diretório, as contagens e o saldo. Nunca lança: o que falha vira aviso. */
 export function loadHomeContext(cwd: string = process.cwd()): HomeContext {
   const root = gitRoot(cwd);
-  const base: HomeContext = { project: basename(root ?? cwd), path: tilde(root ?? cwd), instance: false, ready: 0, pending: 0, units: 0, readings: [], now: new Date() };
+  const base: HomeContext = { project: basename(root ?? cwd), path: tilde(root ?? cwd), version: mabelVersion, instance: false, ready: 0, pending: 0, units: 0, readings: [], now: new Date() };
   let db;
   try {
     db = openDb(dataDir());
@@ -221,9 +224,9 @@ export const NARROW = 60;
 const CHROME_ROWS = 14;
 const MIN_LIST_ROWS = 3;
 
-/** As duas linhas do topo: "mabel", o projeto e o caminho; o que espera por você. */
+/** As duas linhas do topo: "mabel", a versão, o projeto e o caminho; o que espera por você. */
 export function homeTop(context: HomeContext, style: ScreenStyle, width: number): string[] {
-  const head = `  ${style.bold('mabel')}  ${context.project}`;
+  const head = `  ${style.bold('mabel')} ${style.dim(`v${context.version}`)}  ${context.project}`;
   const room = width - visibleLength(head) - 3;
   const path = room > 1 ? style.dim(` · ${fit(context.path, room)}`) : '';
   let facts: string;

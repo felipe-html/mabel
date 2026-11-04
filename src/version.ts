@@ -1,4 +1,4 @@
-import { readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -38,3 +38,6 @@ export function codeWatcher(root: string): () => boolean {
 
 /** Vigia do próprio Mabel, criado quando o processo carrega este módulo. */
 export const mabelCodeChanged = codeWatcher(fileURLToPath(new URL('..', import.meta.url)));
+
+/** Versão do Mabel carregada por este processo, lida do `package.json` ao abrir. */
+export const mabelVersion = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version;

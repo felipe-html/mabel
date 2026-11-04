@@ -18,6 +18,16 @@ export const BITBUCKET_EMAIL = 'BITBUCKET_EMAIL';
 
 const API = 'https://api.bitbucket.org/2.0';
 
+/** Escopos do API token da Atlassian de que a entrega precisa (ler o repositório, ler e abrir PR). */
+export const BITBUCKET_SCOPES = ['read:repository:bitbucket', 'read:pullrequest:bitbucket', 'write:pullrequest:bitbucket'];
+
+/** Erro da API com a dica de escopos quando o token foi aceito mas não pode fazer a ação. */
+function explain(result: ApiResult): string {
+  const error = result.error ?? `HTTP ${result.status}`;
+  if (result.status !== 403) return error;
+  return `${error} O token precisa dos escopos ${BITBUCKET_SCOPES.join(', ')}; o escopo não muda num token criado, então crie outro (README, "PR no Bitbucket").`;
+}
+
 function curlBin(): string {
   return process.env.MABEL_CURL_BIN || 'curl';
 }
@@ -86,7 +96,7 @@ export function bitbucketProblem(auth: BitbucketAuth, repo: string): string | un
   const view = bitbucketApi(auth, 'GET', repoPath(repo));
   if (!view) return 'curl não instalado';
   if (view.ok) return undefined;
-  if (view.status === 401 || view.status === 403) return `o Bitbucket recusou o ${BITBUCKET_TOKEN} (HTTP ${view.status}: ${view.error})`;
+  if (view.status === 401 || view.status === 403) return `o Bitbucket recusou o ${BITBUCKET_TOKEN} (HTTP ${view.status}: ${explain(view)})`;
   if (view.status === 404) return `o ${BITBUCKET_TOKEN} não enxerga o repositório ${repo}`;
   return `o Bitbucket não respondeu (${view.error})`;
 }
@@ -112,7 +122,7 @@ export function createBitbucketPr(auth: BitbucketAuth, repo: string, input: Pull
   if (!created) return { error: 'curl não instalado' };
   const url = (created.json as { links?: { html?: { href?: string } } } | undefined)?.links?.html?.href;
   if (created.ok && url) return { url };
-  return { error: created.error ?? 'resposta sem o endereço do PR' };
+  return { error: created.ok ? 'resposta sem o endereço do PR' : explain(created) };
 }
 
 /** Workspace/repositório e número de um endereço de PR do Bitbucket. */

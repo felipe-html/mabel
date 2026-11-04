@@ -1,15 +1,12 @@
 #!/usr/bin/env -S node --disable-warning=ExperimentalWarning
-import { readFileSync } from 'node:fs';
 import { type Command, commands, findCommand } from './commands.ts';
 import { Interrupted } from './ask.ts';
 import { renderHelp } from './completion.ts';
 import { fail, setJsonErrors } from './errors.ts';
 import { home as homeScreen } from './home.ts';
 import { style } from './style.ts';
+import { mabelVersion } from './version.ts';
 
-const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
-  version: string;
-};
 
 const interactive = process.stdin.isTTY && process.stdout.isTTY;
 
@@ -34,7 +31,7 @@ function menu(): string {
 /** Sem argumentos: a tela inicial no terminal; fora dele, a lista de comandos. */
 async function home(): Promise<number> {
   if (interactive) return homeScreen();
-  process.stdout.write(`${style.dim(`v${pkg.version} · harness para frotas de agentes`)}\n\n${menu()}\n`);
+  process.stdout.write(`${style.dim(`v${mabelVersion} · harness para frotas de agentes`)}\n\n${menu()}\n`);
   return 0;
 }
 
@@ -43,7 +40,7 @@ async function main(argv: string[]): Promise<number> {
 
   if (name === undefined) return home();
   if (name === '--version' || name === '-v') {
-    process.stdout.write(`${pkg.version}\n`);
+    process.stdout.write(`${mabelVersion}\n`);
     return 0;
   }
   if (name === '--help' || name === '-h' || name === 'help') {

@@ -240,9 +240,12 @@ ficam na recaptura.
 Com o remoto no Bitbucket Cloud, o `mabel entregar` abre o PR pela API quando encontra o
 token no ambiente. Crie um *API token* da sua conta Atlassian em id.atlassian.com ›
 Security › API tokens › **Create API token with scopes**, escolha o app **Bitbucket** e
-marque os escopos `read:repository:bitbucket` e `write:pullrequest:bitbucket`. O token
-leva o seu e-mail da Atlassian junto. Guarde os dois num arquivo só seu e carregue-o no
-shell:
+marque os três escopos: `read:repository:bitbucket`, `read:pullrequest:bitbucket` e
+`write:pullrequest:bitbucket` (abrir o PR, recusar o substituído e ler o estado dele no
+`rodar`). O escopo não muda depois de criado: faltando um, o `entregar` diz "Your
+credentials lack one or more required privilege scopes", e a saída é criar outro token e
+trocar o arquivo abaixo. O token leva o seu e-mail da Atlassian junto. Guarde os dois num
+arquivo só seu e carregue-o no shell:
 
 ```
 read -r "e?E-mail da Atlassian: " && read -rs "t?Token do Bitbucket: " && print -r -- "export BITBUCKET_EMAIL='$e'"$'\n'"export BITBUCKET_TOKEN='$t'" > ~/.bitbucket_token && chmod 600 ~/.bitbucket_token && unset e t
@@ -250,7 +253,8 @@ echo '[ -f ~/.bitbucket_token ] && source ~/.bitbucket_token' >> ~/.zshrc
 ```
 
 No lugar do token da conta, serve também um *access token* do repositório ou do workspace
-(Repository settings › Security › Access tokens, com o escopo **Pull requests: Write**):
+(Repository settings › Security › Access tokens, com os escopos **Repositories: Read** e
+**Pull requests: Write**):
 defina só o `BITBUCKET_TOKEN`, sem o `BITBUCKET_EMAIL`. O PR sai em nome do token, não do
 seu usuário.
 

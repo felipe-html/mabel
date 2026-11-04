@@ -22,10 +22,10 @@ import { guidedProblems, setupProject } from './helpers.ts';
 
 const NOW = new Date('2026-10-31T12:00:00Z');
 const FIVE_HOUR = { window: 'five_hour', utilization: 0.4, resetsAt: new Date('2026-10-31T14:00:00Z'), observedAt: NOW };
-const PENDING: HomeContext = { project: 'loja-api', path: '~/Pessoal/loja-api', instance: true, ready: 2, pending: 2, units: 1, readings: [FIVE_HOUR], now: NOW };
+const PENDING: HomeContext = { project: 'loja-api', path: '~/Pessoal/loja-api', version: '2.1.0', instance: true, ready: 2, pending: 2, units: 1, readings: [FIVE_HOUR], now: NOW };
 const READY: HomeContext = { ...PENDING, pending: 0, ready: 3, units: 0 };
 const QUIET: HomeContext = { ...PENDING, pending: 0, ready: 0, units: 0 };
-const FRESH: HomeContext = { project: 'site-padaria', path: '~/Pessoal/site-padaria', instance: false, ready: 0, pending: 0, units: 0, readings: [], now: NOW };
+const FRESH: HomeContext = { project: 'site-padaria', path: '~/Pessoal/site-padaria', version: '2.1.0', instance: false, ready: 0, pending: 0, units: 0, readings: [], now: NOW };
 
 const titles = (context: HomeContext, filter = '') =>
   homeEntries(context, filter).map((entry) => ('head' in entry ? entry.head.toUpperCase() : entry.command.menu?.title));
@@ -107,7 +107,7 @@ test('contagens à direita: só quando há o que contar', () => {
 test('tela: topo, filtro, lista, descrição e rodapé com as teclas e o saldo, na altura do terminal', () => {
   const { lines } = renderHome(PENDING, homeState(PENDING), plainStyle, 100, 40);
   assert.equal(lines.length, 40);
-  assert.match(lines[1] ?? '', /^ {2}mabel {2}loja-api · ~\/Pessoal\/loja-api$/);
+  assert.match(lines[1] ?? '', /^ {2}mabel v2\.1\.0 {2}loja-api · ~\/Pessoal\/loja-api$/);
   assert.equal(lines[2], '  2 prontos · 2 esperando você · 1 unidade pronta');
   assert.equal(lines[4], '  › ▏o que você quer fazer?');
   assert.equal(lines[7], '  DECIDIR');

@@ -12,7 +12,7 @@ import { type FormValues, formState, missingFields, plainStyle, renderForm, wrap
 import { guidedProblems, setupProject } from './helpers.ts';
 
 const NOW = new Date('2026-11-01T12:00:00Z');
-const CONTEXT: HomeContext = { project: 'loja-api', path: '~/Pessoal/loja-api', instance: true, ready: 2, pending: 1, units: 0, readings: [], now: NOW };
+const CONTEXT: HomeContext = { project: 'loja-api', path: '~/Pessoal/loja-api', version: '2.1.0', instance: true, ready: 2, pending: 1, units: 0, readings: [], now: NOW };
 
 const item = (number: number, status: Item['status'], extra: Partial<Item> = {}): Item =>
   ({ number, title: `Item ${number}`, status, statusReason: null, pendingKind: null, integratedCommit: null, ...extra }) as Item;
@@ -176,7 +176,7 @@ test('telas emolduradas: as duas linhas do topo, o título e o rodapé com tecla
   const config = (FORMS.retomar as NonNullable<(typeof FORMS)[string]>)(DATA).config;
   const lines = frame(CONTEXT, renderForm(config, formState(config), plainStyle, 100).slice(0, -2), [['↑↓', 'campos']], plainStyle, 100, 30);
   assert.equal(lines.length, 30);
-  assert.match(lines[1] ?? '', /mabel {2}loja-api · ~\/Pessoal\/loja-api/);
+  assert.match(lines[1] ?? '', /mabel v2\.1\.0 {2}loja-api · ~\/Pessoal\/loja-api/);
   assert.match(lines[2] ?? '', /2 prontos · 1 esperando você/);
   assert.match(lines[4] ?? '', /‹ Retomar um item +mabel retomar/);
   assert.match(lines[5] ?? '', /Devolve à fila um item parado/);
