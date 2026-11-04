@@ -505,16 +505,18 @@ async function planStep(env: PipelineEnv, item: Item): Promise<Step> {
         `plano incompleto duas vezes: ${verdict.reason}`,
         runId,
       );
-    case 'critical':
+    case 'critical': {
       recordGate(env.db, item.id, 0, 'start', false, `aprovação humana: ${verdict.reasons.join('; ')}`);
+      const planAssumptions = (result.output?.suposicoes ?? []).filter((s) => s.regraCritica).map((s) => s.texto);
       return stopForHuman(
         env,
         item,
         'critical_approval',
-        { sessionId, reason: verdict.reasons.join('; ') },
+        { sessionId, reason: verdict.reasons.join('; '), ...(planAssumptions.length > 0 ? { planAssumptions } : {}) },
         `item crítico, aprove os critérios: ${verdict.reasons.join('; ')}`,
         runId,
       );
+    }
     case 'pass':
       recordGate(env.db, item.id, 0, 'start', true, null);
       updateItem(env.db, item.id, { planRetries: 0, attempts: 0, nextInput: null });

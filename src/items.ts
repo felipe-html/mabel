@@ -92,6 +92,8 @@ export interface Pending {
   sessionId?: string | null;
   questions?: Question[];
   criticalAssumptions?: string[];
+  /** Suposições críticas do plano (`critical_approval`): o `aprovar` as confirma. */
+  planAssumptions?: string[];
   reason?: string;
   summary?: string;
   /** Arquivos em conflito (`integration_conflict`). */
