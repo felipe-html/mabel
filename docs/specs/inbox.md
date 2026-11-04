@@ -43,8 +43,11 @@ O prompt continua pedindo no máximo 3 perguntas de uma linha (pedido, não gara
       [enter aceita · texto responde · d decide você · p pula o item]
   ...
   #4 Pagamento · aprovação de item crítico
-      motivo: escopo `src/pagamento/**` toca o caminho crítico `src/pagamento/**`
+      motivo: 3 arquivos do escopo tocam o caminho crítico `src/pagamento/**`
+      motivo: 1 suposição sobre regra crítica
       critérios: C1 …, C2 …
+      suposições sobre regra crítica: o texto de cada uma, uma vez só
+      outras suposições do plano: as que o agente decidiu sozinho
       [a aprova · texto ajusta os critérios · c cancela · p pula]
 
   Respostas registradas em 2 itens · 1 pulado.

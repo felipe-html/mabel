@@ -74,19 +74,21 @@ export type StartVerdict =
  */
 export function criticalReasons(plan: PlanOutput, rules: CriticalRules, declared: string[] = []): string[] {
   const reasons: string[] = [];
-  for (const scope of plan.escopo) {
-    for (const path of rules.paths) {
-      if (globsOverlap(scope, path)) reasons.push(`escopo \`${scope}\` toca o caminho crítico \`${path}\``);
-    }
+  // Um motivo por caminho crítico: com vários arquivos, só a contagem (o escopo já os lista).
+  for (const path of rules.paths) {
+    const touched = plan.escopo.filter((scope) => globsOverlap(scope, path));
+    if (touched.length === 1) reasons.push(`escopo \`${touched[0]}\` toca o caminho crítico \`${path}\``);
+    else if (touched.length > 1) reasons.push(`${touched.length} arquivos do escopo tocam o caminho crítico \`${path}\``);
   }
   const concepts = [...plan.conceitosCriticos];
   for (const concept of declared) {
     if (!concepts.some((other) => other.trim().toLowerCase() === concept.trim().toLowerCase())) concepts.push(concept);
   }
   for (const concept of concepts) reasons.push(`conceito crítico: ${concept}`);
-  for (const assumption of plan.suposicoes) {
-    if (assumption.regraCritica) reasons.push(`suposição sobre regra crítica: ${assumption.texto}`);
-  }
+  // As suposições aparecem por inteiro na aprovação; o motivo só as conta.
+  const assumptions = plan.suposicoes.filter((s) => s.regraCritica).length;
+  if (assumptions === 1) reasons.push('1 suposição sobre regra crítica');
+  else if (assumptions > 1) reasons.push(`${assumptions} suposições sobre regra crítica`);
   return reasons;
 }
 
