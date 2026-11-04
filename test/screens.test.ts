@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { addForm, addShell, fieldsFromForm } from '../src/add.ts';
 import { EMPTY_DATA, FORMS } from '../src/forms.ts';
 import { answerQuestion, confirmAction, reviewEntries } from '../src/guided.ts';
-import type { Key } from '../src/menu.ts';
+import { fullscreenRows, type Key } from '../src/menu.ts';
 import { removalForm } from '../src/projects.ts';
 import {
   type ChoiceConfig,
@@ -301,4 +301,8 @@ test('revisão um a um: Manter, Editar (campo preenchido), Remover; depois a lis
   const io = scriptedGuided(['Manter', 'Editar', 'dois!', 'Remover', ['quatro']]);
   assert.deepEqual(await reviewEntries(io, ['um', 'dois', 'três']), { kept: ['um', 'dois!', 'quatro'], renamed: new Map([['dois', 'dois!']]) });
   assert.deepEqual(io.prompts, ['Manter | Editar | Remover', 'Manter | Editar | Remover', 'Novo texto', 'Manter | Editar | Remover', 'Acrescentar outros']);
+});
+
+test('tela cheia: a linha que ocupa a largura toda não leva o apagar-até-o-fim, que comeria a última letra', () => {
+  assert.equal(fullscreenRows(['abcde', 'ab', '\x1b[2mabcde\x1b[0m', 'x'], 5, 3), 'abcde\r\nab\x1b[K\r\n\x1b[2mabcde\x1b[0m');
 });

@@ -243,16 +243,27 @@ async function criticalFlow(
   io: InboxIO,
   item: Item,
 ): Promise<Decision> {
-  for (const reason of (item.pending?.reason ?? '').split('; ').filter(Boolean)) io.write(`${INDENT}motivo: ${reason}`);
   const plan = readArtifact<PlanOutput>(home, item.id, 'plano.json');
+  // Com o plano à mão, as suposições críticas aparecem por inteiro abaixo; o motivo antigo
+  // (gravado antes de só contá-las) não as repete.
+  const reasons = (item.pending?.reason ?? '').split('; ').filter(Boolean);
+  for (const reason of plan ? reasons.filter((r) => !r.startsWith('suposição sobre regra crítica: ')) : reasons) {
+    io.write(`${INDENT}motivo: ${reason}`);
+  }
   if (plan) {
     io.write(`${INDENT}critérios:`);
     for (const c of plan.criterios) io.write(`${INDENT}  ${c.id} (${c.verificacao}) ${c.texto}`);
     io.write(`${INDENT}escopo: ${plan.escopo.join(', ')}`);
+    const critical = plan.suposicoes.filter((s) => s.regraCritica);
+    const others = plan.suposicoes.filter((s) => !s.regraCritica);
+    if (critical.length > 0) {
+      io.write(`${INDENT}suposições sobre regra crítica:`);
+      for (const s of critical) io.write(`${INDENT}  - ${s.texto}`);
+    }
     // Inclui as respostas autônomas: aqui o humano revê o que o agente decidiu sozinho.
-    if (plan.suposicoes.length > 0) {
-      io.write(`${INDENT}suposições:`);
-      for (const s of plan.suposicoes) io.write(`${INDENT}  - ${s.texto}${s.regraCritica ? ' (regra crítica)' : ''}`);
+    if (others.length > 0) {
+      io.write(`${INDENT}outras suposições do plano:`);
+      for (const s of others) io.write(`${INDENT}  - ${s.texto}`);
     }
   }
   // Item crítico: a aprovação é humana, sem "deixar o agente decidir".
