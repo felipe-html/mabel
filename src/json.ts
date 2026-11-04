@@ -38,6 +38,7 @@ const CAUSE_VALUES: Record<string, string> = {
   no_reading: 'sem_leitura',
   usage_limit: 'saldo_esgotado',
   integration: 'integracao',
+  base_conflict: 'conflito_base',
   context: 'contexto',
   code: 'mabel_atualizado',
 };

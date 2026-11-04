@@ -17,7 +17,6 @@ const INTEGRATION = 'mabel/integracao';
 const PLAN_OK = { structured_output: PLAN };
 const REVIEW = { structured_output: REVIEW_OK };
 const PR = 'https://github.com/dono/app/pull/42';
-const SPEC_BRANCH = 'mabel/spec/pedidos';
 const UNIT = { unit: 'pedidos' };
 const SPEC_FILE = '# Pedidos\n\n## História\nH.\n\n## Regras\n\n### R1 Regra\n- caso → resultado (borda)\n\n## Fora do escopo\nNada.\n';
 const task = (n: number) => `\n## Item ${n}\ndescrição ${n}\nSpec: pedidos\nRegras: R1\n`;
@@ -104,8 +103,8 @@ test('entregar critério 1: snapshot da integração, push, PR com o relatório 
   const delivery = result.delivery!;
   assert.equal(delivery.branch, 'mabel/entrega/pedidos');
   assert.equal(delivery.unit, 'pedidos');
-  assert.equal(git(q.root, 'rev-parse', `${delivery.branch}^`), q.ref(SPEC_BRANCH), 'snapshot da unidade + o commit do documento');
-  assert.equal(delivery.snapshot, q.ref(SPEC_BRANCH));
+  assert.equal(git(q.root, 'rev-parse', `${delivery.branch}^`), q.ref(INTEGRATION), 'ponta da unidade na fila + o commit do documento');
+  assert.equal(delivery.snapshot, q.ref(INTEGRATION));
   assert.equal(q.remoteRef(delivery.branch), q.ref(delivery.branch));
   assert.deepEqual(delivery.items, [1, 2, 3]);
   assert.equal(delivery.prUrl, PR);
@@ -135,7 +134,7 @@ test('entregar critérios 2 e 5: a entrega fica no snapshot; aberta, recusa sem 
   useGh(q.root, GH_OK);
   const first = deliver(q.db, q.home, q.project, UNIT).delivery!;
   await integrateAnother(q, 2);
-  assert.notEqual(q.ref(SPEC_BRANCH), first.snapshot);
+  assert.notEqual(q.ref(INTEGRATION), first.snapshot);
   assert.equal(q.ref(first.branch), first.commit, 'a unidade andou, a entrega não');
   assert.deepEqual(listDeliveries(q.db, q.project.id)[0]?.items, [1]);
 
@@ -199,7 +198,7 @@ test('entregar critério 4: sem gh publica e mostra o corpo; sem remoto, só a b
   const offline = deliver(local.db, local.home, local.project, UNIT);
   assert.equal(offline.code, 0, offline.lines.join('\n'));
   assert.match(offline.lines.join('\n'), new RegExp(`sem remoto: para levar à main, git merge --no-ff ${offline.delivery!.branch}`));
-  assert.equal(git(local.root, 'rev-parse', `${offline.delivery!.branch}^`), local.ref(SPEC_BRANCH));
+  assert.equal(git(local.root, 'rev-parse', `${offline.delivery!.branch}^`), local.ref(INTEGRATION));
 });
 
 test('entregar: remoto no Bitbucket publica, mostra o link do PR e não chama o gh', async () => {

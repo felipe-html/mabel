@@ -354,6 +354,7 @@ const CAUSE_LABELS: Record<QueueEventCause, string> = {
   no_reading: 'sem leitura de saldo',
   usage_limit: 'saldo esgotado',
   integration: 'integração',
+  base_conflict: 'conflito da base',
   context: 'contexto do projeto',
   code: 'Mabel atualizado',
 };

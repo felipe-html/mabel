@@ -88,9 +88,9 @@ test('S.2 critérios 3 e 4: documento na branch de entrega, base sem commit do M
   const merges = git(q.root, 'log', '--merges', '--format=%B%x00', `main..${INTEGRATION}`).split('\0').map((m) => m.trim()).filter(Boolean);
   assert.ok(merges.length > 0);
   for (const message of merges) assert.match(message, /\n\n(Mabel-Item: #\d\n)?Mabel-Unidade: avulso-\d$/);
-  // O avulso rejeitado volta à base e o merge novo entra na branch dele.
+  // A rejeição reverte o merge na fila, e o merge novo entra depois dela (F10).
   assert.equal(
-    git(q.root, 'log', '--format=%s', '--grep', 'Mabel-Unidade: avulso-1', 'mabel/avulso/1-total-do-carrinho'),
-    'mabel: merge #1 Total do carrinho na mabel/avulso/1-total-do-carrinho',
+    git(q.root, 'log', '--first-parent', '--format=%s', '--grep', 'Mabel-Unidade: avulso-1', `main..${INTEGRATION}`),
+    'mabel: merge #1 Total do carrinho na mabel/integracao\nmabel: rejeita #1 Total do carrinho\nmabel: merge #1 Total do carrinho na mabel/integracao',
   );
 });

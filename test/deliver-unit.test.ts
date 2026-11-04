@@ -98,23 +98,23 @@ test('S.6 critério 18: verificação vermelha em base + spec recusa sem criar b
   assert.match(git(q.root, 'worktree', 'list'), /^[^\n]+$/, 'worktree da prova removido');
 });
 
-test('S.6 critério 19: spec que depende de outra não entregue é recusada; --com entrega as duas', async () => {
+test('F.1 (F7): a entrega de uma unidade é o corte da fila até a ponta dela e leva as tarefas de antes', async () => {
   const q = project(task('A1', 'a') + task('B1', 'b', 1), { a: specFile('A'), b: specFile('B') });
   await q.start([PLAN_OK, execFor(1), REVIEW, PLAN_OK, execFor(2), REVIEW]);
   assert.deepEqual(listItems(q.db, q.project.id).map((item) => item.status), ['awaiting_merge', 'awaiting_merge']);
 
-  const refused = deliver(q.db, q.home, q.project, { unit: 'b' });
-  assert.equal(refused.code, 1);
-  assert.match(refused.lines.join('\n'), /b depende de a, ainda fora da main\. .*mabel entregar b --com a/);
-  assert.equal(q.deliveryBranches(), '');
-
-  const both = deliver(q.db, q.home, q.project, { unit: 'b', with: ['a'] });
-  assert.equal(both.code, 0, both.lines.join('\n'));
-  assert.equal(both.delivery?.branch, 'mabel/entrega/b+a');
-  assert.deepEqual(both.delivery?.items, [2, 1]);
-  for (const n of [1, 2]) assert.ok(tryGit(q.root, 'show', `${both.delivery?.branch}:src/item${n}.js`), `#${n} na entrega`);
-  // A spec sem dependência vai sozinha.
-  assert.equal(deliver(q.db, q.home, q.project, { unit: 'a' }).code, 0);
+  const result = deliver(q.db, q.home, q.project, { unit: 'b' });
+  assert.equal(result.code, 0, result.lines.join('\n'));
+  assert.equal(result.delivery?.branch, 'mabel/entrega/b');
+  assert.deepEqual(result.delivery?.items, [1, 2]);
+  for (const n of [1, 2]) assert.ok(tryGit(q.root, 'show', `${result.delivery?.branch}:src/item${n}.js`), `#${n} na entrega`);
+  const doc = git(q.root, 'show', `${result.delivery?.branch}:${/Documento: (\S+)/.exec(result.lines.join('\n'))?.[1]}`);
+  assert.match(doc, /## Olhe primeiro\n[\s\S]*- #1 \(de a\) entra nesta entrega/);
+  // A unidade de antes vai sozinha: o corte dela não tem a b.
+  const first = deliver(q.db, q.home, q.project, { unit: 'a' });
+  assert.equal(first.code, 0, first.lines.join('\n'));
+  assert.deepEqual(first.delivery?.items, [1]);
+  assert.equal(tryGit(q.root, 'show', `${first.delivery?.branch}:src/item2.js`), undefined);
 });
 
 test('S.6 critério 20: entrega parcial pede --parcial fora do TTY e confirmação no terminal', async () => {
@@ -165,7 +165,6 @@ test('S.6 critério 21: o merge da entrega na base leva as tarefas a done, a spe
   assert.equal(getItem(q.db, q.project.id, 1)?.status, 'done');
   assert.equal(getSpecRecord(q.db, q.project.id, 'a')?.status, 'entregue');
   assert.equal(listDeliveries(q.db, q.project.id)[0]?.status, 'merged');
-  assert.equal(tryGit(q.root, 'rev-parse', '--verify', '--quiet', 'refs/heads/mabel/spec/a'), undefined, 'branch da spec entregue apagada');
   assert.equal(
     readFileSync(join(q.root, '.mabel', 'regras.md'), 'utf8'),
     '# Regras vigentes\n\n## pedidos\n- Período inclusivo.\n- Cancelado não entra.\n',

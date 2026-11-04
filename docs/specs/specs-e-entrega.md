@@ -1,5 +1,10 @@
 # Especificação — Specs, entrega por unidade e relatório de run
 
+> **Substituído pela fila linear (F.1, `docs/specs/fila-e-pilha.md`, versão 2.0.0).** O modelo
+> de branches por unidade do S.5 (S1, S3, S4, a seção "Branches", a rejeição por unidade e a
+> prova da entrega sobre a branch da unidade) não vale mais: toda tarefa nasce da ponta da
+> `mabel/integracao` e entra nela em ordem. O resto desta spec continua valendo.
+
 Pergunta do usuário: hoje o Mabel entrega por uma branch única de integração e um backlog
 único. E se o projeto produzir specs e o quadro as referenciar? Unificar a branch não perde
 a rastreabilidade? Dá para manter a integração para o teste conjunto e separar na entrega?
@@ -37,10 +42,10 @@ a rastreabilidade? Dá para manter a integração para o teste conjunto e separa
 
 | # | Tema | Decisão |
 |---|---|---|
-| S1 | Modelo de branches | O do git: unidades de entrega nascem da base; a integração é descartável e só para teste. |
+| S1 | Modelo de branches | *(Substituída pela F1–F2 da fila.)* O do git: unidades de entrega nascem da base; a integração é descartável e só para teste. |
 | S2 | Base | Tudo começa da `develop` (esteira de DevOps). Já é configurável: `baseBranch` no `.mabel/config.json`. O Mabel passa a dizer "base" onde hoje diz "branch principal". |
-| S3 | Integração | Refeita na abertura de cada `rodar` a partir da base. Cada tarefa concluída entra nela em seguida, o que dá a prévia de conflito no momento em que ele nasce. |
-| S4 | Conflito ou teste vermelho na integração | Aviso, sem bloquear o item. Vai para o relatório de run e para o "olhe primeiro" de quem entregar por último. |
+| S3 | Integração | *(Substituída pela F2 da fila.)* Refeita na abertura de cada `rodar` a partir da base. Cada tarefa concluída entra nela em seguida, o que dá a prévia de conflito no momento em que ele nasce. |
+| S4 | Conflito ou teste vermelho na integração | *(Substituída pela F3–F4 da fila.)* Aviso, sem bloquear o item. Vai para o relatório de run e para o "olhe primeiro" de quem entregar por último. |
 | S5 | Avulsos | Cada avulso tem a própria branch e o próprio PR, para manter o rastreio (principalmente de bugs). |
 | S6 | Gate do `ready` | Tarefa de spec só fica `ready` com a spec aceita. |
 | S7 | Tamanho da spec | O agente sugere fracionar quando a spec parecer grande. Sem limite fixo por ora; os dados são analisados em 2026-11-05. |
@@ -250,6 +255,8 @@ do histórico:
 
 ## Branches
 
+Substituída pela seção "Branches" de `docs/specs/fila-e-pilha.md` (F.1).
+
 ```
 develop ─┬─ mabel/spec/exportar-csv ─┬─ tarefa #5 ┐
          │                           └─ tarefa #6 ┘→ merge na spec (done calculado)
@@ -451,7 +458,7 @@ Cada um termina com `npm run check` verde, critérios atendidos, `docs/PLANO.md`
 | S.2 | Documento de entrega versionado e trailers, ainda com a integração única. | G10 (commit na branch de entrega) |
 | S.3 | Specs: formato, parser, validação, `Spec:` e `Regras:` no backlog, contexto nos prompts, hash, gate do `ready`, respostas da inbox nas decisões da spec. | Vocabulário, tabela de arquivos, decisões do humano |
 | S.4 | Motor de especificação: `especificar` com Example Mapping, rodadas, `regras.md`, métricas de tamanho; `refinar` migrado para o motor (avulso e bug). | — |
-| S.5 | Branches por unidade, integração refeita no `rodar`, aviso de conflito, rerere, rejeição por unidade, migração do legado. | G5, G10, ciclo de vida |
+| S.5 | *(Substituído pelo F.1 da fila.)* Branches por unidade, integração refeita no `rodar`, aviso de conflito, rerere, rejeição por unidade, migração do legado. | G5, G10, ciclo de vida |
 | S.6 | `entregar <unidade>`: prova da entrega, `--com`, `--parcial`, regras vigentes aplicadas, depois do merge por unidade. | G10 |
 
 S.1 e S.2 já valem com o modelo de hoje. S.3 e S.4 valem com a integração única (todas as

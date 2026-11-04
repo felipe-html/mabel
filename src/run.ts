@@ -18,8 +18,8 @@ import { pendingItems } from './inbox.ts';
 import { type Item, type ItemStatus, getItemById, listItems, syncBacklog, transition } from './items.ts';
 import { writeJson } from './json.ts';
 import { type Notify, notify as systemNotify } from './notify.ts';
-import { finishIntegrated, unitOf } from './integration.ts';
-import { markDeliveredSpecs, openUnitModel, removeDeliveredBranches } from './units.ts';
+import { finishIntegrated } from './integration.ts';
+import { markDeliveredSpecs, openQueue } from './units.ts';
 import { QUEUE_ENDINGS, RUN_REPORT_FILE, writeRunReport } from './runreport.ts';
 import { LockError, acquireLock } from './lock.ts';
 import { type AdvanceResult, advanceItem, autonomousDecisions } from './pipeline.ts';
@@ -130,6 +130,7 @@ export type QueueEventCause =
   | 'no_reading'
   | 'usage_limit'
   | 'integration'
+  | 'base_conflict'
   | 'context'
   | 'code';
 
@@ -386,20 +387,14 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; stop
     return true;
   };
 
-  let pausedUnits = new Set<string>();
   /** Itens que esta execução já tomou, para o `--limite`. */
   const taken = new Set<number>();
   const full = () => options.limit !== undefined && taken.size >= options.limit;
 
   /** Próximo item da fila e se ele para em `planned`; `undefined` quando a fila acabou. */
   const pick = async (all: Item[]): Promise<{ target: Item; until?: 'planned' } | { end: QueueEnd; message?: string }> => {
-    // Unidade pausada (a base conflita com a branch dela): as tarefas não iniciadas esperam.
     // Com o limite atingido, só seguem os itens já tomados.
-    const items = all.filter(
-      (item) =>
-        !(pausedUnits.has(unitOf(item)) && (item.status === 'ready' || item.status === 'planned')) &&
-        !(full() && !taken.has(item.number) && (item.status === 'ready' || item.status === 'planned')),
-    );
+    const items = all.filter((item) => !(full() && !taken.has(item.number) && (item.status === 'ready' || item.status === 'planned')));
     const inProgress = items.find((item) => IN_PROGRESS.includes(item.status));
     if (options.itemNumber !== undefined && !inProgress) {
       if (finalStates.has(options.itemNumber)) return { end: 'once' };
@@ -428,19 +423,19 @@ export function startQueue(options: QueueOptions): { interrupt: () => void; stop
    */
   const open = (): string | undefined => {
     for (const note of checkDeliveries(db, project)) log.write(note);
-    // Unidade cuja branch chegou à base: entregue (tarefas a done, branch apagada).
+    // Tarefas cujo merge chegou à base: entregues (done; spec com todas elas, entregue).
     finishIntegrated(db, project, listItems(db, project.id)).forEach(markDone);
     const delivered: string[] = [];
-    removeDeliveredBranches(project, listItems(db, project.id), delivered);
     markDeliveredSpecs(db, project, listItems(db, project.id), delivered);
     for (const note of delivered) log.write(style.dim(note));
-    const opened = openUnitModel(home, db, project);
+    // Migração das unidades do S.5 e merge da base na integração (F4, F12).
+    const opened = openQueue(home, db, project);
     for (const note of opened.notes) log.write(style.dim(note));
     if (opened.pause) {
-      record({ kind: 'pause', cause: 'integration', detail: opened.pause });
+      record({ kind: 'pause', cause: opened.conflict ? 'base_conflict' : 'integration', detail: opened.pause });
+      writeRunReport(db, home, project);
       return opened.pause;
     }
-    pausedUnits = opened.paused;
     const cleaned = removeOrphanWorktrees(db, home, project, listItems(db, project.id));
     if (cleaned.length > 0) log.write(style.dim(`worktrees removidos: ${cleaned.map((n) => `#${n}`).join(', ')}`));
     writeRunReport(db, home, project);

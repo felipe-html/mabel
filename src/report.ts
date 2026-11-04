@@ -5,7 +5,7 @@ import { formatCost } from './format.ts';
 import { tryGit } from './git.ts';
 import { openDeliveries } from './delivery.ts';
 import { integratedItems } from './integration.ts';
-import { readIntegrationState } from './units.ts';
+import { openUnits, readIntegrationState } from './units.ts';
 import { type Item, itemCost } from './items.ts';
 import { MABEL_DIR, type Project } from './project.ts';
 import { type ProofResult, proofLabel } from './proof.ts';
@@ -115,20 +115,18 @@ function itemSection(db: DatabaseSync, project: Project, { item, plan, execution
 }
 
 function howToDeliver(db: DatabaseSync, project: Project): string[] {
-  const lines = ['Para entregar: mabel entregar <unidade> (a integração é só para teste)'];
+  const lines = ['Para entregar: mabel entregar <unidade> (leva a fila até a última tarefa da unidade)'];
   for (const open of openDeliveries(db, project.id)) lines.push(`Entrega aberta: ${open.unit} · ${open.branch} · ${open.prUrl ?? 'sem PR'}`);
   return lines;
 }
 
-/** `main (a1b2c3d) + 2 unidades (a, b) · 1 de fora (c) · verificação: verde`. */
-function integrationLine(db: DatabaseSync, project: Project, baseCommit: string): string {
+/** `main (a1b2c3d) + 3 tarefas na fila (a, b) · base em dia`. */
+function integrationLine(db: DatabaseSync, project: Project, baseCommit: string, tasks: number): string {
   const state = readIntegrationState(db, project.id);
   const base = project.config.baseBranch;
-  if (!state) return `${base} (${baseCommit}) + nenhuma unidade`;
-  const parts = [`${base} (${state.base}) + ${plural(state.included.length, 'unidade', 'unidades')}${state.included.length > 0 ? ` (${state.included.join(', ')})` : ''}`];
-  const out = [...new Set([...state.conflicts.map((c) => c.unit), ...state.paused.map((p) => p.unit)])].filter((unit) => !state.included.includes(unit));
-  if (out.length > 0) parts.push(`${out.length} de fora (${out.join(', ')})`);
-  parts.push(`verificação: ${state.verify === null ? '—' : state.verify.ok ? 'verde' : 'vermelha'}`);
+  const units = openUnits(db, project).map((unit) => unit.name);
+  const parts = [`${base} (${state?.base || baseCommit}) + ${plural(tasks, 'tarefa', 'tarefas')} na fila${units.length > 0 ? ` (${units.join(', ')})` : ''}`];
+  if (state) parts.push(state.conflict ? `conflito com ${state.conflict.source}: fila pausada` : 'base em dia');
   return parts.join(' · ');
 }
 
@@ -142,7 +140,7 @@ export function integrationSection(db: DatabaseSync, home: string, project: Proj
   if (!integration) return ['Desligada (`integracao: null` no config): cada item fica na própria branch.'];
   const entries = integratedItems(db, project).map((item) => entry(home, item));
   const baseCommit = tryGit(project.root, 'rev-parse', '--short', base) ?? '?';
-  const lines = [integrationLine(db, project, baseCommit)];
+  const lines = [integrationLine(db, project, baseCommit, entries.length)];
   if (entries.length === 0) return lines;
   lines.push('', ...howToDeliver(db, project), `Para devolver um item: mabel rejeitar <n> "<motivo>"`);
   const first = entries.flatMap(lookFirst);

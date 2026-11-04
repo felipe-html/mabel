@@ -12,7 +12,6 @@ import { QUEUE_ENDINGS } from './runreport.ts';
 import type { PlanOutput } from './schemas/stages.ts';
 import { type Hint, type ScreenStyle, clip, fit, isEnter, isEscape, row, visibleLength } from './screens.ts';
 import { readArtifact } from './stages.ts';
-import { unitBranch } from './worktree.ts';
 
 /**
  * Painel da fila (`docs/specs/terminal.md`, aba "Fila (rodar)" do protótipo): a fila como
@@ -63,7 +62,8 @@ export interface PanelItem {
   /** Tentativas reprovadas do ciclo (`items.attempts`). */
   attempts: number;
   /** Branch da unidade, a dica do "merge na unidade". */
-  unitBranch: string;
+  /** Branch onde a tarefa entra por merge: a integração (a fila). */
+  integrationBranch: string;
   /** "3 critérios, escopo de 4 caminhos", do plano aceito. */
   planNote?: string;
   /** O item teve alguma transição nesta fila. */
@@ -90,7 +90,7 @@ export interface PanelScope {
 export interface PanelState {
   project: string;
   items: PanelItem[];
-  /** Branch de integração ligada: a última etapa é o merge na unidade (G10). */
+  /** Branch de integração ligada: a última etapa é o merge na fila (G10). */
   integration: boolean;
   /** Comandos de verificação do projeto (G3). */
   verify: { name: string; command: string }[];
@@ -114,7 +114,7 @@ export type PanelEvent =
 
 export interface PanelBase {
   project: string;
-  items: Pick<PanelItem, 'number' | 'title' | 'status' | 'reason' | 'attempts' | 'unitBranch' | 'planNote' | 'proof'>[];
+  items: Pick<PanelItem, 'number' | 'title' | 'status' | 'reason' | 'attempts' | 'integrationBranch' | 'planNote' | 'proof'>[];
   integration: boolean;
   verify: { name: string; command: string }[];
   scope: PanelScope;
@@ -220,7 +220,7 @@ export function loadPanel(db: DatabaseSync, home: string, project: Project, scop
       status: item.status,
       reason: item.statusReason,
       attempts: item.attempts,
-      unitBranch: unitBranch(item),
+      integrationBranch: project.config.integracao ?? project.config.baseBranch,
       planNote: planNote(home, item.id),
       proof: item.status === 'verifying' ? readArtifact<ProofProgress>(home, item.id, `prova-${item.attemptNo}/${PROOF_PROGRESS}`) : undefined,
     })),
@@ -440,7 +440,7 @@ export function stageRows(state: PanelState, item: PanelItem, now: number): Stag
     ];
     if (reviewGate && !reviewGate.passed && rows[5]) Object.assign(rows[5], { status: 'failed', note: reviewGate.detail ?? 'revisão reprovou' });
     if (state.integration) {
-      rows.push(gateRow('merge na unidade', 'G10', item.unitBranch, named(['integration']), () => item.unitBranch));
+      rows.push(gateRow('merge na fila', 'G10', item.integrationBranch, named(['integration']), () => item.integrationBranch));
     }
   }
 
@@ -703,7 +703,7 @@ export interface PanelFrame {
 
 /**
  * O que a fila faz sem item em andamento: a abertura (commit do `.mabel/`, a base trazida
- * para as branches, a integração refeita) ou a escolha do próximo item. O texto é a última
+ * para a integração) ou a escolha do próximo item. O texto é a última
  * linha do log da fila; o tempo conta do último registro no banco.
  */
 interface Preparing {

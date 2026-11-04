@@ -282,7 +282,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
   <div class="section-head">
     <span class="eyebrow">1 · Visão geral</span>
     <h2>A jornada em cinco blocos</h2>
-    <p>Você prepara o backlog, o <code>rodar</code> consome a fila com três agentes, para quando precisa de você e deixa cada tarefa pronta na branch da sua unidade (spec ou avulso). A <code>mabel/integracao</code>, refeita a cada <code>rodar</code>, só serve para teste. Só você leva a unidade à base.</p>
+    <p>Você prepara o backlog, o <code>rodar</code> consome a fila com três agentes, para quando precisa de você e deixa cada tarefa pronta na fila: a <code>mabel/integracao</code>, onde toda tarefa nasce da ponta e entra por merge, em ordem, e que só anda para frente. A unidade (spec ou avulso) é um trecho da fila. Só você leva a unidade à base.</p>
   </div>
   <figure>
     <div class="scroll">
@@ -393,15 +393,15 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
         <ul>
           <li>Commita na base o que está pendente no <code>.mabel/</code></li>
           <li>Confere sandbox e pega a trava do projeto</li>
-          <li>Marca <code>done</code> o que já chegou à base, apaga a branch da unidade entregue e leva a spec com todas as tarefas concluídas a <code>entregue</code>; remove worktrees órfãos</li>
-          <li>Migração: tarefas na <code>mabel/integracao</code> antiga viram a unidade <code>legado</code> (<code>mabel/spec/legado</code>)</li>
-          <li>Merge da base em cada unidade aberta (<code>mabel/spec/slug</code>, <code>mabel/avulso/n-slug</code>), com rerere; conflito pausa a unidade: as tarefas dela não são escolhidas</li>
-          <li>Refaz <code>mabel/integracao</code> a partir da base com o merge de cada unidade, na ordem da primeira integração; unidade que conflita fica de fora, com aviso no <code>run.md</code>; depois, a verificação do projeto nela (vermelho: aviso)</li>
+          <li>Marca <code>done</code> o que já chegou à base e leva a spec com todas as tarefas concluídas a <code>entregue</code>; remove worktrees órfãos</li>
+          <li>Migração do S.5, uma vez: as unidades abertas (<code>mabel/spec/slug</code>, <code>mabel/avulso/n-slug</code>) entram na <code>mabel/integracao</code> por merge, na ordem da primeira tarefa concluída; as branches contidas nela são apagadas</li>
+          <li>Merge da base na <code>mabel/integracao</code>, num worktree temporário, com rerere e <code>update-ref</code> contra o valor antigo: a fila só anda para frente</li>
           <li>Sincroniza o backlog: tarefa com <code>Spec:</code> só vai a <code>ready</code> com a spec aceita e as regras citadas existentes; bug, só com o critério <code>Reprodução:</code></li>
         </ul>
       </div>
       <div class="exits">
         <div class="exit pause"><span class="k">pausa</span><span><code>mabel/integracao</code> aberta num worktree fora do Mabel</span></div>
+        <div class="exit human"><span class="k">pausa · base_conflict</span><span>conflito da base (ou da unidade migrada) com a integração: arquivos e o comando, na inbox, no <code>run.md</code> e no painel; nada novo entra até você resolver</span></div>
       </div>
       <!-- 3 -->
       <div class="node gate">
@@ -422,10 +422,10 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       <div class="node">
         <span class="kicker">Mabel</span>
         <h4>Prepara o worktree</h4>
-        <p>Worktree e branch próprias da tarefa (G5), a partir da branch da unidade (a da spec ou a do avulso, criada da base na primeira tarefa); antes, o merge das unidades de que ela depende e que ainda não chegaram à base; roda o <code>setup</code> do projeto.</p>
+        <p>Worktree e branch próprias da tarefa (G5), a partir da ponta da <code>mabel/integracao</code> (criada da base na primeira tarefa; sem integração, da base): a tarefa enxerga tudo o que entrou antes dela, de qualquer unidade. Roda o <code>setup</code> do projeto.</p>
       </div>
       <div class="exits">
-        <div class="exit stop"><span class="k">blocked</span><span><code>setup</code> falhou, ou conflito ao trazer a unidade da dependência</span></div>
+        <div class="exit stop"><span class="k">blocked</span><span><code>setup</code> falhou</span></div>
       </div>
       <!-- 6 -->
       <div class="node agent">
@@ -503,11 +503,12 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       <!-- 15 -->
       <div class="node">
         <span class="kicker">Mabel</span>
-        <h4>Traz a unidade para a tarefa</h4>
-        <p>Merge da branch da unidade no worktree, se ela andou: o que entra nela é o que foi verificado.</p>
+        <h4>Traz a ponta para a tarefa</h4>
+        <p>Merge da ponta da <code>mabel/integracao</code> no worktree, se ela andou: o que entra na fila é o que foi verificado.</p>
       </div>
       <div class="exits">
-        <div class="exit human"><span class="k">needs_human · integration_conflict</span><span>arquivos em conflito</span></div>
+        <div class="exit retry"><span class="k">↺ reprova</span><span>conflito com a ponta: volta ao executor com o merge em andamento e os arquivos no prompt; conta como tentativa</span></div>
+        <div class="exit human"><span class="k">needs_human · integration_conflict</span><span>conflito nas três tentativas</span></div>
       </div>
       <!-- 16 -->
       <div class="node gate">
@@ -573,18 +574,17 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       <!-- 23 -->
       <div class="node">
         <span class="kicker">Mabel · G10</span>
-        <h4>Merge na unidade e na integração</h4>
-        <p>Commit de merge da tarefa na branch da unidade (trailers <code>Mabel-Item</code> e <code>Mabel-Unidade</code>); apaga worktree e branch da tarefa; a da unidade fica até a entrega. Depois, merge da unidade em <code>mabel/integracao</code> (rerere) e a verificação nela. A fila regrava <code>.mabel/run.md</code> e passa ao próximo item.</p>
+        <h4>Merge na fila</h4>
+        <p>Commit de merge da tarefa na <code>mabel/integracao</code>, com a árvore que ela verificou (trailers <code>Mabel-Item</code> e <code>Mabel-Unidade</code>) e <code>update-ref</code> contra o valor antigo; apaga worktree e branch da tarefa. A fila regrava <code>.mabel/run.md</code> e passa ao próximo item.</p>
       </div>
       <div class="exits">
-        <div class="exit stop"><span class="k">failed</span><span>merge na branch da unidade falhou</span></div>
-        <div class="exit pause"><span class="k">aviso</span><span>conflito ou vermelho na integração: vai ao <code>run.md</code> com a tarefa, sem desfazer nada</span></div>
+        <div class="exit stop"><span class="k">failed</span><span>a integração mudou durante o item ou a integração</span></div>
       </div>
       <!-- 24 -->
       <div class="node human">
         <span class="kicker">Você</span>
         <h4>Entrega ou rejeita</h4>
-        <p><code>mabel entregar &lt;unidade&gt;</code> prova base + unidade e abre o PR para a base, com o documento e as regras vigentes alteradas; o merge é seu. No próximo <code>rodar</code>, o item vira <code>done</code>. <code>mabel rejeitar</code> reverte a tarefa na branch da spec (no avulso, a branch volta à base) e a devolve a <code>planning</code> (ou <code>cancelled</code>); a integração é refeita no próximo <code>rodar</code>.</p>
+        <p><code>mabel entregar &lt;unidade&gt;</code> prova base + o corte da fila até a ponta da unidade e abre o PR para a base, com o documento e as regras vigentes alteradas; o merge é seu. No próximo <code>rodar</code>, o item vira <code>done</code>. <code>mabel rejeitar</code> reverte o merge da tarefa na <code>mabel/integracao</code> e a devolve a <code>planning</code> (ou <code>cancelled</code>).</p>
       </div>
     </div>
     <figcaption>A linha tracejada à esquerda é o ciclo de tentativas: toda reprovação (↺) volta ao executor. As caixas laranja à direita param o item em <code>needs_human</code> até você responder pela inbox.</figcaption>
@@ -768,7 +768,7 @@ Tamanho: 3 regras · 3 exemplos · 2 rodadas · 2 perguntas · 2 tarefas
           <header><span class="name">rodar</span><span class="badge agent">planejador · executor · revisor</span></header>
           <p class="usage">mabel rodar [--item n | --limite n] [--sem-lote] [--fundo [--json]]</p>
           <p>Em lote: planeja todos os <code>ready</code>, depois executa os <code>planned</code> um a um até a fila acabar. <code>--sem-lote</code> leva cada item até o fim antes do próximo. <code>--limite n</code> (“Quantos itens” no formulário) toma no máximo n itens e não começa outro depois deles.</p>
-          <p class="writes"><b>Grava:</b> estados e gates no SQLite; artefatos em <code>~/.mabel/items/&lt;id&gt;/</code>; runs em <code>~/.mabel/runs/</code>; commits na branch do item; merge na branch da unidade e dela em <code>mabel/integracao</code> (refeita a cada <code>rodar</code>); estado da integração (incluídas, conflitos, pausadas, verificação) no SQLite; <code>quadro.md</code> e <code>run.md</code> (reescrito ao fim de cada tarefa e no fim do <code>rodar</code>).</p>
+          <p class="writes"><b>Grava:</b> estados e gates no SQLite; artefatos em <code>~/.mabel/items/&lt;id&gt;/</code>; runs em <code>~/.mabel/runs/</code>; commits na branch do item; merge da tarefa e da base na <code>mabel/integracao</code> (só anda para frente); estado da fila (base trazida, <code>base_conflict</code>) no SQLite; <code>quadro.md</code> e <code>run.md</code> (reescrito ao fim de cada tarefa e no fim do <code>rodar</code>).</p>
 <p>No terminal, a fila roda num processo filho (a saída de hoje vai para o log da fila em <code>~/.mabel/filas/</code>) e a tela mostra o painel, lido do banco: a fase no cabeçalho, uma linha por item (✓ concluído com tempo e custo, ● em andamento, ◌ pendente, ⏸ esperando você), as etapas do item ativo com os gates em linhas próprias (a prova com o teste da vez, “R7-2 na base · teste 14 de 16”, até o gate <code>proof</code>; o agente sem sessão aberta, “preparando a sessão”), sem item em andamento “abrindo a fila” (ou “próximo item”) com a última linha do log e o tempo, a frase montada pelo Mabel a partir das ferramentas, ↻ na nova tentativa com a causa e “tentativa 2/3”, e o aviso da pausa por saldo com “faltam”. A barra de ações (← → e enter): Mostrar ferramentas, Mostrar concluídos, Decidir agora (com item esperando você) e Parar depois da etapa; a pergunta da política de saldo vira dois itens da barra. Terminal baixo recolhe ferramentas, pendentes e concluídos; abaixo do mínimo, volta o log. Ctrl+C interrompe a run e a fila; com a fila encerrada, “Voltar ao menu” (ou “Sair do painel”, pelo shell) deixa o resumo na rolagem. Fora do terminal, a saída de hoje:</p>
 <pre class="term"> mabel · loja-api · <b>execução</b>                                   <span class="d">fila 1/3 · 14:07</span>
 <span class="d">────────────────────────────────────────────────────────────────────</span>
@@ -841,7 +841,8 @@ Respostas registradas em 2 itens · 1 pulado.
             <tr><td>question_execute</td><td>Executor perguntou ou supôs sobre regra crítica</td><td><code>executing</code>, mesma tentativa; <code>--replanejar</code> → <code>planning</code></td></tr>
             <tr><td>attempts_exhausted</td><td>Três tentativas reprovadas</td><td><code>executing</code>, ciclo novo com modelo escalado</td></tr>
             <tr><td>environment_block</td><td>Impedimento sem nada a verificar, ou confirmado pela prova</td><td><code>executing</code>, retoma a sessão da execução</td></tr>
-            <tr><td>integration_conflict</td><td>Merge da branch da unidade na tarefa com conflito</td><td><code>executing</code>, sessão nova que resolve o conflito</td></tr>
+            <tr><td>integration_conflict</td><td>Merge da ponta da integração na tarefa com conflito nas três tentativas</td><td><code>executing</code>, sessão nova que resolve o conflito</td></tr>
+            <tr><td>base_conflict</td><td>Merge da base (ou da unidade migrada do S.5) na integração com conflito; pausa a fila, sem item</td><td>Você resolve com o comando da pendência (<code>git switch mabel/integracao &amp;&amp; git merge …</code>), commita e volta à base; o próximo <code>rodar</code> segue</td></tr>
           </tbody>
         </table>
       </div>
@@ -853,16 +854,16 @@ Respostas registradas em 2 itens · 1 pulado.
         <article class="cmd">
           <header><span class="name">entregar</span><span class="badge human">você pede</span></header>
           <p class="usage">mabel entregar [slug | #n] [--com unidade] [--parcial] [--substituir] [--rascunho]</p>
-          <p>Sem unidade, mostra as unidades do relatório de run: prontas para entregar (spec com tarefas concluídas, avulso), em andamento e a integração (base + unidades incluídas, as de fora, a verificação); no terminal, escolhe uma das prontas. Entrega uma unidade (spec ou avulso). Parcial pede confirmação (TTY) ou <code>--parcial</code>; dependência fora da base recusa, com a sugestão <code>--com</code>. Antes de criar qualquer branch, a <b>prova</b>: base + merge do snapshot da unidade num worktree temporário, e a verificação do projeto; conflito ou vermelho recusam. Depois, o documento de entrega e o PR para a base. O merge é seu; no próximo <code>run</code> as tarefas viram <code>done</code>, a spec vira <code>entregue</code>, e o documento e as regras vigentes ficam na base junto do código.</p>
-          <p class="writes"><b>Grava:</b> branch <code>mabel/entrega/&lt;unidade&gt;</code> = snapshot da branch da unidade + commit <code>mabel: entrega &lt;unidade&gt;</code> só com <code>.mabel/entregas/&lt;data&gt;-&lt;unidade&gt;.md</code> e o <code>.mabel/regras.md</code> com as alterações da unidade (trailer <code>Mabel-Entrega</code>; a base não recebe commit), push no remoto, PR pelo <code>gh</code>; a entrega no SQLite, uma aberta por unidade. Sem <code>gh</code>: o endereço e o arquivo do corpo.</p>
+          <p>Sem unidade, mostra as unidades do relatório de run: prontas para entregar (spec com tarefas concluídas, avulso), em andamento e a fila (base + tarefas na fila, base em dia ou em conflito); no terminal, escolhe uma das prontas. Entrega uma unidade (spec ou avulso): o corte da fila até a ponta dela, com as tarefas de outras unidades que entraram antes (listadas no “Olhe primeiro”). Parcial pede confirmação (TTY) ou <code>--parcial</code>. Antes de criar qualquer branch, a <b>prova</b>: base + merge do corte num worktree temporário, e a verificação do projeto; conflito ou vermelho recusam. Depois, o documento de entrega e o PR para a base. O merge é seu; no próximo <code>run</code> as tarefas viram <code>done</code>, a spec vira <code>entregue</code>, e o documento e as regras vigentes ficam na base junto do código.</p>
+          <p class="writes"><b>Grava:</b> branch <code>mabel/entrega/&lt;unidade&gt;</code> = o corte da fila até a ponta da unidade + commit <code>mabel: entrega &lt;unidade&gt;</code> só com <code>.mabel/entregas/&lt;data&gt;-&lt;unidade&gt;.md</code> e o <code>.mabel/regras.md</code> com as alterações das unidades do corte (trailer <code>Mabel-Entrega</code>; a base não recebe commit), push no remoto, PR pelo <code>gh</code>; a entrega no SQLite, uma aberta por unidade. Sem <code>gh</code>: o endereço e o arquivo do corpo.</p>
 <pre class="term">Entrega mabel/entrega/exportar-csv · exportar-csv · 3 tarefas desde a main
 <span class="g">PR aberto: https://github.com/…/pull/31</span></pre>
         </article>
         <article class="cmd">
           <header><span class="name">rejeitar</span><span class="badge human">você decide</span></header>
           <p class="usage">mabel rejeitar n "motivo" [--cancelar]</p>
-          <p>Tarefa de spec: reverte o merge dela na branch da spec, num worktree temporário. Avulso: a branch dele volta ao commit da base. Avisa as tarefas concluídas que dependem dela.</p>
-<pre class="term">#4 revertido na mabel/spec/exportar-csv: volta ao planejamento
+          <p>Reverte o merge da tarefa na <code>mabel/integracao</code>, num worktree temporário (a fila só anda para frente). Revert com conflito não muda nada e aponta as tarefas posteriores que o impedem. Avisa as tarefas concluídas que dependem dela.</p>
+<pre class="term">#4 revertido na mabel/integracao: volta ao planejamento
 com o motivo no próximo `mabel rodar`.</pre>
         </article>
       </div>

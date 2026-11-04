@@ -54,12 +54,12 @@ test('P.5 critério 1: relatório com as seções, regenerado a cada integraçã
   const q = project('\n## A\nprimeiro\n\n## B\nsegundo\n', [PLAN_RICH, execFor(1), review2]);
   const first = await q.start({ limit: 1, batch: false });
   assert.equal(first.end, 'once');
-  assert.match(q.report(), /\n## Integração\nmain \([0-9a-f]+\) \+ 1 unidade \(avulso-1\) · verificação: verde\n/);
+  assert.match(q.report(), /\n## Integração\nmain \([0-9a-f]+\) \+ 1 tarefa na fila \(avulso-1\) · base em dia\n/);
 
   useScenario(q.root, [PLAN_OK, execFor(2), REVIEW]);
   await q.start();
   const report = q.report();
-  assert.match(report, /main \([0-9a-f]+\) \+ 2 unidades \(avulso-1, avulso-2\) · verificação: verde/);
+  assert.match(report, /main \([0-9a-f]+\) \+ 2 tarefas na fila \(avulso-1, avulso-2\) · base em dia/);
   const look = report.slice(report.indexOf('### Olhe primeiro'), report.indexOf('### #1'));
   assert.match(look, /- #1 A: C1 sem prova \(sem `testeUnico` nem comando de teste no `verify`\)/);
   assert.match(look, /- #1 A: 1 suposição/);
@@ -75,7 +75,7 @@ test('P.5 critério 1: relatório com as seções, regenerado a cada integraçã
   const cli = q.cli('entregar');
   assert.equal(cli.status, 0, cli.stderr);
   assert.match(cli.stdout, /^## Prontas para entregar\n- avulso #1 A · mabel entregar #1\n- avulso #2 B · mabel entregar #2\n/);
-  assert.match(cli.stdout, /main \([0-9a-f]+\) \+ 2 unidades/);
+  assert.match(cli.stdout, /main \([0-9a-f]+\) \+ 2 tarefas na fila/);
   assert.doesNotMatch(cli.stdout, /## Tarefas deste run/);
 });
 
@@ -91,7 +91,7 @@ test('S.1: projeto antigo, sem o run.md no .gitignore, o ignora pelo info/exclud
 
 const SPEC = '# X\n\n## História\nH.\n\n## Regras\n\n### R1 Regra\n- caso → resultado (borda)\n\n## Fora do escopo\nNada.\n';
 
-/** Tarefas da mesma spec `x`: dentro dela, as tarefas se acumulam. */
+/** Tarefas da mesma spec `x`, em fila na integração. */
 function specProject(titles: string[], responses: unknown[], depends: Record<number, number> = {}) {
   const backlog = titles.map((title, i) => `\n## ${title}\nSpec: x\nRegras: R1\n${depends[i + 1] ? `Depende de: ${depends[i + 1]}\n` : ''}`).join('');
   const q = project(backlog, responses);
@@ -101,11 +101,10 @@ function specProject(titles: string[], responses: unknown[], depends: Record<num
   git(q.root, 'add', '.mabel');
   git(q.root, 'commit', '-q', '-m', 'spec');
   syncBacklog(q.db, q.project);
-  const onSpec = (path: string) => tryGit(q.root, 'show', `mabel/spec/x:${path}`);
-  return { ...q, onSpec };
+  return q;
 }
 
-test('P.5 critério 2 e S.5: rejeitar reverte a tarefa na branch da spec e a leva a planning; --cancelar cancela', async () => {
+test('F.1 (F10): rejeitar reverte o merge da tarefa na integração e a leva a planning; --cancelar cancela', async () => {
   const q = specProject(['A', 'B', 'C'], [
     PLAN_OK, PLAN_OK, PLAN_OK,
     execFor(1), REVIEW,
@@ -113,13 +112,13 @@ test('P.5 critério 2 e S.5: rejeitar reverte a tarefa na branch da spec e a lev
     execFor(3), REVIEW,
   ]);
   await q.start();
-  const before = git(q.root, 'rev-parse', 'mabel/spec/x');
+  const before = git(q.root, 'rev-parse', INTEGRATION);
   const result = reject(q.db, q.home, q.project, q.item(1), 'o total precisa considerar frete');
   assert.deepEqual(result, { to: 'planning', dependents: [] });
-  assert.equal(q.onSpec('src/item1.js'), undefined);
-  assert.ok(q.onSpec('src/item2.js'));
-  assert.equal(git(q.root, 'rev-parse', 'mabel/spec/x^'), before, 'um commit de revert sobre a branch da spec');
-  assert.match(git(q.root, 'log', '-1', '--format=%B', 'mabel/spec/x'), /mabel: rejeita #1 A\n\nMabel-Item: #1\nMabel-Unidade: x/);
+  assert.equal(q.show('src/item1.js'), undefined);
+  assert.ok(q.show('src/item2.js'));
+  assert.equal(git(q.root, 'rev-parse', `${INTEGRATION}^`), before, 'um commit de revert sobre a integração');
+  assert.match(git(q.root, 'log', '-1', '--format=%B', INTEGRATION), /mabel: rejeita #1 A\n\nMabel-Item: #1\nMabel-Unidade: x/);
   const item = q.item(1);
   assert.equal(item.status, 'planning');
   assert.equal(item.integratedCommit, null);
@@ -129,46 +128,47 @@ test('P.5 critério 2 e S.5: rejeitar reverte a tarefa na branch da spec e a lev
 
   const cancelled = q.cli('rejeitar', '2', 'não', 'precisa', 'mais', '--cancelar');
   assert.equal(cancelled.status, 0, cancelled.stderr);
-  assert.match(cancelled.stdout, /#2 revertido na mabel\/spec\/x e cancelado/);
+  assert.match(cancelled.stdout, /#2 revertido na mabel\/integracao e cancelado/);
   assert.equal(q.item(2).status, 'cancelled');
-  assert.equal(q.onSpec('src/item2.js'), undefined);
-  assert.ok(q.onSpec('src/item3.js'));
+  assert.equal(q.show('src/item2.js'), undefined);
+  assert.ok(q.show('src/item3.js'));
   assert.doesNotMatch(readFileSync(join(q.root, '.mabel', 'run.md'), 'utf8'), /### #2/);
 
-  // A tarefa rejeitada é replanejada e volta à spec (e à integração refeita) no próximo run.
+  // A tarefa rejeitada é replanejada e volta à fila no próximo run.
   useScenario(q.root, [PLAN_OK, execFor(1, 'src/item1.js', 'export const item1 = "com frete";\n'), REVIEW]);
   await q.start();
   assert.equal(q.item(1).status, 'awaiting_merge');
-  assert.equal(q.onSpec('src/item1.js'), 'export const item1 = "com frete";');
   assert.equal(q.show('src/item1.js'), 'export const item1 = "com frete";');
 });
 
-test('S.5: rejeitar um avulso devolve a branch dele ao commit da base', async () => {
+test('F.1 (F10): rejeitar um avulso também reverte o merge dele na integração', async () => {
   const q = project('\n## A\nprimeiro\n', [PLAN_OK, execFor(1), REVIEW]);
   await q.start();
-  assert.ok(tryGit(q.root, 'show', 'mabel/avulso/1-a:src/item1.js'));
+  assert.ok(q.show('src/item1.js'));
+  const before = git(q.root, 'rev-parse', INTEGRATION);
   const out = q.cli('rejeitar', '1', 'refazer');
   assert.equal(out.status, 0, out.stderr);
-  assert.match(out.stdout, /#1 retirado da mabel\/avulso\/1-a: volta ao planejamento/);
-  assert.equal(git(q.root, 'rev-parse', 'mabel/avulso/1-a'), git(q.root, 'rev-parse', 'main'));
+  assert.match(out.stdout, /#1 revertido na mabel\/integracao: volta ao planejamento/);
+  assert.equal(q.show('src/item1.js'), undefined);
+  assert.equal(git(q.root, 'rev-parse', `${INTEGRATION}^`), before, 'a fila só anda para frente');
   assert.equal(q.item(1).status, 'planning');
 });
 
-test('P.5 critério 3: revert com conflito não altera a branch da spec e aponta as tarefas que o impedem', async () => {
+test('P.5 critério 3: revert com conflito não altera a integração e aponta as tarefas que o impedem', async () => {
   const q = specProject(['A', 'B'], [
     PLAN_OK, PLAN_OK,
     execFor(1), REVIEW,
     execFor(2, 'src/item1.js', 'export const item1 = "mudado por B";\n'), REVIEW,
   ]);
   await q.start();
-  const before = git(q.root, 'rev-parse', 'mabel/spec/x');
+  const before = git(q.root, 'rev-parse', INTEGRATION);
   assert.throws(
     () => reject(q.db, q.home, q.project, q.item(1), 'errado'),
     (error: Error) =>
       error instanceof DecisionError &&
-      /conflito em src\/item1\.js\. Rejeite antes #2, concluídas depois dela nos mesmos arquivos\. A mabel\/spec\/x não mudou\./.test(error.message),
+      /conflito em src\/item1\.js\. Rejeite antes #2, concluídas depois dela nos mesmos arquivos\. A mabel\/integracao não mudou\./.test(error.message),
   );
-  assert.equal(git(q.root, 'rev-parse', 'mabel/spec/x'), before);
+  assert.equal(git(q.root, 'rev-parse', INTEGRATION), before);
   assert.equal(q.item(1).status, 'awaiting_merge');
   assert.equal(existsSync(join(q.home, 'worktrees', q.project.id, '_integracao')), false);
 });
@@ -181,8 +181,8 @@ test('P.5 critério 4: dependentes concluídos geram aviso', async () => {
   assert.equal(out.status, 0, out.stderr);
   assert.match(out.stdout, /Atenção: #2 depende\(m\) de #1 e continua\(m\) concluído\(s\)/);
   assert.equal(q.item(1).status, 'planning');
-  // Fora da branch da unidade, nada a rejeitar.
+  // Fora da integração, nada a rejeitar.
   const again = q.cli('rejeitar', '1', 'de novo');
   assert.equal(again.status, 1);
-  assert.match(again.stderr, /#1 não está concluída na branch da unidade \(estado: planning\)/);
+  assert.match(again.stderr, /#1 não está concluída na integração \(estado: planning\)/);
 });

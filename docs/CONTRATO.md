@@ -23,6 +23,7 @@ imposta por código (runner, hook, gate, banco); se depende de o modelo obedecer
 | Spec | Funcionalidade com história, regras e exemplos, em `.mabel/specs/<slug>.md`. Estado (`rascunho`, `aceita`, `entregue`) no banco. |
 | Tarefa | Item do quadro: de uma spec (`Spec:` e `Regras:`) ou avulso. |
 | Unidade de entrega | Spec ou avulso. |
+| Fila | A branch de integração, onde toda tarefa entra em ordem. |
 | Base | A branch configurada em `baseBranch`. |
 | Etapa | Fase do item: planejamento, execução, verificação, revisão. |
 | Run | Uma execução de `claude -p`. Toda etapa com agente é uma run. |
@@ -41,8 +42,8 @@ backlog → ready → planning → planned → executing → verifying → revie
 Desvios a partir de qualquer etapa: needs_human · blocked · failed
 ```
 
-Com a branch de integração, `awaiting_merge` significa "concluído na branch da unidade,
-aguardando entrega e merge do humano na base". Dele o item vai a `done` (merge na base) ou,
+Com a branch de integração, `awaiting_merge` significa "na fila (integração), aguardando
+entrega e merge do humano na base". Dele o item vai a `done` (merge na base) ou,
 quando o humano o rejeita, a `planning` ou `cancelled`.
 
 ## Garantias
@@ -53,12 +54,12 @@ quando o humano o rejeita, a `planning` ou `cancelled`.
 | G2 | **Nenhum item entra em execução sem critério de início.** Critérios de aceite verificáveis, escopo de arquivos declarado e, se tocar regra crítica, aprovação humana registrada. | Gate entre `planning` e `planned`. |
 | G3 | **"Done" é calculado pelo Mabel, nunca declarado pelo agente.** Gates mecânicos verdes, cada critério de aceite do item ligado a pelo menos um teste (ou a uma rota de validação humana declarada), revisão aprovada. A exigência vale para o que o item muda, não para a cobertura do projeto inteiro. O teste de um critério de comportamento novo falha no código base e passa no item; o de comportamento mantido passa nos dois. O parecer da revisão é calculado a partir dos critérios avaliados e dos problemas apontados; o revisor não declara aprovação. | Gate de verificação e prova executados pelo runner, fora do agente. |
 | G4 | **O agente não sai do escopo.** Escrita fora dos caminhos declarados e comandos da lista de bloqueio são barrados. O agente nunca faz merge nem push na base. | Hook `PreToolUse` de escopo nas ferramentas de arquivo, `--restricted` (ferramentas de arquivo confinadas ao worktree), sandbox do Claude Code no terminal (escrita no worktree, `.git` do projeto fechado, rede só para os domínios da stack e do projeto), `--disallowedTools` e gate de escopo depois da execução (arquivos alterados pelo item conferidos contra o escopo do plano, inclusive a escrita pelo terminal). Sem sandbox, a fila não roda, salvo desligamento explícito no projeto, registrado em cada run. |
-| G5 | **Cada item trabalha isolado.** | Worktree e branch próprias por tarefa, criadas da branch da unidade: a da spec (`mabel/spec/<slug>`) ou a do avulso (`mabel/avulso/<n>-<slug>`), que nascem da base e ficam até a entrega. Sem integração, da base. |
+| G5 | **Cada item trabalha isolado.** | Worktree e branch próprias por tarefa, criadas da ponta da branch de integração (ou da base, sem integração). |
 | G6 | **Nenhuma etapa inicia sem saldo.** Ver "Política de saldo". Cada run tem teto de custo e de turnos. | `rate_limit_event` do stream-json, `--max-budget-usd`, `--max-turns`. |
 | G7 | **Ambiguidade em regra crítica para o item.** Suposição declarada sobre regra crítica leva o item a `needs_human`. Suposição que o humano já confirmou no item vira decisão registrada e não para o item de novo. | Saída estruturada (`--json-schema`) com campo `suposicoes`, validada pelo runner. |
 | G8 | **Contexto hermético.** O agente recebe apenas as regras do Mabel (versionadas), a configuração do projeto-alvo e os artefatos da etapa anterior. Nada da configuração pessoal do usuário. | `--restricted`, `--strict-mcp-config`, `--disable-slash-commands`, `--tools` por etapa e `--settings` por run; contexto do projeto (`CLAUDE.md`, `AGENTS.md`, regras críticas) injetado pelo Mabel, com orçamento; o runner confere o `init` de cada run e interrompe a que trouxer memória, MCP, skills ou ferramentas fora das pedidas. |
 | G9 | **Estado sobrevive à sessão.** Interromper o Mabel a qualquer momento e reiniciá-lo retoma do último estado gravado. | Estado no banco e em arquivos; sessão nova por etapa. |
-| G10 | **A unidade só recebe tarefa com "done" calculado.** O Mabel faz o merge da tarefa na branch da unidade só depois do G3 e da revisão. A integração é derivada: refeita pelo Mabel a partir da base a cada `rodar`, com o merge de cada unidade aberta, só para teste; nunca é origem nem entrega, e conflito ou verificação vermelha nela é aviso. A base só recebe o merge feito pelo humano, o commit do que o humano escreveu no `.mabel/` e o do que ele aceitou na revisão do `mabel criar`. | O runner cria os commits de merge (na unidade e na integração, com `rerere`); o agente continua sem git de escrita (G4). No início do `rodar`, com a raiz na base, o Mabel commita nela o que está pendente no `.mabel/` (só esse diretório; o resto do índice fica como está), para os worktrees dos itens nascerem com as tarefas e as specs. No aceite do `mabel criar`, o Mabel commita na branch atual só o `.mabel/` e o `CLAUDE.md` que acabou de criar (o resto do índice fica como está). A pedido do humano (`mabel entregar <unidade>`), o Mabel prova a entrega (base + snapshot da unidade num worktree temporário, com a verificação do projeto; conflito ou vermelho recusam) e publica o snapshot da branch da unidade (`mabel/entrega/<unidade>`) com um commit dele só com o documento de entrega (`.mabel/entregas/`) e as alterações da unidade no `.mabel/regras.md`, na branch de entrega e nunca na base, e abre o PR; não faz merge nem push na base. A integração nunca é entregue. Os commits de merge e de rejeição do Mabel levam os trailers `Mabel-Item` e `Mabel-Unidade`; o da entrega, `Mabel-Entrega`. |
+| G10 | **A integração só recebe tarefa com "done" calculado.** Toda tarefa nasce da ponta dela e entra nela em ordem; tarefa que não entra limpa volta ao executor. A integração só anda para frente: recebe o merge das tarefas e o da base, e nunca é refeita. A base só recebe o merge feito pelo humano, o commit do que o humano escreveu no `.mabel/` e o do que ele aceitou na revisão do `mabel criar`. | O runner cria os commits de merge na integração (o da base com `rerere`, num worktree temporário) e só avança a branch com `update-ref` contra o valor antigo; o agente continua sem git de escrita (G4). No início do `rodar`, com a raiz na base, o Mabel commita nela o que está pendente no `.mabel/` (só esse diretório; o resto do índice fica como está), para os worktrees dos itens nascerem com as tarefas e as specs. No aceite do `mabel criar`, o Mabel commita na branch atual só o `.mabel/` e o `CLAUDE.md` que acabou de criar (o resto do índice fica como está). A pedido do humano (`mabel entregar <unidade>`), o Mabel prova a entrega (base + o corte da fila até a ponta da unidade, num worktree temporário, com a verificação do projeto; conflito ou vermelho recusam) e publica esse corte (`mabel/entrega/<unidade>`) com um commit dele só com o documento de entrega (`.mabel/entregas/`) e as alterações das unidades do corte no `.mabel/regras.md`, na branch de entrega e nunca na base, e abre o PR; não faz merge nem push na base. Os commits de merge e de rejeição do Mabel levam os trailers `Mabel-Item` e `Mabel-Unidade`; o da entrega, `Mabel-Entrega`. |
 
 ## Política de saldo
 
@@ -168,6 +169,7 @@ mostrar crítico, ele sobe para garantia.
 - Aprovar critérios de aceite de itens que tocam regra crítica.
 - Responder a inbox.
 - Rejeitar um item integrado (`mabel rejeitar`).
+- Resolver conflito da base com a integração (`base_conflict`): a fila fica pausada até o merge.
 - Aceitar a spec (`mabel especificar`).
 - Pedir a entrega (`mabel entregar`) e fazer o merge na base.
 - Alterar este contrato.
