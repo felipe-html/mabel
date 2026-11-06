@@ -149,6 +149,26 @@ Etapas, na ordem; a que não se aplica não aparece:
 - O `deliver` continua síncrono e recebe as etapas por `onStep` (`src/progress.ts`); o
   desenho fica no comando.
 
+### Fim da entrega no terminal
+
+Com a branch publicada (há remoto) e a entrega sem erro, no TTY o comando termina num menu:
+
+- **Sair** (ou esc): o PR fica aberto para o merge do humano.
+- **Já fiz o merge: atualizar a `<base>`** (`git switch <base> && git pull --ff-only <remoto> <base>`):
+  1. `git fetch <remoto> <base>`; o commit da entrega fora do `FETCH_HEAD` → a conferência
+     da entrega (o aviso de squash ou rebase, se for o caso) ou `O merge da entrega (<PR>)
+     ainda não está na <base> do <remoto>.`, e o menu volta;
+  2. checkout da raiz fora da base: troca, só sem alteração em arquivo versionado (como o
+     passo 12);
+  3. `git pull --ff-only`; a base local com commits fora do remoto → o erro do git, nada
+     muda;
+  4. a conferência das entregas (a entrega vira `merged` e a branch local sai) e o lembrete
+     de que as tarefas viram `done` no próximo `rodar`.
+
+Fora do TTY não há menu: o texto de hoje (`Depois, na <base>: git pull`). Contrato (G10): a
+base local só anda por fast-forward até o que está no remoto, a pedido do humano; o Mabel
+não cria commit nela.
+
 ## Depois do merge
 
 Na abertura do `rodar`, depois do `openIntegration` e antes do `finishIntegrated`:

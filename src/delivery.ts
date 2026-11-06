@@ -740,6 +740,55 @@ function checkDelivery(db: DatabaseSync, project: Project, delivery: Delivery): 
   ];
 }
 
+// Depois do merge, a pedido do humano ---------------------------------------------------
+
+export interface BaseUpdate {
+  /** A base local recebeu o merge da entrega. */
+  done: boolean;
+  lines: string[];
+}
+
+/**
+ * "Já fiz o merge: atualizar a base", no fim do `entregar`: o checkout da raiz na base e o
+ * `git pull --ff-only` do remoto, só se o merge da entrega já está lá. A base local só anda
+ * por fast-forward até o que o humano integrou (G10); o Mabel não cria commit nela.
+ */
+export function updateBaseAfterMerge(db: DatabaseSync, project: Project, delivery: Delivery): BaseUpdate {
+  const base = project.config.baseBranch;
+  const remote = delivery.remote;
+  if (!remote) return { done: false, lines: [`A entrega não tem remoto: para levar à ${base}, git merge --no-ff ${delivery.branch}`] };
+  const env = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
+  const fetched = spawnSync('git', ['fetch', '-q', remote, base], { cwd: project.root, encoding: 'utf8', env });
+  if (fetched.status !== 0) return { done: false, lines: [`o fetch de ${remote} falhou: ${(fetched.stderr || fetched.stdout).trim()}`] };
+  if (!isAncestor(project.root, delivery.commit, 'FETCH_HEAD')) {
+    // Squash ou rebase: a conferência da entrega explica como consertar.
+    const notes = checkDeliveries(db, project);
+    if (notes.length > 0) return { done: false, lines: notes };
+    const pr = delivery.prUrl ? ` (${delivery.prUrl})` : '';
+    return { done: false, lines: [`O merge da entrega${pr} ainda não está na ${base} do ${remote}. Faça o merge com merge commit e escolha de novo.`] };
+  }
+  const head = tryGit(project.root, 'symbolic-ref', '-q', '--short', 'HEAD');
+  const lines: string[] = [];
+  if (head !== base) {
+    if ((tryGit(project.root, 'status', '--porcelain', '--untracked-files=no') ?? '') !== '') {
+      return { done: false, lines: [`Checkout da raiz em ${head ?? 'commit avulso'} com alterações; não troquei para a ${base}.`] };
+    }
+    const switched = spawnSync('git', ['switch', '-q', base], { cwd: project.root, encoding: 'utf8' });
+    if (switched.status !== 0) return { done: false, lines: [`não troquei para a ${base}: ${(switched.stderr || switched.stdout).trim()}`] };
+    lines.push(`checkout da raiz: ${head ?? 'commit avulso'} → ${base}`);
+  }
+  const pulled = spawnSync('git', ['pull', '-q', '--ff-only', remote, base], { cwd: project.root, encoding: 'utf8', env });
+  if (pulled.status !== 0) {
+    return {
+      done: false,
+      lines: [...lines, `o pull da ${base} falhou (só fast-forward: a ${base} local tem commits fora do ${remote}?): ${(pulled.stderr || pulled.stdout).trim()}`],
+    };
+  }
+  lines.push(`${base} atualizada com o ${remote}`, ...checkDeliveries(db, project));
+  lines.push('No próximo mabel rodar, as tarefas da entrega viram done.');
+  return { done: true, lines };
+}
+
 // Comando --------------------------------------------------------------------------------
 
 /** Confirmação da entrega parcial no terminal (R7). */
@@ -765,6 +814,28 @@ async function deliverWithProgress(db: DatabaseSync, home: string, project: Proj
   }
   process.stdout.write('\n');
   return result;
+}
+
+/**
+ * Menu no fim da entrega publicada: sair ou, depois do merge do PR, voltar à base atualizada
+ * para continuar o trabalho. Enquanto o merge não chega, o menu volta.
+ */
+async function afterDelivery(db: DatabaseSync, project: Project, delivery: Delivery): Promise<void> {
+  const base = project.config.baseBranch;
+  process.stdout.write('\n');
+  for (;;) {
+    const chosen = await select(
+      [
+        { label: 'Sair', hint: style.dim('o PR fica aberto para o seu merge') },
+        { label: `Já fiz o merge: atualizar a ${base}`, hint: style.dim(`git switch ${base} && git pull --ff-only ${delivery.remote} ${base}`) },
+      ],
+      style,
+    );
+    if (chosen !== 1) return;
+    const update = updateBaseAfterMerge(db, project, delivery);
+    process.stdout.write(`${update.lines.join('\n')}\n\n`);
+    if (update.done) return;
+  }
 }
 
 export async function deliverCommand(args: string[]): Promise<number> {
@@ -813,6 +884,7 @@ export async function deliverCommand(args: string[]): Promise<number> {
       result = await deliverWithProgress(db, home, project, { ...options, partial: true });
     }
     (result.code === 0 ? process.stdout : process.stderr).write(`${result.lines.join('\n')}\n`);
+    if (result.code === 0 && result.delivery?.remote && interactive()) await afterDelivery(db, project, result.delivery);
     return result.code;
   } catch (error) {
     if (error instanceof ProjectError) {
