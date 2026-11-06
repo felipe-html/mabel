@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { BODY_LIMIT, checkDeliveries, deliver, deliveryBody, deliveryBodyPath, deliveryTitle, type RemoteRepo, listDeliveries, newPrUrl, remoteRepo } from '../src/delivery.ts';
 import { git, tryGit } from '../src/git.ts';
+import type { StepEvent } from '../src/progress.ts';
 import { getItem, syncBacklog } from '../src/items.ts';
 import { integrationSection } from '../src/report.ts';
 import { type QueueOptions, startQueue } from '../src/run.ts';
@@ -509,4 +510,32 @@ test('entregar: integração desligada e nada a entregar', async () => {
   const cli = empty.cli('entregar');
   assert.equal(cli.status, 0, cli.stderr);
   assert.match(cli.stdout, /Nada a entregar/);
+});
+
+test('entregar: onStep inclui publicar a branch e abrir o PR; o PR recusado fica com ✗', async () => {
+  const q = await integrated(1);
+  useGh(q.root, { ...GH_OK, 'pr create': { code: 1, stderr: 'sem permissão' } });
+  const done: string[] = [];
+  const onStep = (event: StepEvent) => {
+    if (event.kind === 'end') done.push(`${event.ok ? '✓' : '✗'} ${event.label}`);
+  };
+  const failed = deliver(q.db, q.home, q.project, { ...UNIT, onStep });
+  assert.equal(failed.code, 1);
+  assert.match(failed.lines.join('\n'), /o gh não abriu o PR: sem permissão/);
+  assert.deepEqual(done, [
+    '✓ conferir entregas abertas',
+    '✓ preparar a cópia da base',
+    '✓ juntar a unidade',
+    '✓ verificar existe · true',
+    '✓ apagar a cópia',
+    '✓ gravar o documento',
+    '✓ publicar a branch',
+    '✗ abrir o PR',
+  ]);
+
+  // A retomada só publica e abre o PR.
+  useGh(q.root, GH_OK);
+  done.length = 0;
+  assert.equal(deliver(q.db, q.home, q.project, { ...UNIT, onStep }).code, 0);
+  assert.deepEqual(done.filter((line) => line !== '✓ voltar à base'), ['✓ conferir entregas abertas', '✓ publicar a branch', '✓ abrir o PR']);
 });
