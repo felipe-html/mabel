@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { BODY_LIMIT, checkDeliveries, deliver, deliveryBody, deliveryBodyPath, deliveryTitle, type RemoteRepo, listDeliveries, newPrUrl, remoteRepo } from '../src/delivery.ts';
+import { BODY_LIMIT, checkDeliveries, deliver, deliveryBody, deliveryBodyPath, deliveryTitle, type RemoteRepo, listDeliveries, newPrUrl, remoteRepo, updateBaseAfterMerge } from '../src/delivery.ts';
 import { git, tryGit } from '../src/git.ts';
+import type { StepEvent } from '../src/progress.ts';
 import { getItem, syncBacklog } from '../src/items.ts';
 import { integrationSection } from '../src/report.ts';
 import { type QueueOptions, startQueue } from '../src/run.ts';
@@ -509,4 +510,57 @@ test('entregar: integração desligada e nada a entregar', async () => {
   const cli = empty.cli('entregar');
   assert.equal(cli.status, 0, cli.stderr);
   assert.match(cli.stdout, /Nada a entregar/);
+});
+
+test('entregar: onStep inclui publicar a branch e abrir o PR; o PR recusado fica com ✗', async () => {
+  const q = await integrated(1);
+  useGh(q.root, { ...GH_OK, 'pr create': { code: 1, stderr: 'sem permissão' } });
+  const done: string[] = [];
+  const onStep = (event: StepEvent) => {
+    if (event.kind === 'end') done.push(`${event.ok ? '✓' : '✗'} ${event.label}`);
+  };
+  const failed = deliver(q.db, q.home, q.project, { ...UNIT, onStep });
+  assert.equal(failed.code, 1);
+  assert.match(failed.lines.join('\n'), /o gh não abriu o PR: sem permissão/);
+  assert.deepEqual(done, [
+    '✓ conferir entregas abertas',
+    '✓ preparar a cópia da base',
+    '✓ juntar a unidade',
+    '✓ verificar existe · true',
+    '✓ apagar a cópia',
+    '✓ gravar o documento',
+    '✓ publicar a branch',
+    '✗ abrir o PR',
+  ]);
+
+  // A retomada só publica e abre o PR.
+  useGh(q.root, GH_OK);
+  done.length = 0;
+  assert.equal(deliver(q.db, q.home, q.project, { ...UNIT, onStep }).code, 0);
+  assert.deepEqual(done.filter((line) => line !== '✓ voltar à base'), ['✓ conferir entregas abertas', '✓ publicar a branch', '✓ abrir o PR']);
+});
+
+test('entregar: "já fiz o merge" só atualiza a base depois do merge do PR, por fast-forward', async () => {
+  const q = await integrated(1);
+  useGh(q.root, GH_OK);
+  const delivery = deliver(q.db, q.home, q.project, UNIT).delivery!;
+  const before = q.ref('main');
+
+  const early = updateBaseAfterMerge(q.db, q.project, delivery);
+  assert.equal(early.done, false);
+  assert.match(early.lines.join('\n'), /O merge da entrega \(https:\/\/github\.com\/dono\/app\/pull\/42\) ainda não está na main do origin/);
+  assert.equal(q.ref('main'), before, 'nada muda antes do merge');
+
+  // O humano faz o merge do PR no remoto.
+  const human = mkdtempSync(join(tmpdir(), 'mabel-humano-'));
+  git(human, 'clone', '-q', q.origin, '.');
+  git(human, 'merge', '-q', '--no-ff', '-m', 'Merge do PR', `origin/${delivery.branch}`);
+  git(human, 'push', '-q', 'origin', 'main');
+
+  const updated = updateBaseAfterMerge(q.db, q.project, delivery);
+  assert.equal(updated.done, true, updated.lines.join('\n'));
+  assert.equal(q.ref('main'), q.remoteRef('main'));
+  assert.equal(tryGit(q.root, 'symbolic-ref', '--short', 'HEAD'), 'main');
+  assert.match(updated.lines.join('\n'), new RegExp(`^main atualizada com o origin\\nentrega ${delivery.branch} na main; branch local apagada`));
+  assert.equal(listDeliveries(q.db, q.project.id)[0]?.status, 'merged');
 });

@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { confirmPartial, deliver, listDeliveries } from '../src/delivery.ts';
+import type { StepEvent } from '../src/progress.ts';
 import { git, tryGit } from '../src/git.ts';
 import { getItem, listItems, syncBacklog } from '../src/items.ts';
 import { type QueueOptions, startQueue } from '../src/run.ts';
@@ -169,4 +170,61 @@ test('S.6 critério 21: o merge da entrega na base leva as tarefas a done, a spe
     readFileSync(join(q.root, '.mabel', 'regras.md'), 'utf8'),
     '# Regras vigentes\n\n## pedidos\n- Período inclusivo.\n- Cancelado não entra.\n',
   );
+});
+
+/** As etapas avisadas por `onStep`, em ordem, com ✓ ou ✗ no fim de cada uma. */
+function steps(): { onStep: (event: StepEvent) => void; done: string[]; order: string[] } {
+  const done: string[] = [];
+  const order: string[] = [];
+  return {
+    done,
+    order,
+    onStep: (event) => {
+      if (event.kind === 'start') order.push(event.label);
+      else done.push(`${event.ok ? '✓' : '✗'} ${event.label}`);
+    },
+  };
+}
+
+test('entregar: onStep recebe as etapas da entrega em ordem, com o setup e cada comando do verify', async () => {
+  const q = project(task('A1', 'a'), { a: specFile('A') });
+  await q.start([PLAN_OK, execFor(1), REVIEW]);
+  Object.assign(q.project.config, { setup: 'true', verify: [{ name: 'test', command: 'true' }, { name: 'build', command: 'true' }] });
+  const seen = steps();
+  const result = deliver(q.db, q.home, q.project, { unit: 'a', onStep: seen.onStep });
+  assert.equal(result.code, 0, result.lines.join('\n'));
+  assert.deepEqual(seen.done, [
+    '✓ conferir entregas abertas',
+    '✓ preparar a cópia da base',
+    '✓ juntar a unidade',
+    '✓ setup · true',
+    '✓ verificar test · true',
+    '✓ verificar build · true',
+    '✓ apagar a cópia',
+    '✓ gravar o documento',
+  ]);
+  assert.deepEqual(seen.order, seen.done.map((line) => line.slice(2)), 'cada etapa termina antes da seguinte começar');
+
+  // Entrega aberta sem PR (sem remoto): a retomada não refaz a prova nem o documento.
+  const again = steps();
+  assert.equal(deliver(q.db, q.home, q.project, { unit: 'a', onStep: again.onStep }).code, 0);
+  assert.deepEqual(again.done, ['✓ conferir entregas abertas']);
+});
+
+test('entregar: verificação vermelha marca o comando que falhou com ✗ e para a prova ali', async () => {
+  const q = project(task('A1', 'a'), { a: specFile('A') });
+  await q.start([PLAN_OK, execFor(1), REVIEW]);
+  Object.assign(q.project.config, { setup: null, verify: [{ name: 'test', command: 'true' }, { name: 'build', command: 'false' }, { name: 'lint', command: 'true' }] });
+  const seen = steps();
+  const result = deliver(q.db, q.home, q.project, { unit: 'a', onStep: seen.onStep });
+  assert.equal(result.code, 1);
+  assert.match(result.lines.join('\n'), /A verificação de main \+ a falhou em `false`; nada foi criado\./);
+  assert.deepEqual(seen.done, [
+    '✓ conferir entregas abertas',
+    '✓ preparar a cópia da base',
+    '✓ juntar a unidade',
+    '✓ verificar test · true',
+    '✗ verificar build · false',
+    '✓ apagar a cópia',
+  ]);
 });

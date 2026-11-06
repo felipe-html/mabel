@@ -3,6 +3,7 @@ import { git, tryGit, withTrailers } from './git.ts';
 import { checkedOutAt, conflictedFiles, integratedItems, integrationWorktree, isAncestor, removeTemp, unitOf } from './integration.ts';
 import { type Item, listItems } from './items.ts';
 import type { Project } from './project.ts';
+import { type OnStep, timed } from './progress.ts';
 import { getSpecRecord, setSpecStatus } from './specs.ts';
 import { branchExists, shell, slugify } from './worktree.ts';
 
@@ -119,15 +120,20 @@ export function openUnits(db: DatabaseSync, project: Project, items = listItems(
 
 // Worktree temporário e merges -----------------------------------------------------------
 
-/** Roda `fn` num worktree temporário destacado em `start`; o worktree é removido no fim. */
-function withTemp<T>(home: string, project: Project, start: string, fn: (path: string) => T): T {
+/**
+ * Roda `fn` num worktree temporário destacado em `start`; o worktree é removido no fim. Com
+ * `onStep`, a criação e a remoção são etapas (a remoção leva o `node_modules` do `setup`).
+ */
+function withTemp<T>(home: string, project: Project, start: string, fn: (path: string) => T, onStep?: OnStep): T {
   const path = integrationWorktree(home, project.id);
-  removeTemp(project, path);
-  git(project.root, 'worktree', 'add', '-q', '--detach', path, start);
+  timed(onStep, 'preparar a cópia da base', () => {
+    removeTemp(project, path);
+    git(project.root, 'worktree', 'add', '-q', '--detach', path, start);
+  });
   try {
     return fn(path);
   } finally {
-    removeTemp(project, path);
+    timed(onStep, 'apagar a cópia', () => removeTemp(project, path));
   }
 }
 
@@ -167,16 +173,21 @@ export interface VerifyResult {
   detail?: string;
 }
 
-/** Verificação do projeto num worktree (o `setup`, depois cada comando do `verify`). */
-export function verifyAt(project: Project, path: string): VerifyResult | null {
+/**
+ * Verificação do projeto num worktree (o `setup`, depois cada comando do `verify`). Com
+ * `onStep`, cada comando é uma etapa (a prova da entrega).
+ */
+export function verifyAt(project: Project, path: string, onStep?: OnStep): VerifyResult | null {
   if (project.config.verify.length === 0) return null;
   const tail = (output: string) => output.trimEnd().split('\n').slice(-20).join('\n');
-  if (project.config.setup) {
-    const { code, output } = shell(project.config.setup, path);
-    if (code !== 0) return { ok: false, command: project.config.setup, detail: tail(output) };
+  const run = (label: string, command: string) => timed(onStep, label, () => shell(command, path), (result) => result.code === 0);
+  const setup = project.config.setup;
+  if (setup) {
+    const { code, output } = run(`setup · ${setup}`, setup);
+    if (code !== 0) return { ok: false, command: setup, detail: tail(output) };
   }
   for (const command of project.config.verify) {
-    const { code, output } = shell(command.command, path);
+    const { code, output } = run(`verificar ${command.name} · ${command.command}`, command.command);
     if (code !== 0) return { ok: false, command: command.command, detail: tail(output) };
   }
   return { ok: true };
@@ -288,13 +299,20 @@ export type DeliveryProof = { kind: 'ok' } | { kind: 'conflict'; files: string[]
  * Prova da entrega (regra do merge queue): num worktree temporário, a base mais o merge do
  * snapshot e a verificação do projeto. Testa exatamente o que vai entrar.
  */
-export function proveDelivery(home: string, project: Project, snapshot: string): DeliveryProof {
-  return withTemp(home, project, git(project.root, 'rev-parse', project.config.baseBranch), (path) => {
-    const files = mergeBranch(path, snapshot, 'mabel: prova da entrega');
-    if (files) return { kind: 'conflict', files };
-    const verify = verifyAt(project, path);
-    return verify && !verify.ok ? { kind: 'red', verify } : { kind: 'ok' };
-  });
+export function proveDelivery(home: string, project: Project, snapshot: string, onStep?: OnStep): DeliveryProof {
+  const base = git(project.root, 'rev-parse', project.config.baseBranch);
+  return withTemp(
+    home,
+    project,
+    base,
+    (path) => {
+      const files = timed(onStep, 'juntar a unidade', () => mergeBranch(path, snapshot, 'mabel: prova da entrega'), (result) => !result);
+      if (files) return { kind: 'conflict', files };
+      const verify = verifyAt(project, path, onStep);
+      return verify && !verify.ok ? { kind: 'red', verify } : { kind: 'ok' };
+    },
+    onStep,
+  );
 }
 
 /** Snapshot de várias unidades juntas (`--com`): merge das outras pontas sobre a primeira. */
