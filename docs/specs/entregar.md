@@ -103,6 +103,52 @@ mabel entregar
 
 `--substituir` e a primeira entrega seguem os mesmos passos; o que muda é o 4.
 
+### Acompanhamento
+
+A prova pode levar minutos (`npm ci`, testes, build). Enquanto a entrega roda, o comando
+mostra cada etapa, o tempo dela e, no fim, o total. Só apresentação: o texto do resultado
+continua o mesmo, depois das etapas.
+
+```
+Entregando pedidos
+  ✓ conferir entregas abertas  412 ms
+  ✓ preparar a cópia da base  1,3 s
+  ✓ juntar a unidade  210 ms
+  ✓ setup · npm ci  48,2 s
+  ✓ verificar test · npm test  1 min 12 s
+  ⠹ verificar build · npm run build  2 min 05 s
+```
+
+Etapas, na ordem; a que não se aplica não aparece:
+
+| Etapa | Quando |
+|---|---|
+| conferir entregas abertas | sempre (o passo 4, que pode buscar o remoto) |
+| montar a unidade | com `--com` |
+| preparar a cópia da base | prova: o worktree temporário na base |
+| juntar a unidade | prova: o merge do corte; conflito fica com ✗ |
+| `setup · <comando>` | prova, com `setup` no config |
+| `verificar <nome> · <comando>` | prova, um por comando do `verify`; o vermelho fica com ✗ e para ali |
+| apagar a cópia | prova: a remoção do worktree (leva o `node_modules` do `setup`) |
+| gravar o documento | entrega nova (a retomada não regrava) |
+| publicar a branch | com remoto |
+| abrir o PR | GitHub com `gh` ou Bitbucket com token |
+| fechar o PR anterior | `--substituir` com PR novo aberto |
+| voltar à base | o passo 12, quando o checkout troca |
+
+- **No terminal (TTY):** a etapa em andamento tem um cronômetro que anda sozinho; a
+  concluída fica com ✓ e a duração, a que falhou com ✗ e a duração. O detalhe da falha
+  (comando e fim da saída) vem no resultado, depois do total. As etapas longas rodam com
+  `spawnSync`, que prende a thread principal; quem desenha o cronômetro é um worker, que
+  escreve direto no descritor da saída.
+- **Fora do terminal** (pipe, CI, supervisor): uma linha por etapa ao concluir, com a
+  duração, sem códigos de cursor.
+- Duração: `850 ms`, `12,4 s`, `2 min 05 s`, `1 h 02 min`.
+- Sem unidade (a lista das prontas), nada é acompanhado. Na entrega parcial que pergunta, as
+  etapas até a pergunta aparecem sem o total.
+- O `deliver` continua síncrono e recebe as etapas por `onStep` (`src/progress.ts`); o
+  desenho fica no comando.
+
 ## Depois do merge
 
 Na abertura do `rodar`, depois do `openIntegration` e antes do `finishIntegrated`:

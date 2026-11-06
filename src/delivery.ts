@@ -20,6 +20,7 @@ import { CURRENT_RULES_FILE, type RuleChange, SPECS_DIR, applyRuleChanges, parse
 import { style } from './style.ts';
 import type { ArgSpec, OptionSpecs } from './options.ts';
 import { type Unit, combineUnits, openUnits, proveDelivery } from './units.ts';
+import { type OnStep, progressView, timed } from './progress.ts';
 
 // Entrega por unidade (`docs/specs/entregar.md`, S.6 de `docs/specs/specs-e-entrega.md`):
 // prova (base + snapshot), documento e regras vigentes num commit do Mabel na branch de
@@ -300,7 +301,7 @@ const same = (a: string, b: string) => {
 };
 
 /** Volta o checkout da raiz para a base quando ele está na integração ou numa entrega e limpo (E4). */
-function switchToBase(project: Project, out: string[]): void {
+function switchToBase(project: Project, out: string[], onStep?: OnStep): void {
   const integration = project.config.integracao as string;
   const base = project.config.baseBranch;
   const elsewhere = checkedOutAt(project, integration);
@@ -313,12 +314,20 @@ function switchToBase(project: Project, out: string[]): void {
     out.push(`Checkout da raiz em ${head} com alterações; não troquei para a ${base}.`);
     return;
   }
-  try {
-    git(project.root, 'switch', '-q', base);
-    out.push(`checkout da raiz: ${head} → ${base}`);
-  } catch (error) {
-    out.push(`não troquei para a ${base}: ${(error as Error).message}`);
-  }
+  const error = timed(
+    onStep,
+    'voltar à base',
+    () => {
+      try {
+        git(project.root, 'switch', '-q', base);
+        return undefined;
+      } catch (error) {
+        return error as Error;
+      }
+    },
+    (error) => !error,
+  );
+  out.push(error ? `não troquei para a ${base}: ${error.message}` : `checkout da raiz: ${head} → ${base}`);
 }
 
 /**
@@ -379,6 +388,8 @@ export interface DeliverOptions {
   partial?: boolean;
   replace?: boolean;
   draft?: boolean;
+  /** Começo e fim de cada etapa, para o acompanhamento no terminal (`progressView`). */
+  onStep?: OnStep;
 }
 
 export interface DeliverResult {
@@ -395,7 +406,7 @@ export interface DeliverResult {
  * a entrega aberta como a abertura do `run`: a que já chegou à base não impede a próxima.
  */
 export function deliver(db: DatabaseSync, home: string, project: Project, options: DeliverOptions = {}): DeliverResult {
-  const notes = project.config.integracao ? checkDeliveries(db, project) : [];
+  const notes = project.config.integracao ? timed(options.onStep, 'conferir entregas abertas', () => checkDeliveries(db, project)) : [];
   if (project.config.integracao && !options.unit) {
     if (openUnits(db, project).length > 0) return { code: 0, lines: [...notes, ...unitSections(db, home, project)] };
     return { code: 0, lines: [...notes, 'Nada a entregar: nenhuma unidade com tarefa concluída fora da base.', '', ...unitContext(db, home, project)] };
@@ -478,7 +489,12 @@ function deliverChecked(db: DatabaseSync, home: string, project: Project, option
   if (chosen.length === names.length) {
     if (chosen.length === 1) snapshot = (chosen[0] as Unit).tip;
     else {
-      const combined = combineUnits(home, project, chosen.map((unit) => unit.tip));
+      const combined = timed(
+        options.onStep,
+        'montar a unidade',
+        () => combineUnits(home, project, chosen.map((unit) => unit.tip)),
+        (result) => !('files' in result),
+      );
       if ('files' in combined) {
         return { code: 1, lines: [`As unidades não se juntam: conflito com ${combined.tip.slice(0, 7)} em ${combined.files.join(', ')}. Entregue uma de cada vez.`] };
       }
@@ -512,7 +528,7 @@ function deliverChecked(db: DatabaseSync, home: string, project: Project, option
 
   // Prova da entrega: base + snapshot, verificados juntos, antes de criar qualquer branch.
   if (!delivery && snapshot) {
-    const proof = proveDelivery(home, project, snapshot);
+    const proof = proveDelivery(home, project, snapshot, options.onStep);
     if (proof.kind === 'conflict') {
       return {
         code: 1,
@@ -540,6 +556,14 @@ function deliverChecked(db: DatabaseSync, home: string, project: Project, option
   }
 
   if (!delivery) {
+    delivery = timed(options.onStep, 'gravar o documento', () => recordDelivery());
+    // Uma entrega aberta por unidade (E6): a anterior sai já, mesmo que o PR novo falhe.
+    if (previous) updateDelivery(db, previous, { status: 'replaced' });
+  } else if (delivery.remote !== (remote ?? null)) {
+    updateDelivery(db, delivery, { remote: remote ?? null });
+  }
+  /** Documento e regras vigentes num commit sobre o snapshot, a branch e a entrega gravada. */
+  function recordDelivery(): Delivery {
     const branch = nextBranch(db, project, group);
     const date = today();
     const name = `${date}-${group}`;
@@ -567,7 +591,7 @@ function deliverChecked(db: DatabaseSync, home: string, project: Project, option
     const files = [{ path: deliveryDocPath(name), content: doc }, ...(applied ? [{ path: rulesPath, content: applied.text }] : [])];
     const commit = commitDocument(project.root, snapshot as string, files, group, name);
     git(project.root, 'update-ref', `refs/heads/${branch}`, commit, '');
-    delivery = insertDelivery(db, {
+    return insertDelivery(db, {
       projectId: project.id,
       unit: group,
       branch,
@@ -577,10 +601,6 @@ function deliverChecked(db: DatabaseSync, home: string, project: Project, option
       remote: deliveryRemote(project) ?? null,
       prUrl: null,
     });
-    // Uma entrega aberta por unidade (E6): a anterior sai já, mesmo que o PR novo falhe.
-    if (previous) updateDelivery(db, previous, { status: 'replaced' });
-  } else if (delivery.remote !== (remote ?? null)) {
-    updateDelivery(db, delivery, { remote: remote ?? null });
   }
   out.push(...describe(delivery, base));
   const docPath = deliveryDocOf(project.root, delivery);
@@ -594,11 +614,13 @@ function deliverChecked(db: DatabaseSync, home: string, project: Project, option
   if (!remote) {
     out.push(`sem remoto: para levar à ${base}, git merge --no-ff ${delivery.branch}`);
   } else {
-    const pushed = spawnSync('git', ['push', '-q', '-u', remote, delivery.branch], {
-      cwd: project.root,
-      encoding: 'utf8',
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-    });
+    const branch = delivery.branch;
+    const pushed = timed(
+      options.onStep,
+      'publicar a branch',
+      () => spawnSync('git', ['push', '-q', '-u', remote, branch], { cwd: project.root, encoding: 'utf8', env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } }),
+      (result) => result.status === 0,
+    );
     if (pushed.status !== 0) {
       out.push(`o push para ${remote} falhou: ${(pushed.stderr || pushed.stdout || String(pushed.error ?? '')).trim()}`);
       out.push('A branch local da entrega ficou. Rode mabel entregar de novo para retomar.');
@@ -608,13 +630,8 @@ function deliverChecked(db: DatabaseSync, home: string, project: Project, option
       if (host?.kind === 'bitbucket') {
         const warning = expiryWarning(home, 'bitbucket');
         if (warning) out.push(warning);
-        const created = createBitbucketPr(host.auth, host.repo, {
-          title: deliveryTitle(delivery.unit, delivery.items),
-          description: readFileSync(bodyPath, 'utf8'),
-          source: delivery.branch,
-          destination: base,
-          draft: options.draft,
-        });
+        const pr = { title: deliveryTitle(delivery.unit, delivery.items), description: readFileSync(bodyPath, 'utf8'), source: branch, destination: base, draft: options.draft };
+        const created = timed(options.onStep, 'abrir o PR', () => createBitbucketPr(host.auth, host.repo, pr), (result) => 'url' in result);
         if ('url' in created) {
           updateDelivery(db, delivery, { prUrl: created.url });
           out.push(`PR aberto: ${created.url}`);
@@ -626,7 +643,7 @@ function deliverChecked(db: DatabaseSync, home: string, project: Project, option
           code = 1;
         }
       } else if (host?.kind === 'github') {
-        const created = gh(project.root, [
+        const args = [
           'pr',
           'create',
           ...(host.repo ? ['--repo', host.repo] : []),
@@ -639,8 +656,10 @@ function deliverChecked(db: DatabaseSync, home: string, project: Project, option
           '--body-file',
           bodyPath,
           ...(options.draft ? ['--draft'] : []),
-        ]);
-        const url = created?.ok ? /https?:\/\/\S+/.exec(created.stdout)?.[0] : undefined;
+        ];
+        const prUrl = (result: ReturnType<typeof gh>) => (result?.ok ? /https?:\/\/\S+/.exec(result.stdout)?.[0] : undefined);
+        const created = timed(options.onStep, 'abrir o PR', () => gh(project.root, args), (result) => prUrl(result) !== undefined);
+        const url = prUrl(created);
         if (url) {
           updateDelivery(db, delivery, { prUrl: url });
           out.push(`PR aberto: ${url}`);
@@ -661,14 +680,15 @@ function deliverChecked(db: DatabaseSync, home: string, project: Project, option
 
   if (previous) {
     if (previous.prUrl) {
-      const closed = delivery.prUrl ? closePr(project, previous.prUrl, `Substituído por ${delivery.prUrl}`) : false;
+      const [old, current] = [previous.prUrl, delivery.prUrl];
+      const closed = current ? timed(options.onStep, 'fechar o PR anterior', () => closePr(project, old, `Substituído por ${current}`), (ok) => ok) : false;
       out.push(closed ? `PR anterior fechado: ${previous.prUrl}` : `Feche o PR anterior: ${previous.prUrl}`);
     }
     if (isAncestor(project.root, previous.snapshot, delivery.snapshot)) tryGit(project.root, 'branch', '-D', previous.branch);
   }
 
   if (code === 0) {
-    switchToBase(project, out);
+    switchToBase(project, out, options.onStep);
     out.push('', `Faça o merge com merge commit, sem squash nem rebase. Depois, na ${base}: git pull`);
   }
   return { code, lines: out, delivery };
@@ -728,6 +748,25 @@ export async function confirmPartial(io: GuidedIO, missing: number[]): Promise<b
   return confirmAction(io, 'Entregar só o que está pronto');
 }
 
+/**
+ * O `deliver` com as etapas e o tempo de cada uma na tela, ao vivo (`progressView`), e o
+ * total no fim. Sem unidade, o `deliver` só lista: nada a acompanhar.
+ */
+async function deliverWithProgress(db: DatabaseSync, home: string, project: Project, options: DeliverOptions): Promise<DeliverResult> {
+  if (!options.unit) return deliver(db, home, project, options);
+  const group = [options.unit, ...(options.with ?? [])].join(' + ');
+  process.stdout.write(`${style.bold('Entregando')} ${group}\n`);
+  const view = progressView();
+  let result: DeliverResult | undefined;
+  try {
+    result = deliver(db, home, project, { ...options, onStep: view.onStep });
+  } finally {
+    await view.finish(result !== undefined && !result.missing);
+  }
+  process.stdout.write('\n');
+  return result;
+}
+
 export async function deliverCommand(args: string[]): Promise<number> {
   let parsed;
   try {
@@ -762,7 +801,7 @@ export async function deliverCommand(args: string[]): Promise<number> {
       unit = (units[chosen] as Unit).name;
     }
     const options: DeliverOptions = { unit, with: values.com, partial: values.parcial, replace: values.substituir, draft: values.rascunho };
-    let result = deliver(db, home, project, options);
+    let result = await deliverWithProgress(db, home, project, options);
     if (result.missing && interactive()) {
       process.stdout.write(`${result.lines.join('\n')}\n`);
       try {
@@ -771,7 +810,7 @@ export async function deliverCommand(args: string[]): Promise<number> {
         if (error instanceof Interrupted) return 130;
         throw error;
       }
-      result = deliver(db, home, project, { ...options, partial: true });
+      result = await deliverWithProgress(db, home, project, { ...options, partial: true });
     }
     (result.code === 0 ? process.stdout : process.stderr).write(`${result.lines.join('\n')}\n`);
     return result.code;
