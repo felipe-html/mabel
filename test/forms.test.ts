@@ -5,10 +5,10 @@ import { parseArgs } from 'node:util';
 import { commands, findCommand } from '../src/commands.ts';
 import { resume } from '../src/decisions.ts';
 import { EMPTY_DATA, FORMS, type ScreenData, commandScreen, stopForm } from '../src/forms.ts';
-import { captureRun, frame, outputLines, pendingChoice, renderResult, type HomeContext } from '../src/home.ts';
+import { bodyRows, captureRun, frame, outputLines, pendingChoice, renderResult, type HomeContext } from '../src/home.ts';
 import { getItem, syncBacklog, transition, updateItem } from '../src/items.ts';
 import type { Item } from '../src/items.ts';
-import { type FormValues, formState, missingFields, plainStyle, renderForm, wrapLine } from '../src/screens.ts';
+import { type FormConfig, type FormState, type FormValues, formBody, formState, formStep, missingFields, plainStyle, renderForm, wrapLine } from '../src/screens.ts';
 import { guidedProblems, setupProject } from './helpers.ts';
 
 const NOW = new Date('2026-11-01T12:00:00Z');
@@ -302,4 +302,44 @@ test('rodar --limite: valida o número e não combina com --item', () => {
   assert.equal(both.status, 1);
   assert.match(both.stderr, /Use --item ou --limite, não os dois/);
   assert.equal(p.cli('rodar', '--uma').status, 1, 'o --uma saiu');
+});
+
+test('campo de escolha longo: a lista rola dentro da tela cheia e filtra ao digitar, sem perder as marcadas', () => {
+  const config: FormConfig = {
+    title: 'Adicionar um item',
+    fields: [
+      {
+        type: 'pick',
+        key: 'references',
+        label: 'Referências',
+        multi: true,
+        options: () => Array.from({ length: 40 }, (_, i) => ({ value: `tela-${i + 1}`, label: `tela-${i + 1}` })),
+      },
+    ],
+    action: 'Adicionar',
+  };
+  let state: FormState = formState(config);
+  const press = (...keys: { name?: string; sequence?: string }[]) => {
+    for (const key of keys) {
+      const step = formStep(config, state, key);
+      assert.ok('state' in step);
+      state = step.state;
+    }
+  };
+  const screen = () => frame(CONTEXT, formBody(config, state, plainStyle, 100, bodyRows(20)), [], plainStyle, 100, 20);
+
+  press({ name: 'return' }, { name: 'space' }, ...Array.from({ length: 29 }, () => ({ name: 'down' })));
+  const scrolled = screen();
+  assert.equal(scrolled.length, 20);
+  assert.ok(scrolled.some((line) => /› \[ \] tela-30\b/.test(line)), 'o cursor continua à vista');
+  assert.ok(scrolled.some((line) => /↑ mais \d+/.test(line)));
+  assert.ok(scrolled.some((line) => /↓ mais \d+/.test(line)));
+
+  press(...[...'tela-4'].map((sequence) => ({ sequence })));
+  const filtered = screen().join('\n');
+  assert.match(filtered, /› tela-4▏/);
+  assert.match(filtered, /› \[ \] tela-4\b/);
+  assert.doesNotMatch(filtered, /tela-30/);
+  press({ name: 'space' }, { name: 'escape' }, { name: 'return' });
+  assert.deepEqual(state.values.references, ['tela-1', 'tela-4']);
 });

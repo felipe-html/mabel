@@ -548,7 +548,7 @@ async function fillScreen(context: HomeContext, config: FormConfig): Promise<For
       if ('state' in step) return step;
       return { result: 'submit' in step ? step.submit : null };
     },
-    render: (state, width, height) => frame(context, formBody(config, state, style, width), formHints(config, state), style, width, height),
+    render: (state, width, height) => frame(context, formBody(config, state, style, width, bodyRows(height)), formHints(config, state), style, width, height),
   });
 }
 
@@ -673,7 +673,7 @@ export class PageGuided implements GuidedIO {
         if ('state' in step) return step;
         return { result: 'submit' in step ? step.submit : null };
       },
-      render: (state, width, height) => frame(this.context, formBody(config, state, style, width), formHints(config, state), style, width, height),
+      render: (state, width, height) => frame(this.context, formBody(config, state, style, width, bodyRows(height)), formHints(config, state), style, width, height),
     });
 }
 
