@@ -623,7 +623,11 @@ export function syncBacklog(db: DatabaseSync, project: Project): SyncResult {
     const started = isStarted(db, item.id);
     if (hash !== item.contentHash) {
       if (started) {
-        warnings.push(`#${item.number} mudou no backlog depois de iniciado; segue com o conteúdo do início.`);
+        // Só avisa quando o texto do item mudou: arquivo referenciado ou spec que mudam
+        // depois do início são esperados (os agentes mexem neles) e não pedem ação.
+        if (item.status !== 'done' && contentHash(fields) !== contentHash(item)) {
+          warnings.push(`#${item.number} mudou no backlog depois de iniciado; segue com o conteúdo do início.`);
+        }
       } else {
         db.prepare(
           `UPDATE items SET title = ?, intent = ?, criteria = ?, depends_on = ?, restrictions = ?,

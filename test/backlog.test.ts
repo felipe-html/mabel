@@ -165,6 +165,11 @@ test('sincronização: ids novos, mudança de conteúdo antes e depois do iníci
   assert.equal(getItem(db, project.id, 1)?.intent, 'primeiro, revisto');
   assert.match(after.warnings.join('\n'), /#1 mudou no backlog depois de iniciado/);
 
+  // Item concluído: a mudança não pede ação, então não há aviso.
+  db.prepare("UPDATE items SET status = 'done' WHERE id = ?").run(getItem(db, project.id, 1)!.id);
+  assert.doesNotMatch(syncBacklog(db, project).warnings.join('\n'), /#1 mudou/);
+  db.prepare("UPDATE items SET status = 'planning' WHERE id = ?").run(getItem(db, project.id, 1)!.id);
+
   // Remoção: não iniciado → cancelled; iniciado → permanece, com aviso.
   writeFileSync(path, BACKLOG_TEMPLATE);
   const removed = syncBacklog(db, project);

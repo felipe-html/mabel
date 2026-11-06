@@ -68,7 +68,8 @@ Item com referência que não confere fica em `backlog` com o motivo
 Com `Referências:` preenchido, o hash do item inclui as entradas e o hash de cada arquivo
 que elas alcançam (o diretório inteiro da tela; o snapshot inteiro da API). Sem o campo,
 o hash não muda. Atualizar um snapshot faz o item não iniciado ser relido; o iniciado
-recebe o aviso de sempre ("mudou depois de iniciado; segue com o conteúdo do início").
+segue com a cópia do início, sem aviso: o aviso "mudou depois de iniciado" fica para
+mudança no texto do item, e não sai para item `done`.
 
 ## Cópia congelada do item
 

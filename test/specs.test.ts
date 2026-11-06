@@ -133,10 +133,11 @@ test('S.3 critérios 6 e 7: o planejamento recebe a spec; regra citada alterada 
 
   const started = q.item(1);
   const notStarted = q.item(2);
-  // R1 e R2 mudam: #1 (iniciada) segue com a cópia; #2 (não iniciada) é atualizada.
+  // R1 e R2 mudam: #1 (iniciada) segue com a cópia, sem aviso (o texto dela não mudou);
+  // #2 (não iniciada) é atualizada.
   writeFileSync(q.specFile, SPEC.replace('→ entra.', '→ entra, com o horário do servidor.').replace('Pedido cancelado dentro do período → não entra.', 'Pedido cancelado dentro do período → não entra, nem estornado.'));
   const { warnings } = q.sync();
-  assert.ok(warnings.some((w) => /#1 mudou no backlog depois de iniciado/.test(w)));
+  assert.ok(!warnings.some((w) => /#1 mudou no backlog/.test(w)));
   assert.equal(q.item(1).contentHash, started.contentHash);
   assert.match(JSON.stringify(q.item(1).specContext), /→ entra\.?"|"resultado":"entra\."/);
   assert.notEqual(q.item(2).contentHash, notStarted.contentHash);

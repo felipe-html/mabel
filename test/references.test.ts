@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { getItem, syncBacklog } from '../src/items.ts';
+import { getItem, syncBacklog, transition } from '../src/items.ts';
 import { refinePrompt } from '../src/refine.ts';
 import { extractOperation, parseReference, referencesRoot } from '../src/references.ts';
 import { claudeArgs } from '../src/runner.ts';
@@ -105,6 +105,18 @@ test('hash: mudar um arquivo referenciado muda o hash do item', () => {
   writeReference(root, 'telas/cadastro/tela.md', 'v2');
   syncBacklog(db, project);
   assert.notEqual(getItem(db, project.id, 1)?.contentHash, before);
+});
+
+test('hash: arquivo referenciado que muda depois do início não gera aviso', () => {
+  const { db, project, root } = setupProject(ITEM('- tela: cadastro'));
+  writeReference(root, 'telas/cadastro/tela.md', 'v1');
+  syncBacklog(db, project);
+  const before = getItem(db, project.id, 1)!;
+  transition(db, project, before.id, 'planning', null);
+  writeReference(root, 'telas/cadastro/tela.md', 'v2');
+  const { warnings } = syncBacklog(db, project);
+  assert.equal(getItem(db, project.id, 1)?.contentHash, before.contentHash);
+  assert.ok(!warnings.some((w) => /#1 mudou/.test(w)));
 });
 
 test('extractOperation: a operação, os parâmetros do caminho e os componentes alcançados', () => {
