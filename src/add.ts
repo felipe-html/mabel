@@ -208,7 +208,7 @@ export async function add(args: string[]): Promise<number> {
 
     const item = getItem(db, project.id, number);
     process.stdout.write(`Item #${number} adicionado: ${fields.title} · ${item?.status ?? '?'}\n`);
-    for (const warning of [...before.warnings, ...after.warnings]) process.stdout.write(style.dim(`${warning}\n`));
+    for (const warning of new Set([...before.warnings, ...after.warnings])) process.stdout.write(style.dim(`${warning}\n`));
     if (item?.status === 'blocked') process.stdout.write(`Bloqueado: ${item.statusReason}\n`);
     const problem = referenceProblem(project.root, fields.references ?? []);
     if (problem) process.stdout.write(`Fica no backlog até corrigir: ${problem}. Veja as referências com \`mabel capturar\`.\n`);

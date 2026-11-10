@@ -554,6 +554,9 @@ test('entregar: "já fiz o merge" só atualiza a base depois do merge do PR, por
   // O humano faz o merge do PR no remoto.
   const human = mkdtempSync(join(tmpdir(), 'mabel-humano-'));
   git(human, 'clone', '-q', q.origin, '.');
+  // Identidade própria: no CI não há `user.name`/`user.email` globais.
+  git(human, 'config', 'user.name', 'Humano');
+  git(human, 'config', 'user.email', 'humano@example.com');
   git(human, 'merge', '-q', '--no-ff', '-m', 'Merge do PR', `origin/${delivery.branch}`);
   git(human, 'push', '-q', 'origin', 'main');
 
