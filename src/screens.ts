@@ -568,7 +568,7 @@ export function formStep(config: FormConfig, state: FormState, key: Key): FormSt
     }
     if (field?.type === 'pick') {
       const options = field.options(state.values);
-      const step = choiceStep({ options, multi: field.multi, back: true }, state.sub.choice as ChoiceState, key);
+      const step = choiceStep(pickChoice(field, options), state.sub.choice as ChoiceState, key);
       if ('state' in step) return { state: { ...quiet, sub: { key: field.key, choice: step.state } } };
       if ('back' in step) return { state: { ...quiet, sub: undefined } };
       if ('marked' in step) return { state: { ...set(field.key, step.marked.map((i) => options[i]?.value ?? '')), sub: undefined } };
@@ -673,7 +673,7 @@ export function formHints(config: FormConfig, state: FormState): Hint[] {
   const fields = inputFields(config, state.values);
   const sub = state.sub && fields.find((f) => f.key === state.sub?.key);
   if (sub?.type === 'list') return listHints({ done: 'volta' }, state.sub?.list as ListState);
-  if (sub?.type === 'pick') return choiceHints({ options: [], multi: sub.multi, back: true });
+  if (sub?.type === 'pick') return choiceHints(pickChoice(sub, []));
   return [
     ['↑↓', 'campos'],
     ['enter', 'editar'],
@@ -683,13 +683,25 @@ export function formHints(config: FormConfig, state: FormState): Hint[] {
   ];
 }
 
-/** Formulário sem o rodapé de teclas: o corpo que uma tela cheia emoldura. */
-export function formBody(config: FormConfig, state: FormState, style: ScreenStyle, width = 80): string[] {
-  const lines = renderForm(config, state, style, width);
+/** Escolha aberta por um campo `pick`: filtra ao digitar e rola em `size` linhas. */
+function pickChoice(field: PickField, options: ChoiceOption[], size?: number): ChoiceConfig {
+  return { options, multi: field.multi, back: true, filter: true, size };
+}
+
+/** Linhas da escolha de um `pick` fora as opções: filtro, as duas setas de rolagem, a mensagem e o rodapé. */
+const PICK_CHROME_ROWS = 2 + 2 + 2 + 2;
+
+/**
+ * Formulário sem o rodapé de teclas: o corpo que uma tela cheia emoldura. `rows` são as
+ * linhas que o corpo pode ocupar; a lista de um `pick` rola dentro delas.
+ */
+export function formBody(config: FormConfig, state: FormState, style: ScreenStyle, width = 80, rows?: number): string[] {
+  const lines = renderForm(config, state, style, width, rows === undefined ? undefined : rows + 2);
   return lines.slice(0, -2);
 }
 
-export function renderForm(config: FormConfig, state: FormState, style: ScreenStyle, width = 80): string[] {
+/** `rows`: linhas que a tela pode ocupar; sem ele, a lista de um `pick` mostra todas as opções. */
+export function renderForm(config: FormConfig, state: FormState, style: ScreenStyle, width = 80, rows?: number): string[] {
   const fields = inputFields(config, state.values);
   const lines: string[] = [];
   const sub = state.sub && fields.find((f) => f.key === state.sub?.key);
@@ -699,7 +711,8 @@ export function renderForm(config: FormConfig, state: FormState, style: ScreenSt
       lines.push(...listBody({ done: 'volta' }, state.sub.list as ListState, style, width));
     } else if (sub.type === 'pick') {
       lines.push(...titleRows(`${config.title} › ${sub.label}`, style, width, '', sub.multi ? 'espaço marca, enter confirma' : ''));
-      lines.push(...choiceBody({ options: sub.options(state.values), multi: sub.multi }, state.sub.choice as ChoiceState, style, width));
+      const size = rows === undefined ? undefined : Math.max(3, rows - lines.length - PICK_CHROME_ROWS);
+      lines.push(...choiceBody(pickChoice(sub, sub.options(state.values), size), state.sub.choice as ChoiceState, style, width));
     }
   } else {
     lines.push(...titleRows(config.title, style, width, config.command ? `mabel ${config.command}` : '', config.description));

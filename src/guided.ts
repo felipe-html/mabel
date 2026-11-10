@@ -107,7 +107,7 @@ export function fillForm(config: FormConfig, values: FormValues = {}): Promise<F
       if ('state' in step) return step;
       return { result: 'submit' in step ? step.submit : null };
     },
-    render: (state, width) => renderForm(config, state, style, width),
+    render: (state, width, height) => renderForm(config, state, style, width, height - 1),
     summary: (result) => (result && config.shell ? [style.dim(`  $ ${config.shell(result)}`)] : []),
   });
 }
